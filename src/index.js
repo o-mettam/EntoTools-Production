@@ -722,8 +722,8 @@ async function handleSearch(request, env) {
 
 // ── Feedback → GitHub Issue ────────────────────────────────────────
 
-const GITHUB_REPO_OWNER = 'aceargle';
-const GITHUB_REPO_NAME = 'Firefly-Dashboard';
+const GITHUB_REPO_OWNER = 'o-mettam';
+const GITHUB_REPO_NAME = 'EntoTools-Production';
 
 const FEEDBACK_TYPE_LABELS = {
   bug: 'bug',
