@@ -326,10 +326,14 @@
         return;
       }
 
-      statusEl.textContent = 'Thank you! Your feedback has been submitted.';
       statusEl.className = 'feedback-status-success';
+      if (data.issue_url) {
+        statusEl.innerHTML = 'Thank you! Your feedback has been submitted. <a href="' + data.issue_url + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">View issue →</a>';
+      } else {
+        statusEl.textContent = 'Thank you! Your feedback has been submitted.';
+      }
       resetForm();
-      setTimeout(closeModal, 2000);
+      setTimeout(closeModal, 15000);
     } catch (err) {
       statusEl.textContent = 'Network error — please check your connection and try again.';
       statusEl.className = 'feedback-status-error';
