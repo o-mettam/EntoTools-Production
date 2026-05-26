@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation — EntoTools</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' };
+        if (localStorage.getItem('firefly-theme') === 'dark' ||
+            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .hover-lift { transition: transform .15s ease, box-shadow .15s ease; }
+        .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+        .settings-panel {
+            display: none;
+            opacity: 0;
+            transform: translateY(-4px);
+            transition: opacity .15s ease, transform .15s ease;
+        }
+        .settings-panel.open {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* Dark mode overrides */
+        .dark body, .dark { background-color: #1a2236; color: #e2e8f0; }
+        .dark .bg-white { background-color: #24304a !important; }
+        .dark .bg-slate-50 { background-color: #1a2236 !important; }
+        .dark .text-slate-800 { color: #eef1f6 !important; }
+        .dark .text-slate-700 { color: #cbd5e1 !important; }
+        .dark .text-slate-600 { color: #9ca9c0 !important; }
+        .dark .text-slate-500 { color: #7b8ba8 !important; }
+        .dark .text-slate-400 { color: #64748b !important; }
+        .dark .border-slate-200 { border-color: #334155 !important; }
+        .dark .border-slate-100 { border-color: #2a3348 !important; }
+        .dark .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,.3) !important; }
+        .dark .bg-slate-700 { background-color: #0f172a !important; }
+        .dark .settings-panel { background-color: #24304a !important; border-color: #334155 !important; }
+        .dark .settings-panel h3 { color: #eef1f6 !important; }
+        .dark .settings-panel span { color: #d8dee9 !important; }
+        .dark .settings-panel hr { border-color: #3e4a64; }
+        .dark .settings-panel p { color: #7b8ba8 !important; }
+        .dark #settings-btn { color: #9ca9c0; }
+        .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
+        .dark code { background-color: #1e293b !important; color: #e2e8f0 !important; border: 1px solid #334155; }
+        .toc-link { transition: color .15s ease; }
+        .toc-link:hover { color: #65a30d; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 relative z-40">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-14 sm:h-16">
+                <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
+                <div class="flex items-center gap-1">
+                    <div class="relative">
+                        <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                        </button>
+                        <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
+                            <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
+                                    <span class="text-sm text-slate-700">Dark Mode</span>
+                                </div>
+                                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                    <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                                </button>
+                            </div>
+                            <hr class="my-2 border-slate-100">
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                    <span class="text-sm text-slate-700">Clear Local Cache</span>
+                                </div>
+                                <button onclick="clearLocalCache(event)" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">Clear</button>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Removes cached search results and saved searches from your browser.</p>
+                        </div>
+                    </div>
+                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                        <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        </svg>
+                        <svg id="close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white">
+            <div class="px-4 py-3 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Home</a>
+                <a href="/degree-day-calculator" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Degree Day Calculator</a>
+                <a href="/gdd-lookup" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">GDD Lookup</a>
+                <a href="/sample-collection" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Label Data</a>
+                <a href="/collection-database" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Collection Database</a>
+                <a href="/documentation" class="block px-3 py-2 rounded-lg text-lime-600 font-medium bg-lime-50">Documentation</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="bg-slate-700 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Documentation</h1>
+            <p class="text-lime-200 text-sm mt-1">Data sources, calculations, and guidance for all EntoTools pages.</p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+
+        <!-- Table of Contents -->
+        <nav class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-8">
+            <h2 class="text-lg font-semibold text-slate-800 mb-3">Table of Contents</h2>
+            <ul class="space-y-2 text-sm">
+                <li><a href="#data-sources" class="toc-link text-slate-600 hover:text-lime-600">1. Data Sources</a></li>
+                <li><a href="#gdd-calculation" class="toc-link text-slate-600 hover:text-lime-600">2. Growing Degree Day (GDD) Calculation</a></li>
+                <li><a href="#missing-data" class="toc-link text-slate-600 hover:text-lime-600">3. Missing Data Handling</a></li>
+                <li><a href="#forecast" class="toc-link text-slate-600 hover:text-lime-600">4. Forecast Generation</a></li>
+                <li><a href="#degree-day-calculator" class="toc-link text-slate-600 hover:text-lime-600">5. Degree Day Calculator — Guide</a></li>
+                <li><a href="#gdd-lookup-guide" class="toc-link text-slate-600 hover:text-lime-600">6. GDD Lookup — Guide</a></li>
+                <li><a href="#sample-collection-guide" class="toc-link text-slate-600 hover:text-lime-600">7. Label Data — Guide</a></li>
+                <li><a href="#collection-database-guide" class="toc-link text-slate-600 hover:text-lime-600">8. Collection Database — Guide</a></li>
+                <li><a href="#station-selection" class="toc-link text-slate-600 hover:text-lime-600">9. Weather Station Selection &amp; Provider Routing</a></li>
+                <li><a href="#limitations" class="toc-link text-slate-600 hover:text-lime-600">10. Limitations &amp; Notes</a></li>
+            </ul>
+        </nav>
+
+        <!-- Content Sections -->
+        <div class="space-y-8">
+
+            <!-- Data Sources -->
+            <section id="data-sources" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">1. Data Sources</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+
+                    <!-- NOAA NCEI -->
+                    <h3 class="text-base font-semibold text-slate-800 mt-2">NOAA NCEI — Temperature &amp; Precipitation (US)</h3>
+                    <p>For locations within the United States, historical temperature and precipitation data is sourced from the NOAA National Centers for Environmental Information (NCEI) Daily Summaries dataset via their public API.</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>API Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://www.ncei.noaa.gov/access/services/data/v1</code></li>
+                        <li><strong>Dataset:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">daily-summaries</code></li>
+                        <li><strong>Data Types:</strong> TMIN (daily minimum temperature), TMAX (daily maximum temperature), PRCP (daily precipitation)</li>
+                        <li><strong>Units:</strong> Standard (°F for temperature, inches for precipitation)</li>
+                        <li><strong>Coverage:</strong> US locations only (determined by reverse geocoding the search coordinates)</li>
+                        <li><strong>Fallback:</strong> If NCEI is unreachable or returns no data, the system automatically falls back to Open-Meteo historical data</li>
+                        <li><strong>Used By:</strong> Degree Day Calculator, GDD Lookup, Label Data</li>
+                    </ul>
+
+                    <!-- Nominatim -->
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Nominatim / OpenStreetMap — Geocoding</h3>
+                    <p>Location lookups (city/state/country) are resolved to latitude and longitude coordinates using the Nominatim geocoding service. The Label Data page also uses Nominatim's reverse geocoding endpoint to resolve coordinates back to a human-readable city, state, and country name for specimen labels.</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Forward Geocoding:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://nominatim.openstreetmap.org/search</code></li>
+                        <li><strong>Reverse Geocoding:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://nominatim.openstreetmap.org/reverse</code></li>
+                        <li><strong>Data Types:</strong> Latitude, longitude, display name, city, state, country</li>
+                        <li><strong>Caching:</strong> Forward geocode results are cached in Cloudflare KV for 24 hours</li>
+                        <li><strong>Used By:</strong> All pages (forward); Label Data (reverse)</li>
+                    </ul>
+
+                    <!-- Open-Meteo -->
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Open-Meteo — Historical Data, Forecast, Elevation &amp; Humidity</h3>
+                    <p>Open-Meteo is a free open-source weather API that serves multiple roles in EntoTools:</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Historical Archive Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://archive-api.open-meteo.com/v1/archive</code></li>
+                        <li><strong>Forecast Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://api.open-meteo.com/v1/forecast</code></li>
+                        <li><strong>Elevation Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://api.open-meteo.com/v1/elevation</code></li>
+                        <li><strong>Historical Data:</strong> Primary temperature/precipitation source for all non-US locations, and automatic fallback for US locations if NCEI fails. Provides grid-point data derived from reanalysis models.</li>
+                        <li><strong>Forecast Data:</strong> 16-day daily TMAX, TMIN, and precipitation from NWP models (ECMWF, GFS, etc.). Used globally, regardless of the primary data provider.</li>
+                        <li><strong>Elevation:</strong> Meters above sea level for the search coordinates.</li>
+                        <li><strong>Humidity:</strong> Hourly relative humidity at 2m (%). If a collection time is provided, the closest hourly value is used; otherwise, the daily average is reported.</li>
+                        <li><strong>Used By:</strong> All calculators (historical data for non-US, fallback for US, forecast globally), Label Data (elevation, humidity)</li>
+                    </ul>
+
+                    <!-- Sunrise-Sunset -->
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Sunrise-Sunset.org — Sunset Time</h3>
+                    <p>Sunset times for specimen collection dates are fetched from the Sunrise-Sunset API.</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>API Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://api.sunrise-sunset.org/json</code></li>
+                        <li><strong>Data Types:</strong> Sunset time (ISO 8601, converted to local 12-hour format)</li>
+                        <li><strong>Used By:</strong> Label Data</li>
+                    </ul>
+
+                    <!-- Station Data -->
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Station Data — NOAA GHCN</h3>
+                    <p>A curated set of US weather stations (from NOAA's Global Historical Climatology Network) is stored in <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">stations.json</code> as a static asset. This file contains station IDs, names, and coordinates and is used for nearest-station lookups.</p>
+
+                    <!-- Summary table -->
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Summary</h3>
+                    <div class="overflow-x-auto mt-2">
+                        <table class="w-full text-sm border border-slate-200 rounded-lg">
+                            <thead class="bg-slate-50">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Source</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Data Provided</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-slate-500 uppercase">Pages</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr><td class="px-3 py-2 font-medium">NOAA NCEI</td><td class="px-3 py-2">TMIN, TMAX, PRCP (US only)</td><td class="px-3 py-2">Calculator, GDD Lookup, Label Data</td></tr>
+                                <tr><td class="px-3 py-2 font-medium">Open-Meteo (historical)</td><td class="px-3 py-2">TMIN, TMAX, PRCP (non-US &amp; fallback)</td><td class="px-3 py-2">Calculator, GDD Lookup, Label Data</td></tr>
+                                <tr><td class="px-3 py-2 font-medium">Open-Meteo (forecast)</td><td class="px-3 py-2">16-day TMIN, TMAX, PRCP</td><td class="px-3 py-2">Calculator, GDD Lookup</td></tr>
+                                <tr><td class="px-3 py-2 font-medium">Open-Meteo (extras)</td><td class="px-3 py-2">Elevation (m), humidity (%)</td><td class="px-3 py-2">Label Data</td></tr>
+                                <tr><td class="px-3 py-2 font-medium">Nominatim / OSM</td><td class="px-3 py-2">Lat/lon, city, state, country</td><td class="px-3 py-2">All pages</td></tr>
+                                <tr><td class="px-3 py-2 font-medium">Sunrise-Sunset.org</td><td class="px-3 py-2">Sunset time</td><td class="px-3 py-2">Label Data</td></tr>
+                                <tr><td class="px-3 py-2 font-medium">NOAA GHCN (static)</td><td class="px-3 py-2">Station IDs, names, coordinates</td><td class="px-3 py-2">US station lookup (via backend)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- GDD Calculation -->
+            <section id="gdd-calculation" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">2. Growing Degree Day (GDD) Calculation</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p>EntoTools uses the <strong>modified Growing Degree Day (mGDD)</strong> method, also known as the "modified sine" or "simple average" method with an upper threshold cap.</p>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Formula</h3>
+                    <div class="bg-slate-50 rounded-lg p-4 font-mono text-sm">
+                        <p>Daily GDD = max(0, ((min(TMAX, MaxTemp) + TMIN) / 2) − BaseTemp)</p>
+                    </div>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Parameters</h3>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Base Temperature (default 50°F):</strong> The lower developmental threshold. Days where the average temperature is below this contribute 0 GDD.</li>
+                        <li><strong>Max Temperature Cap (default 86°F):</strong> The upper developmental threshold. TMAX values above this are capped at this value before averaging, because insect development typically plateaus or ceases above certain temperatures.</li>
+                        <li><strong>Accumulation Start Date:</strong> The month and day (e.g., Jan 1) when cumulative GDD resets and begins accumulating for the season.</li>
+                    </ul>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Accumulation Logic</h3>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Cumulative GDD resets to 0 at the start of each calendar year.</li>
+                        <li>Daily GDD only accumulates on or after the configured accumulation start date.</li>
+                        <li>Before the accumulation start date, cumulative GDD remains 0.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Missing Data Handling -->
+            <section id="missing-data" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">3. Missing Data Handling</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p>Occasionally, a weather station may fail to report temperature data for one or more consecutive days. When this happens, the GDD calculation uses linear interpolation to fill the gap:</p>
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <p class="font-medium text-amber-800 mb-2">Interpolation Rule</p>
+                        <p class="text-amber-900 text-sm">For any stretch of consecutive missing days, the system finds the nearest known day <em>before</em> and <em>after</em> the gap and linearly interpolates TMIN and TMAX across the entire gap.</p>
+                        <div class="mt-2 font-mono text-xs text-amber-800 bg-amber-100 rounded p-2">
+                            fraction = (position_in_gap) / (gap_length + 1)<br>
+                            Calculated TMIN = prev.TMIN + (next.TMIN − prev.TMIN) × fraction<br>
+                            Calculated TMAX = prev.TMAX + (next.TMAX − prev.TMAX) × fraction
+                        </div>
+                    </div>
+                    <ul class="list-disc pl-5 space-y-1 mt-3">
+                        <li>Interpolated values are tagged as <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-200 text-blue-800">Calculated</span> in the data tables and charts.</li>
+                        <li>If no known day exists on either side of the gap (e.g., missing data at the very start or end of the date range), the gap is left unfilled and those days contribute 0 GDD.</li>
+                        <li>This ensures the cumulative GDD total remains as accurate as possible even with multi-day data gaps.</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Forecast -->
+            <section id="forecast" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">4. Forecast Generation</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p>When a date range extends to or near the present day, the system appends a <strong>16-day weather forecast</strong> to project future temperature and GDD accumulation.</p>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Method</h3>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Source:</strong> Forecasts are provided by the <a href="https://open-meteo.com/" class="underline hover:text-lime-600">Open-Meteo Forecast API</a>, which aggregates output from numerical weather prediction models (ECMWF, GFS, and others).</li>
+                        <li><strong>Data:</strong> Daily high/low temperatures (TMAX/TMIN) and precipitation are fetched in US customary units (°F, inches).</li>
+                        <li><strong>Coverage:</strong> Global — the same forecast endpoint is used regardless of whether the primary data provider is NCEI or Open-Meteo.</li>
+                        <li><strong>Horizon:</strong> Up to 16 days from the current date. Forecast days that overlap with already-available actual data are excluded.</li>
+                    </ul>
+                    <p>Forecast values are tagged as <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800">Forecast</span> in tables and displayed with dashed lines on charts.</p>
+                </div>
+            </section>
+
+            <!-- Degree Day Calculator Guide -->
+            <section id="degree-day-calculator" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">5. Degree Day Calculator — Guide</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p>The Degree Day Calculator is the primary tool for exploring weather data and GDD trends over custom date ranges.</p>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">How to Use</h3>
+                    <ol class="list-decimal pl-5 space-y-2">
+                        <li><strong>Select a location</strong> using city/state/country or latitude/longitude coordinates (decimal degrees or DMS).</li>
+                        <li><strong>Add date ranges</strong> — you can compare multiple time periods side-by-side. Each range appears as a separate series on the charts.</li>
+                        <li><strong>Configure GDD parameters:</strong> base temperature, max temperature cap, and accumulation start date (month and day).</li>
+                        <li><strong>Click Search</strong> — data is fetched from the nearest NOAA station and displayed.</li>
+                    </ol>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Available Charts &amp; Data</h3>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Temperature Chart:</strong> Daily high/low temperatures with actual data as solid lines and forecast as dashed lines.</li>
+                        <li><strong>GDD Chart:</strong> Cumulative and daily GDD values. Toggle forecast visibility on/off.</li>
+                        <li><strong>Precipitation Chart:</strong> Daily and cumulative precipitation.</li>
+                        <li><strong>Data Tables:</strong> Detailed breakdowns for temperature, GDD, and precipitation in tabular format.</li>
+                    </ul>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Saving Searches</h3>
+                    <p>Search results can be saved to your browser's local storage for quick access later. Saved searches appear in the sidebar and can be loaded or deleted.</p>
+                </div>
+            </section>
+
+            <!-- GDD Lookup Guide -->
+            <section id="gdd-lookup-guide" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">6. GDD Lookup — Guide</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p>The GDD Lookup provides a quick way to get the cumulative GDD value for a specific location and target date.</p>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">How to Use</h3>
+                    <ol class="list-decimal pl-5 space-y-2">
+                        <li><strong>Select a location</strong> using city/state/country or lat/lon (decimal degrees or DMS).</li>
+                        <li><strong>Set the target date</strong> — defaults to today.</li>
+                        <li><strong>Configure GDD parameters</strong> (base temp, max cap, accumulation start).</li>
+                        <li><strong>Click Look Up</strong> — the system fetches data from the accumulation start date to the target date and computes cumulative GDD.</li>
+                    </ol>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Results</h3>
+                    <p>The result card shows cumulative GDD, daily GDD for the target date, average temperature, station info, and a full day-by-day breakdown table.</p>
+                </div>
+            </section>
+
+            <!-- Label Data Guide -->
+            <section id="sample-collection-guide" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">7. Label Data — Guide</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p>The Label Data tool generates printable specimen labels enriched with weather data (temperature, GDD, precipitation, humidity, elevation, and sunset time) for entomological collections.</p>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">How to Use</h3>
+                    <ol class="list-decimal pl-5 space-y-2">
+                        <li><strong>Enter a location</strong> using city/state/country or lat/lon (decimal degrees or DMS format, e.g. 35° 27' 23" N).</li>
+                        <li><strong>Fill in collection details:</strong> site name, date (single or range), time, collector, specimen ID, identification, and determiner.</li>
+                        <li><strong>Configure GDD parameters:</strong> base temperature and accumulation start date.</li>
+                        <li><strong>Click Generate</strong> — the system fetches weather data and computes GDD, precipitation, humidity, elevation, and sunset for the collection date(s).</li>
+                        <li><strong>Add to label sheet</strong> — each entry is accumulated into a multi-label print sheet for batch printing.</li>
+                    </ol>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Label Contents</h3>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Location (city, state, country) with coordinates and elevation</li>
+                        <li>Date, sunset time, and collection time</li>
+                        <li>Temperature (high/low/average), cumulative GDD, 30-day precipitation</li>
+                        <li>Relative humidity at collection time (or daily average)</li>
+                        <li>Specimen details: ID, identification, determiner, number of specimens</li>
+                    </ul>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Data Persistence</h3>
+                    <p>Label sheet data is stored in your browser's local storage. It persists between sessions but will be lost if you clear your browser cache.</p>
+                </div>
+            </section>
+
+            <!-- Collection Database Guide -->
+            <section id="collection-database-guide" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">8. Collection Database — Guide</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <p>The Collection Database lets you browse, search, and manage all saved specimen collection records.</p>
+                    <h3 class="text-base font-semibold text-slate-800 mt-4">Features</h3>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Browse &amp; Sort:</strong> View all records sorted by date, location, or other fields.</li>
+                        <li><strong>Search:</strong> Filter records by keyword across all fields.</li>
+                        <li><strong>Export:</strong> Download all records as a CSV file for backup or import into other systems.</li>
+                        <li><strong>Import:</strong> Upload a CSV file to restore or add records to the database.</li>
+                    </ul>
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mt-3">
+                        <p class="font-medium text-amber-800 mb-1">Important</p>
+                        <p class="text-amber-900 text-sm">This is a <strong>local browser database</strong>. If you clear your cache or reset your browser, <strong>the database will be lost</strong>. It is highly recommended to export the CSV file after each session.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Station Selection -->
+            <section id="station-selection" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">9. Weather Station Selection &amp; Provider Routing</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <h3 class="text-base font-semibold text-slate-800 mt-2">Provider Routing</h3>
+                    <p>The system determines which data provider to use based on the country of the search location:</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>United States:</strong> NOAA NCEI (station-based). If NCEI fails or returns no stations, the system falls back to Open-Meteo grid-point data.</li>
+                        <li><strong>All other countries:</strong> Open-Meteo historical archive (grid-point data).</li>
+                    </ul>
+                    <p>When a fallback occurs, a warning banner is displayed on the page indicating that alternative data was used.</p>
+
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Station Selection (US / NCEI)</h3>
+                    <p>For US locations, the system automatically finds the best nearby NOAA weather station:</p>
+                    <ol class="list-decimal pl-5 space-y-2">
+                        <li><strong>Bounding Box Filter:</strong> Stations within approximately 140 miles (2° latitude) of the search location are pre-filtered.</li>
+                        <li><strong>Distance Ranking:</strong> Remaining stations are ranked by haversine distance.</li>
+                        <li><strong>Station Type Priority:</strong> Stations with IDs starting with USW (airports), USC (cooperative), or USR (regional) are preferred, as they are more likely to report temperature data.</li>
+                        <li><strong>Data Verification:</strong> The top candidates are checked against NCEI for recent data (last 30 days). The closest station with actual data is selected.</li>
+                    </ol>
+                    <p>The selected station's name, ID, and distance from your search location are displayed in the results.</p>
+
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Grid-Point Data (Non-US / Fallback)</h3>
+                    <p>For non-US locations (or when NCEI fails), Open-Meteo provides data for the exact grid point nearest to the search coordinates. No station selection is performed; instead, the latitude and longitude are used directly.</p>
+                </div>
+            </section>
+
+            <!-- Limitations -->
+            <section id="limitations" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">10. Limitations &amp; Notes</h2>
+                <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
+                    <ul class="list-disc pl-5 space-y-2">
+                        <li><strong>Data Availability:</strong> NOAA NCEI data may have a 1–3 day lag from the current date. The most recent days might not have data yet. This only affects requests for US locations.</li>
+                        <li><strong>Station Coverage:</strong> Rural areas may have fewer nearby stations, resulting in data from stations farther away. Always check the reported distance, as it is listed in the datasets provided. This only applies to US/NCEI locations.</li>
+                        <li><strong>Open-Meteo Resolution:</strong> Open-Meteo provides gridded reanalysis data, not station-based observations. Its spatial resolution is approximately 9–25 km depending on the model. For non-US locations, this is the only available data source.</li>
+                        <li><strong>Forecast Accuracy:</strong> The 16-day forecast is sourced from Open-Meteo's numerical weather prediction models. Accuracy is generally high for the first 7 days and decreases beyond that.</li>
+                        <li><strong>Coordinate Input:</strong> All pages accept coordinates in decimal degrees (e.g., 35.4564) or DMS format (e.g., 35° 27' 23" N). Locations can also be entered as city/state/country for geocoding via Nominatim.</li>
+                        <li><strong>Local Storage:</strong> Saved searches, label sheets, and the collection database are stored in your browser. They do not sync across devices and can be lost if you clear browser data. We recommend either printing your data and charts, saving the CSV files, and exporting the database when leaving the page. You can re-import the Database CSV file when you return.</li>
+                        <li><strong>NCEI Rate Limits:</strong> The NCEI API may occasionally return 503 errors during high-traffic periods. The system automatically retries up to 3 times with exponential backoff. This only affects requests for US locations.</li>
+                    </ul>
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 py-6 space-y-1">
+        <p>Data sourced from <a href="https://www.ncei.noaa.gov/" class="underline hover:text-slate-600">NOAA NCEI</a>,
+        <a href="https://open-meteo.com/" class="underline hover:text-slate-600">Open-Meteo</a>,
+        and <a href="https://sunrise-sunset.org/" class="underline hover:text-slate-600">Sunrise-Sunset.org</a>.
+        Geocoding by <a href="https://nominatim.openstreetmap.org/" class="underline hover:text-slate-600">Nominatim / OpenStreetMap</a>.
+        <a href="https://github.com/aceargle/Firefly-Dashboard" class="underline hover:text-slate-600">GitHub</a>.</p>
+        <p>Developed by Owen Mettam &amp; Alana Eargle</p>
+    </footer>
+
+    <script>
+        /* ── Mobile Menu ── */
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const hamburger = document.getElementById('hamburger-icon');
+            const close = document.getElementById('close-icon');
+            menu.classList.toggle('hidden');
+            hamburger.classList.toggle('hidden');
+            close.classList.toggle('hidden');
+        }
+
+        /* ── Settings Panel ── */
+        function toggleSettings() {
+            document.getElementById('settings-panel').classList.toggle('open');
+        }
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('settings-panel');
+            const btn = document.getElementById('settings-btn');
+            if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+            const mobileMenu = document.getElementById('mobile-menu');
+            const mobileBtn = document.getElementById('mobile-menu-btn');
+            if (mobileMenu && mobileBtn && !mobileMenu.contains(e.target) && !mobileBtn.contains(e.target)) {
+                mobileMenu.classList.add('hidden');
+                document.getElementById('hamburger-icon').classList.remove('hidden');
+                document.getElementById('close-icon').classList.add('hidden');
+            }
+        });
+
+        /* ── Dark Mode ── */
+        function updateThemeToggleUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const toggle = document.getElementById('theme-toggle');
+            const dot = document.getElementById('theme-toggle-dot');
+            if (toggle && dot) {
+                if (isDark) {
+                    toggle.classList.remove('bg-slate-200');
+                    toggle.classList.add('bg-lime-600');
+                    dot.classList.remove('translate-x-1');
+                    dot.classList.add('translate-x-6');
+                } else {
+                    toggle.classList.add('bg-slate-200');
+                    toggle.classList.remove('bg-lime-600');
+                    dot.classList.add('translate-x-1');
+                    dot.classList.remove('translate-x-6');
+                }
+            }
+        }
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('firefly-theme', isDark ? 'dark' : 'light');
+            updateThemeToggleUI();
+        }
+        // Initialize toggle UI on load
+        updateThemeToggleUI();
+
+        /* ── Clear Cache ── */
+        function clearLocalCache(e) {
+            const keys = Object.keys(localStorage);
+            let cleared = 0;
+            keys.forEach(k => {
+                if (k.startsWith('firefly_') || k.startsWith('fireflyLabelSheet')) {
+                    localStorage.removeItem(k);
+                    cleared++;
+                }
+            });
+            alert('Cleared ' + cleared + ' cached item(s).');
+        }
+    </script>
+    <script src="/feedback.js"></script>
+</body>
+</html>

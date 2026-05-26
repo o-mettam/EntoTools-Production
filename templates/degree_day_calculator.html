@@ -1,0 +1,2656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Degree Day Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
+        // Apply saved theme immediately to prevent flash
+        if (localStorage.getItem('firefly-theme') === 'dark' ||
+            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-active {
+            background: white;
+            color: #3e4a64;
+            box-shadow: 0 1px 3px rgba(0,0,0,.1);
+        }
+        .dark .tab-active {
+            background: #abd037;
+            color: #1a2030;
+            box-shadow: 0 1px 3px rgba(0,0,0,.3);
+        }
+        .loader {
+            border: 4px solid #bdc6d8;
+            border-top: 4px solid #abd037;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin .8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn .4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Dark mode overrides */
+        .dark body, html.dark body { background-color: #1a2030; color: #d8dee9; }
+        .dark nav { background-color: #2a3348; border-color: #3e4a64; }
+        .dark nav a { color: #9ca9c0; }
+        .dark nav a:hover { color: #eef1f6; }
+        .dark nav a.text-lime-600 { color: #c4e055; }
+        .dark header { background-color: #2a3348; }
+        .dark section, .dark .bg-white { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .bg-slate-50, .dark .bg-slate-100 { background-color: #3e4a64 !important; }
+        .dark .bg-slate-200 { background-color: #54637f !important; }
+        .dark .hover\:bg-slate-300:hover { background-color: #687794 !important; }
+        .dark .bg-slate-50\/60, .dark .bg-slate-50\/50 { background-color: rgba(62,74,100,.6) !important; }
+        .dark .border-slate-200, .dark .border-slate-100, .dark .border-slate-300 { border-color: #3e4a64 !important; }
+        .dark .text-slate-800, .dark .text-slate-900 { color: #eef1f6 !important; }
+        .dark .text-slate-700 { color: #d8dee9 !important; }
+        .dark .text-slate-600 { color: #9ca9c0 !important; }
+        .dark .text-slate-500 { color: #9ca9c0 !important; }
+        .dark .text-slate-400 { color: #9ca9c0 !important; }
+        .dark input, .dark select { background-color: #3e4a64 !important; border-color: #54637f !important; color: #eef1f6 !important; }
+        .dark input::placeholder { color: #7b8ba8 !important; }
+        .dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.3) !important; }
+        .dark table thead { background-color: #3e4a64 !important; }
+        .dark table thead th { color: #9ca9c0 !important; }
+        .dark table tbody tr { border-color: #3e4a64 !important; }
+        .dark table tbody td { color: #d8dee9 !important; }
+        .dark .text-xs.text-slate-400 { color: #7b8ba8 !important; }
+        /* Preset date buttons & Add buttons */
+        .dark button.bg-slate-200 { background-color: #54637f !important; color: #eef1f6 !important; }
+        .dark button.bg-slate-200:hover { background-color: #687794 !important; }
+        /* Tab selector (City/LatLong) */
+        .dark .rounded-lg.bg-slate-100 button { color: #d8dee9 !important; }
+        .dark .rounded-lg.bg-slate-100 button:hover { color: #eef1f6 !important; }
+        /* "Add Range" link button */
+        .dark .text-blue-600 { color: #c4e055 !important; }
+        .dark .hover\:text-blue-800:hover { color: #ecf5bd !important; }
+
+        /* Settings panel */
+        .settings-panel {
+            transform: translateY(-8px);
+            opacity: 0;
+            pointer-events: none;
+            transition: transform .2s ease, opacity .2s ease;
+        }
+        .settings-panel.open {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .dark .settings-panel {
+            background-color: #2a3348 !important;
+            border-color: #3e4a64 !important;
+        }
+        .dark .settings-panel h3 { color: #eef1f6; }
+        .dark .settings-panel span { color: #d8dee9 !important; }
+        .dark .settings-panel hr { border-color: #3e4a64; }
+        .dark .settings-panel p { color: #7b8ba8 !important; }
+        .dark #settings-btn { color: #9ca9c0; }
+        .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 relative z-40">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-14 sm:h-16">
+                <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
+                <div class="flex items-center gap-1">
+                    <div class="relative">
+                        <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                        </button>
+                        <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
+                            <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+                                    </svg>
+                                    <span class="text-sm text-slate-700">Dark Mode</span>
+                                </div>
+                                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                    <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                                </button>
+                            </div>
+                            <hr class="my-2 border-slate-100">
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                                    </svg>
+                                    <span class="text-sm text-slate-700">Clear Local Cache</span>
+                                </div>
+                                <button onclick="clearLocalCache(event)" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">
+                                    Clear
+                                </button>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Removes cached search results and saved searches from your browser.</p>
+                        </div>
+                    </div>
+                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                        <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        </svg>
+                        <svg id="close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white">
+            <div class="px-4 py-3 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Home</a>
+                <a href="/degree-day-calculator" class="block px-3 py-2 rounded-lg text-lime-600 font-medium bg-lime-50">Degree Day Calculator</a>
+                <a href="/gdd-lookup" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">GDD Lookup</a>
+                <a href="/sample-collection" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Label Data</a>
+                <a href="/collection-database" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Collection Database</a>
+                <a href="/documentation" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Documentation</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="bg-slate-700 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Degree Day Calculator</h1>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
+
+        <!-- Search Card -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4">Find a Weather Station</h2>
+
+            <!-- Tabs -->
+            <div class="inline-flex flex-wrap rounded-lg bg-slate-100 p-1 mb-3 text-sm font-medium items-center gap-1">
+                <button onclick="switchTab('city')"   id="tab-city"   class="px-3 sm:px-4 py-2 rounded-md transition tab-active">City / State / Country</button>
+                <button onclick="switchTab('latlon')" id="tab-latlon" class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">Lat / Long</button>
+            </div>
+            <div class="flex flex-wrap gap-2 mb-5">
+                <input id="input-city-inline" type="text" placeholder="City"
+                       class="w-full sm:w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                <input id="input-state-inline" type="text" placeholder="State / Province"
+                       class="w-full sm:w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                <input id="input-country-inline" type="text" placeholder="Country"
+                       class="w-full sm:w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                <input id="input-lat-inline" type="text" placeholder="e.g. 35.4564 or 35° 27' 23&quot; N"
+                       class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none hidden" />
+                <input id="input-lon-inline" type="text" placeholder="e.g. -83.4392 or 83° 26' 21&quot; W"
+                       class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none hidden" />
+            </div>
+            <p id="dms-hint" class="text-xs text-slate-500 -mt-4 mb-5 hidden">Accepts decimal degrees (35.4564) or DMS (35° 27' 23" N)</p>
+
+            <!-- Date Ranges -->
+            <div class="mt-5 pt-5 border-t border-slate-100">
+                <div class="flex items-center justify-between mb-3">
+                    <p class="text-sm font-medium text-slate-600">Date Ranges</p>
+                    <button onclick="addDateRange()"
+                            class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        Add Range
+                    </button>
+                </div>
+                <div id="date-ranges-container" class="space-y-3"></div>
+            </div>
+
+            <!-- Growing Degree Days Settings -->
+            <div class="mt-5 pt-5 border-t border-slate-100">
+                <p class="text-sm font-medium text-slate-600 mb-2">Growing Degree Days (GDD)</p>
+                <div class="flex flex-wrap items-stretch gap-3">
+                    <!-- Base Temp -->
+                    <div class="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Base Temp (°F)</label>
+                        <input id="input-gdd-base" type="number" value="50" step="1"
+                               class="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                    </div>
+
+                    <!-- Max Temp -->
+                    <div class="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Max Temp (°F)</label>
+                        <input id="input-gdd-max" type="number" value="86" step="1"
+                               class="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                    </div>
+
+                    <!-- Accumulation Start -->
+                    <div class="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Accumulation Start</label>
+                        <div class="flex gap-1.5">
+                            <select id="input-gdd-month"
+                                    class="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none">
+                                <option value="01">Jan</option><option value="02">Feb</option>
+                                <option value="03" selected>Mar</option><option value="04">Apr</option>
+                                <option value="05">May</option><option value="06">Jun</option>
+                                <option value="07">Jul</option><option value="08">Aug</option>
+                                <option value="09">Sep</option><option value="10">Oct</option>
+                                <option value="11">Nov</option><option value="12">Dec</option>
+                            </select>
+                            <input id="input-gdd-day" type="number" value="1" min="1" max="31"
+                                   class="w-16 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1.5">Resets each Jan 1</p>
+                    </div>
+                </div>
+
+                <!-- GDD Threshold & Date Marker Lines -->
+                <div class="mt-3 rounded-xl border-2 border-slate-300 bg-slate-50 px-3 py-2">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <!-- GDD Threshold Lines -->
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">GDD Threshold Lines</label>
+                                <div class="flex items-end gap-1 mb-1">
+                                    <input id="input-threshold-val" type="number" placeholder="e.g. 100" step="1"
+                                           class="w-20 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                                    <input id="input-threshold-label" type="text" placeholder="Label"
+                                           class="w-24 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                                    <button onclick="addThreshold()"
+                                            class="inline-flex items-center gap-1 px-2 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-medium transition">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                        Add
+                                    </button>
+                                </div>
+                                <div id="threshold-list" class="flex flex-wrap gap-1"></div>
+                            </div>
+
+                            <!-- Date Marker Lines -->
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Date Marker Lines</label>
+                                <div class="flex items-end gap-1 mb-1">
+                                    <select id="input-datemark-month"
+                                            class="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none">
+                                        <option value="01">Jan</option><option value="02">Feb</option>
+                                        <option value="03">Mar</option><option value="04">Apr</option>
+                                        <option value="05">May</option><option value="06" selected>Jun</option>
+                                        <option value="07">Jul</option><option value="08">Aug</option>
+                                        <option value="09">Sep</option><option value="10">Oct</option>
+                                        <option value="11">Nov</option><option value="12">Dec</option>
+                                    </select>
+                                    <input id="input-datemark-day" type="number" value="30" min="1" max="31"
+                                           class="w-14 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                                    <input id="input-datemark-label" type="text" placeholder="Label"
+                                           class="w-24 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                                    <button onclick="addDateMarker()"
+                                            class="inline-flex items-center gap-1 px-2 py-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-medium transition">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                        Add
+                                    </button>
+                                </div>
+                                <div id="datemark-list" class="flex flex-wrap gap-1"></div>
+                            </div>
+                        </div>
+                </div>
+            </div>
+
+            <div class="mt-5 flex flex-wrap items-center gap-3">
+                <button id="btn-search" onclick="doSearch()"
+                        class="inline-flex items-center gap-2 bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm px-6 py-2.5 rounded-lg transition shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/>
+                    </svg>
+                    Search
+                </button>
+                <button onclick="promptSaveSearch()"
+                        class="inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition border border-slate-300">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V7l-4-4z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 3v5h8V3M7 21v-8h10v8"/>
+                    </svg>
+                    Save Search
+                </button>
+            </div>
+        </section>
+
+        <!-- Saved Searches -->
+        <section id="saved-searches-section" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6 hidden">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold text-slate-800">Saved Searches</h2>
+                <span class="text-xs text-slate-400">Stored in browser cache</span>
+            </div>
+            <div id="saved-searches-list" class="space-y-2"></div>
+        </section>
+
+        <!-- Loading -->
+        <div id="loading" class="hidden flex flex-col items-center py-12 gap-4">
+            <div class="loader"></div>
+            <p class="text-slate-500 text-sm" id="loading-msg">Geocoding location…</p>
+        </div>
+
+        <!-- Error -->
+        <div id="error-box" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm fade-in"></div>
+
+        <!-- Fallback provider warning (country not supported) -->
+        <div id="fallback-warning" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-4 text-sm fade-in">
+            <strong>Note:</strong> Your location is in a country without a dedicated weather data source. Results are provided via Open-Meteo global reanalysis data and may be less accurate than station-based observations.
+        </div>
+
+        <!-- Service outage warning (transient 502/503/504 errors) -->
+        <div id="service-outage-warning" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-4 text-sm fade-in">
+            <div class="flex items-start gap-2">
+                <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+                <div>
+                    <strong>Service Outage</strong>
+                    <p id="service-outage-msg" class="mt-0.5"></p>
+                    <p class="mt-1 text-xs text-amber-600">This is a temporary issue with an external data provider. Please try again in a few minutes.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Provider fallback warning (primary API failed) -->
+        <div id="provider-fallback-warning" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-4 text-sm fade-in">
+            <strong>Warning:</strong> <span id="provider-fallback-msg"></span>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hidden space-y-6" style="display: none;">
+
+            <!-- Station info cards -->
+            <div class="grid sm:grid-cols-2 gap-4">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Location Searched</p>
+                    <p class="text-slate-800 font-medium text-sm" id="res-location"></p>
+                    <p class="text-slate-500 text-xs mt-1" id="res-coords"></p>
+                </div>
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Nearest Station</p>
+                    <p class="text-slate-800 font-medium text-sm" id="res-station-name"></p>
+                    <p class="text-blue-600 font-mono text-xs mt-1" id="res-station-id"></p>
+                    <p class="text-slate-500 text-xs mt-0.5" id="res-station-dist"></p>
+                </div>
+            </div>
+
+            <!-- GDD Chart -->
+            <details id="gdd-chart-details" class="group" open>
+                <summary class="flex items-center gap-2 cursor-pointer select-none bg-white rounded-t-2xl shadow-sm border border-slate-200 px-4 sm:px-6 py-4 hover:bg-slate-50 transition">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <h3 class="text-base font-semibold text-slate-800">GDD Chart</h3>
+                    <span class="text-xs text-slate-400 ml-2">Click to expand</span>
+                </summary>
+                <div class="bg-white rounded-b-2xl shadow-sm border-l border-r border-b border-slate-200 px-4 sm:px-6 pt-0 pb-6">
+                        <div class="flex flex-wrap items-center justify-between mb-4">
+                            <h3 class="text-base font-semibold text-slate-800" id="gdd-chart-title">Cumulative Growing Degree Days</h3>
+                            <div class="flex items-center gap-2 text-xs text-slate-500">
+                                <button onclick="exportChart('gddChart', 'gdd-chart')" 
+                                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                    </svg>
+                                    Export
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3 mb-4">
+                            <div class="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                                <label class="flex items-center gap-2">
+                                    <input type="checkbox" id="include-gdd-forecast" checked>
+                                    <span>Show 16-day forecast</span>
+                                </label>
+                                <span>|</span>
+                                <span>View:</span>
+                                <select id="gdd-preview-start-month" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none">
+                                    <option value="01">Jan</option><option value="02">Feb</option>
+                                    <option value="03" selected>Mar</option><option value="04">Apr</option>
+                                    <option value="05">May</option><option value="06">Jun</option>
+                                    <option value="07">Jul</option><option value="08">Aug</option>
+                                    <option value="09">Sep</option><option value="10">Oct</option>
+                                    <option value="11">Nov</option><option value="12">Dec</option>
+                                </select>
+                                <input id="gdd-preview-start-day" type="number" value="1" min="1" max="31"
+                                       class="w-12 rounded-lg border border-slate-300 px-1.5 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none" />
+                                <span>to</span>
+                                <select id="gdd-preview-end-month" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none">
+                                    <option value="01">Jan</option><option value="02">Feb</option>
+                                    <option value="03">Mar</option><option value="04">Apr</option>
+                                    <option value="05">May</option><option value="06">Jun</option>
+                                    <option value="07">Jul</option><option value="08">Aug</option>
+                                    <option value="09">Sep</option><option value="10">Oct</option>
+                                    <option value="11">Nov</option>
+                                    <option value="12" selected>Dec</option>
+                                </select>
+                                <input id="gdd-preview-end-day" type="number" value="31" min="1" max="31"
+                                       class="w-12 rounded-lg border border-slate-300 px-1.5 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none" />
+                                <button onclick="applyGddPreview()" class="px-2 py-1.5 rounded-lg bg-lime-100 hover:bg-lime-200 text-lime-800 font-medium transition">Apply</button>
+                                <button onclick="resetGddPreview()" class="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition">Reset</button>
+                            </div>
+                        </div>
+                        <div class="relative h-[280px] sm:h-[420px]">
+                            <canvas id="gddChart"></canvas>
+                        </div>
+                </div>
+            </details>
+
+            <!-- GDD Table -->
+            <details id="gdd-table-details" class="group">
+                <summary class="flex items-center gap-2 cursor-pointer select-none bg-white rounded-2xl shadow-sm border border-slate-200 px-4 sm:px-6 py-4 hover:bg-slate-50 transition mt-5">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <h3 class="text-base font-semibold text-slate-800">GDD Data Table</h3>
+                    <span class="text-xs text-slate-400 ml-2">Click to expand</span>
+                    <button onclick="event.stopPropagation(); exportTableCSV('data-tables-container', 'gdd-data')"
+                            class="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        Export CSV
+                    </button>
+                </summary>
+                <div class="mt-4">
+                    <!-- Data tables (one per range) -->
+                    <div id="data-tables-container" class="space-y-6"></div>
+                </div>
+            </details>
+
+            <!-- Temperature Chart -->
+            <details id="temp-chart-details" class="group" open>
+                <summary class="flex items-center gap-2 cursor-pointer select-none bg-white rounded-t-2xl shadow-sm border border-slate-200 px-4 sm:px-6 py-4 hover:bg-slate-50 transition mt-5">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <h3 class="text-base font-semibold text-slate-800">Temperature Chart</h3>
+                    <span class="text-xs text-slate-400 ml-2">Click to expand</span>
+                </summary>
+                <div class="bg-white rounded-b-2xl shadow-sm border-l border-r border-b border-slate-200 px-4 sm:px-6 pt-0 pb-6">
+                        <div class="flex flex-wrap items-center justify-between mb-4">
+                            <h3 class="text-base font-semibold text-slate-800" id="chart-title">Temperature (°F)</h3>
+                            <div class="flex items-center gap-2 text-xs text-slate-500">
+                                <button onclick="exportChart('tempChart', 'temperature-chart')" 
+                                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                    </svg>
+                                    Export
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3 mb-4">
+                            <div class="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                                <label class="flex items-center gap-2">
+                                    <input type="checkbox" id="include-temp-forecast" checked>
+                                    <span>Show 16-day forecast</span>
+                                </label>
+                                <span>|</span>
+                                <span>View:</span>
+                                <select id="temp-preview-start-month" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none">
+                                    <option value="01">Jan</option><option value="02">Feb</option>
+                                    <option value="03" selected>Mar</option><option value="04">Apr</option>
+                                    <option value="05">May</option><option value="06">Jun</option>
+                                    <option value="07">Jul</option><option value="08">Aug</option>
+                                    <option value="09">Sep</option><option value="10">Oct</option>
+                                    <option value="11">Nov</option><option value="12">Dec</option>
+                                </select>
+                                <input id="temp-preview-start-day" type="number" value="1" min="1" max="31"
+                                       class="w-12 rounded-lg border border-slate-300 px-1.5 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none" />
+                                <span>to</span>
+                                <select id="temp-preview-end-month" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none">
+                                    <option value="01">Jan</option><option value="02">Feb</option>
+                                    <option value="03">Mar</option><option value="04">Apr</option>
+                                    <option value="05">May</option><option value="06">Jun</option>
+                                    <option value="07">Jul</option><option value="08">Aug</option>
+                                    <option value="09">Sep</option><option value="10">Oct</option>
+                                    <option value="11">Nov</option>
+                                    <option value="12" selected>Dec</option>
+                                </select>
+                                <input id="temp-preview-end-day" type="number" value="31" min="1" max="31"
+                                       class="w-12 rounded-lg border border-slate-300 px-1.5 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none" />
+                                <button onclick="applyTempPreview()" class="px-2 py-1.5 rounded-lg bg-lime-100 hover:bg-lime-200 text-lime-800 font-medium transition">Apply</button>
+                                <button onclick="resetTempPreview()" class="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition">Reset</button>
+                            </div>
+                        </div>
+                        <div class="relative h-[260px] sm:h-[340px]">
+                            <canvas id="tempChart"></canvas>
+                        </div>
+                </div>
+            </details>
+
+            <!-- Temperature Table -->
+            <details id="temp-table-details" class="group">
+                <summary class="flex items-center gap-2 cursor-pointer select-none bg-white rounded-2xl shadow-sm border border-slate-200 px-4 sm:px-6 py-4 hover:bg-slate-50 transition mt-5">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <h3 class="text-base font-semibold text-slate-800">Temperature Data Table</h3>
+                    <span class="text-xs text-slate-400 ml-2">Click to expand</span>
+                    <button onclick="event.stopPropagation(); exportTableCSV('temp-data-tables-container', 'temperature-data')"
+                            class="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        Export CSV
+                    </button>
+                </summary>
+                <div class="mt-4">
+                    <!-- Temperature Data tables -->
+                    <div id="temp-data-tables-container" class="space-y-6"></div>
+                </div>
+            </details>
+
+            <!-- Precipitation Chart -->
+            <details id="precip-chart-details" class="group" open>
+                <summary class="flex items-center gap-2 cursor-pointer select-none bg-white rounded-t-2xl shadow-sm border border-slate-200 px-4 sm:px-6 py-4 hover:bg-slate-50 transition mt-5">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <h3 class="text-base font-semibold text-slate-800">Precipitation Chart</h3>
+                    <span class="text-xs text-slate-400 ml-2">Click to expand</span>
+                </summary>
+                <div class="bg-white rounded-b-2xl shadow-sm border-l border-r border-b border-slate-200 px-4 sm:px-6 pt-0 pb-6">
+                        <div class="flex flex-wrap items-center justify-between mb-4">
+                            <h3 class="text-base font-semibold text-slate-800" id="precip-chart-title">Precipitation (inches)</h3>
+                            <div class="flex items-center gap-2 text-xs text-slate-500">
+                                <button onclick="exportChart('precipChart', 'precipitation-chart')" 
+                                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                    </svg>
+                                    Export
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3 mb-4">
+                            <div class="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                                <span>View:</span>
+                                <select id="precip-preview-start-month" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none">
+                                    <option value="01">Jan</option><option value="02">Feb</option>
+                                    <option value="03" selected>Mar</option><option value="04">Apr</option>
+                                    <option value="05">May</option><option value="06">Jun</option>
+                                    <option value="07">Jul</option><option value="08">Aug</option>
+                                    <option value="09">Sep</option><option value="10">Oct</option>
+                                    <option value="11">Nov</option><option value="12">Dec</option>
+                                </select>
+                                <input id="precip-preview-start-day" type="number" value="1" min="1" max="31"
+                                       class="w-12 rounded-lg border border-slate-300 px-1.5 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none" />
+                                <span>to</span>
+                                <select id="precip-preview-end-month" class="rounded-lg border border-slate-300 px-2 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none">
+                                    <option value="01">Jan</option><option value="02">Feb</option>
+                                    <option value="03">Mar</option><option value="04">Apr</option>
+                                    <option value="05">May</option><option value="06">Jun</option>
+                                    <option value="07">Jul</option><option value="08">Aug</option>
+                                    <option value="09">Sep</option><option value="10">Oct</option>
+                                    <option value="11">Nov</option>
+                                    <option value="12" selected>Dec</option>
+                                </select>
+                                <input id="precip-preview-end-day" type="number" value="31" min="1" max="31"
+                                       class="w-12 rounded-lg border border-slate-300 px-1.5 py-1.5 text-xs focus:ring-2 focus:ring-lime-500 outline-none" />
+                                <button onclick="applyPrecipPreview()" class="px-2 py-1.5 rounded-lg bg-lime-100 hover:bg-lime-200 text-lime-800 font-medium transition">Apply</button>
+                                <button onclick="resetPrecipPreview()" class="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition">Reset</button>
+                            </div>
+                        </div>
+                        <div class="relative h-[260px] sm:h-[340px]">
+                            <canvas id="precipChart"></canvas>
+                        </div>
+                </div>
+            </details>
+
+            <!-- Precipitation Table -->
+            <details id="precip-table-details" class="group">
+                <summary class="flex items-center gap-2 cursor-pointer select-none bg-white rounded-2xl shadow-sm border border-slate-200 px-4 sm:px-6 py-4 hover:bg-slate-50 transition mt-5">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <h3 class="text-base font-semibold text-slate-800">Precipitation Data Table</h3>
+                    <span class="text-xs text-slate-400 ml-2">Click to expand</span>
+                    <button onclick="event.stopPropagation(); exportTableCSV('precip-data-tables-container', 'precipitation-data')"
+                            class="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        Export CSV
+                    </button>
+                </summary>
+                <div class="mt-4">
+                    <!-- Precipitation Data tables -->
+                    <div id="precip-data-tables-container" class="space-y-6"></div>
+                </div>
+            </details>
+        </div>
+
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 py-6 space-y-1">
+        <p>Data sourced from <a href="https://www.ncei.noaa.gov/" class="underline hover:text-slate-600">NOAA NCEI</a>.
+        Geocoding by <a href="https://nominatim.openstreetmap.org/" class="underline hover:text-slate-600">Nominatim / OpenStreetMap</a>.
+        <a href="https://github.com/aceargle/Firefly-Dashboard" class="underline hover:text-slate-600">GitHub</a>.</p>
+        <p>Developed by Owen Mettam &amp; Alana Eargle</p>
+    </footer>
+
+    <script>
+        /* ── State ─────────────────────────────────────────── */
+        let currentTab = 'city';
+        let chart = null;
+        let gddChart = null;
+        let precipChart = null;
+        let rangeCounter = 0;
+
+        /* ── Color palette for ranges ────────────────────── */
+        const RANGE_COLORS = [
+            { max: '#abd037', min: '#e07540', maxBg: 'rgba(171,208,55,.08)',  minBg: 'rgba(224,117,64,.08)',  dot: '#abd037', dotMin: '#e07540', border: 'border-lime-400',   bg: 'bg-lime-50'   },
+            { max: '#2da89e', min: '#9460c8', maxBg: 'rgba(45,168,158,.08)',  minBg: 'rgba(148,96,200,.08)',  dot: '#2da89e', dotMin: '#9460c8', border: 'border-teal-400',   bg: 'bg-teal-50'   },
+            { max: '#d4a020', min: '#c44e7a', maxBg: 'rgba(212,160,32,.08)', minBg: 'rgba(196,78,122,.08)',  dot: '#d4a020', dotMin: '#c44e7a', border: 'border-amber-400',  bg: 'bg-amber-50'  },
+            { max: '#5c8fc4', min: '#abd037', maxBg: 'rgba(92,143,196,.08)', minBg: 'rgba(171,208,55,.08)',  dot: '#5c8fc4', dotMin: '#abd037', border: 'border-blue-400',   bg: 'bg-blue-50'   },
+        ];
+
+        /* ── Sequential categorical colors (C1–C7) ─────── */
+        const SERIES_COLORS = [
+            { hex: '#abd037', bg: 'rgba(171,208,55,' },
+            { hex: '#e07540', bg: 'rgba(224,117,64,' },
+            { hex: '#2da89e', bg: 'rgba(45,168,158,' },
+            { hex: '#9460c8', bg: 'rgba(148,96,200,' },
+            { hex: '#d4a020', bg: 'rgba(212,160,32,' },
+            { hex: '#c44e7a', bg: 'rgba(196,78,122,' },
+            { hex: '#5c8fc4', bg: 'rgba(92,143,196,' },
+        ];
+
+        /* ── HTML escape helper ─────────────────────── */
+        function esc(str) {
+            const el = document.createElement('span');
+            el.textContent = str;
+            return el.innerHTML;
+        }
+
+        /* ── Date helpers ────────────────────────────── */
+        function toISO(d) {
+            return d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+        }
+
+        function setPresetFor(rowId, days) {
+            console.log('[Firefly:setPresetFor] rowId:', rowId, 'days:', days);
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - days);
+            document.getElementById('start-' + rowId).value = toISO(start);
+            document.getElementById('end-' + rowId).value = toISO(end);
+        }
+
+        /* ── Dynamic date-range rows ─────────────────────── */
+        function addDateRange(presetDays) {
+            console.log('[Firefly:addDateRange] adding range, presetDays:', presetDays || 14);
+            const id = rangeCounter++;
+            const colorIdx = id % RANGE_COLORS.length;
+            const c = RANGE_COLORS[colorIdx];
+            const container = document.getElementById('date-ranges-container');
+
+            const row = document.createElement('div');
+            row.id = 'range-row-' + id;
+            row.dataset.colorIdx = colorIdx;
+            row.className = 'flex flex-wrap items-end gap-3 p-3 rounded-lg border-2 border-slate-300 bg-slate-50';
+            row.innerHTML = `
+                <div>
+                    <label class="block text-xs text-slate-700 mb-1">Label</label>
+                    <input id="label-${id}" type="text" placeholder="Range ${id + 1}"
+                           class="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-700 mb-1">Start Date</label>
+                    <input id="start-${id}" type="date"
+                           class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-700 mb-1">End Date</label>
+                    <input id="end-${id}" type="date"
+                           class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                </div>
+                <div class="inline-flex gap-1 text-xs">
+                    <button onclick="setPresetFor(${id},7)"   class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">7d</button>
+                    <button onclick="setPresetFor(${id},14)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">14d</button>
+                    <button onclick="setPresetFor(${id},30)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">30d</button>
+                    <button onclick="setPresetFor(${id},90)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">90d</button>
+                    <button onclick="setPresetFor(${id},365)" class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">1yr</button>
+                </div>
+                <button onclick="removeRange(${id})" title="Remove"
+                        class="ml-auto p-2 rounded-md text-slate-400 hover:text-red-500 hover:bg-white transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            `;
+            container.appendChild(row);
+
+            // Default: Jan 1 of current year → today (unless a preset is explicitly given)
+            if (presetDays) {
+                setPresetFor(id, presetDays);
+            } else {
+                const now = new Date();
+                document.getElementById('start-' + id).value = now.getFullYear() + '-01-01';
+                document.getElementById('end-' + id).value = toISO(now);
+            }
+        }
+
+        function removeRange(id) {
+            console.log('[Firefly:removeRange] removing range id:', id);
+            const row = document.getElementById('range-row-' + id);
+            if (row) row.remove();
+            // Keep at least one range
+            if (document.getElementById('date-ranges-container').children.length === 0) {
+                addDateRange();
+            }
+        }
+
+        function getDateRanges() {
+            const rows = document.getElementById('date-ranges-container').children;
+            const ranges = [];
+            for (const row of rows) {
+                const id = row.id.replace('range-row-', '');
+                const labelEl = document.getElementById('label-' + id);
+                const label = (labelEl && labelEl.value.trim()) || ('Range ' + (ranges.length + 1));
+                ranges.push({
+                    label,
+                    startDate: document.getElementById('start-' + id).value,
+                    endDate:   document.getElementById('end-' + id).value,
+                    colorIdx:  parseInt(row.dataset.colorIdx),
+                });
+            }
+            console.log('[Firefly:getDateRanges] collected', ranges.length, 'range(s):', JSON.stringify(ranges.map(r => ({ label: r.label, start: r.startDate, end: r.endDate }))));
+            return ranges;
+        }
+
+        // Create the first range on load
+        addDateRange();
+
+        // GDD threshold lines state — each entry: { value: number, label: string }
+        const gddThresholds = [];
+
+        function addThreshold() {
+            const valInput = document.getElementById('input-threshold-val');
+            const lblInput = document.getElementById('input-threshold-label');
+            const val = parseFloat(valInput.value);
+            if (isNaN(val) || val <= 0) { console.warn('[Firefly:addThreshold] invalid value:', valInput.value); return; }
+            if (gddThresholds.some(t => t.value === val)) { valInput.value = ''; lblInput.value = ''; return; }
+            const lbl = lblInput.value.trim() || (val + ' GDD');
+            gddThresholds.push({ value: val, label: lbl });
+            gddThresholds.sort((a, b) => a.value - b.value);
+            console.log('[Firefly:addThreshold] added threshold:', val, 'label:', lbl, '| total:', gddThresholds.length);
+            valInput.value = '';
+            lblInput.value = '';
+            renderThresholdChips();
+        }
+
+        function removeThreshold(val) {
+            console.log('[Firefly:removeThreshold] removing threshold:', val);
+            const idx = gddThresholds.findIndex(t => t.value === val);
+            if (idx !== -1) gddThresholds.splice(idx, 1);
+            renderThresholdChips();
+        }
+
+        function renderThresholdChips() {
+            const list = document.getElementById('threshold-list');
+            if (!list) return;
+            list.innerHTML = '';
+            if (gddThresholds.length === 0) {
+                list.innerHTML = '<span class="text-xs text-slate-500 italic">No thresholds set</span>';
+                return;
+            }
+            gddThresholds.forEach(t => {
+                const chip = document.createElement('span');
+                chip.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-medium';
+                chip.innerHTML = `${esc(t.label)} <button onclick="removeThreshold(${t.value})" class="ml-0.5 hover:text-red-600">&times;</button>`;
+                list.appendChild(chip);
+            });
+        }
+        renderThresholdChips();
+
+        // Date marker lines state — each entry: { md: 'MM-DD', label: string }
+        const dateMarkers = [];
+
+        function addDateMarker() {
+            const mm = document.getElementById('input-datemark-month').value;
+            const dd = String(document.getElementById('input-datemark-day').value).padStart(2, '0');
+            console.log('[Firefly:addDateMarker] mm:', mm, 'dd:', dd);
+            const lblInput = document.getElementById('input-datemark-label');
+            const md = mm + '-' + dd;
+            if (dateMarkers.some(d => d.md === md)) return;
+            const defaultLabel = new Date(`2000-${md}T00:00:00`)
+                .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            const lbl = lblInput.value.trim() || defaultLabel;
+            dateMarkers.push({ md, label: lbl });
+            dateMarkers.sort((a, b) => a.md.localeCompare(b.md));
+            console.log('[Firefly:addDateMarker] added marker:', md, 'label:', lbl, '| total:', dateMarkers.length);
+            lblInput.value = '';
+            renderDateMarkerChips();
+        }
+
+        function removeDateMarker(md) {
+            console.log('[Firefly:removeDateMarker] removing marker:', md);
+            const idx = dateMarkers.findIndex(d => d.md === md);
+            if (idx !== -1) dateMarkers.splice(idx, 1);
+            renderDateMarkerChips();
+        }
+
+        function renderDateMarkerChips() {
+            const list = document.getElementById('datemark-list');
+            if (!list) return;
+            list.innerHTML = '';
+            if (dateMarkers.length === 0) {
+                list.innerHTML = '<span class="text-xs text-slate-500 italic">No date markers set</span>';
+                return;
+            }
+            dateMarkers.forEach(d => {
+                const chip = document.createElement('span');
+                chip.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 text-xs font-medium';
+                chip.innerHTML = `${esc(d.label)} <button onclick="removeDateMarker('${d.md}')" class="ml-0.5 hover:text-red-600">&times;</button>`;
+                list.appendChild(chip);
+            });
+        }
+        renderDateMarkerChips();
+
+        /* ── Saved Searches (localStorage) ─────────────── */
+        const SAVED_SEARCHES_KEY = 'firefly_saved_searches';
+        const RESULT_CACHE_KEY = 'firefly_result_cache';
+        const MAX_SAVED_SEARCHES = 4;
+        const MAX_RESULT_CACHE_ENTRIES = 8;
+
+        function getResultCache() {
+            try { return JSON.parse(localStorage.getItem(RESULT_CACHE_KEY)) || {}; } catch { return {}; }
+        }
+
+        function setResultCache(cache) {
+            // Evict oldest entries if over the limit
+            const keys = Object.keys(cache);
+            if (keys.length > MAX_RESULT_CACHE_ENTRIES) {
+                // Each entry has a _ts timestamp; sort ascending and remove oldest
+                const sorted = keys.sort((a, b) => (cache[a]._ts || 0) - (cache[b]._ts || 0));
+                const toRemove = sorted.slice(0, keys.length - MAX_RESULT_CACHE_ENTRIES);
+                toRemove.forEach(k => delete cache[k]);
+            }
+            localStorage.setItem(RESULT_CACHE_KEY, JSON.stringify(cache));
+        }
+
+        function makeCacheKey(body) {
+            return JSON.stringify(body);
+        }
+
+        function getSavedSearches() {
+            try {
+                return JSON.parse(localStorage.getItem(SAVED_SEARCHES_KEY)) || [];
+            } catch { return []; }
+        }
+
+        function setSavedSearches(searches) {
+            localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(searches));
+        }
+
+        function collectSearchState() {
+            console.log('[Firefly:collectSearchState] collecting current form state');
+            const rows = document.getElementById('date-ranges-container').children;
+            const dateRanges = [];
+            for (const row of rows) {
+                const id = row.id.replace('range-row-', '');
+                const labelEl = document.getElementById('label-' + id);
+                dateRanges.push({
+                    label: (labelEl && labelEl.value.trim()) || '',
+                    startDate: document.getElementById('start-' + id).value,
+                    endDate: document.getElementById('end-' + id).value,
+                });
+            }
+            return {
+                tab: currentTab,
+                city: document.getElementById('input-city-inline').value,
+                state: document.getElementById('input-state-inline').value,
+                country: document.getElementById('input-country-inline').value,
+                lat: document.getElementById('input-lat-inline').value,
+                lon: document.getElementById('input-lon-inline').value,
+                dateRanges,
+                gddBase: document.getElementById('input-gdd-base').value,
+                gddMonth: document.getElementById('input-gdd-month').value,
+                gddDay: document.getElementById('input-gdd-day').value,
+                gddThresholds: [...gddThresholds],
+                dateMarkers: [...dateMarkers],
+                includeTempForecast: document.getElementById('include-temp-forecast')?.checked ?? true,
+                includeGddForecast: document.getElementById('include-gdd-forecast')?.checked ?? true,
+            };
+        }
+
+        function restoreSearchState(state) {
+            console.log('[Firefly:restoreSearchState] restoring state for tab:', state.tab, 'with', (state.dateRanges || []).length, 'ranges');
+            // Tab & location
+            switchTab(state.tab || 'city');
+            document.getElementById('input-city-inline').value = state.city || '';
+            document.getElementById('input-state-inline').value = state.state || '';
+            document.getElementById('input-country-inline').value = state.country || '';
+            document.getElementById('input-lat-inline').value = state.lat || '';
+            document.getElementById('input-lon-inline').value = state.lon || '';
+
+            // Date ranges — clear existing, recreate
+            const container = document.getElementById('date-ranges-container');
+            container.innerHTML = '';
+            rangeCounter = 0;
+            if (state.dateRanges && state.dateRanges.length > 0) {
+                state.dateRanges.forEach(dr => {
+                    const id = rangeCounter++;
+                    const colorIdx = id % RANGE_COLORS.length;
+                    const row = document.createElement('div');
+                    row.id = 'range-row-' + id;
+                    row.dataset.colorIdx = colorIdx;
+                    row.className = 'flex flex-wrap items-end gap-3 p-3 rounded-lg border-2 border-slate-300 bg-slate-50';
+                    row.innerHTML = `
+                        <div>
+                            <label class="block text-xs text-slate-700 mb-1">Label</label>
+                            <input id="label-${id}" type="text" placeholder="Range ${id + 1}"
+                                   class="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-700 mb-1">Start Date</label>
+                            <input id="start-${id}" type="date"
+                                   class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-700 mb-1">End Date</label>
+                            <input id="end-${id}" type="date"
+                                   class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                        </div>
+                        <div class="inline-flex gap-1 text-xs">
+                            <button onclick="setPresetFor(${id},7)"   class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">7d</button>
+                            <button onclick="setPresetFor(${id},14)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">14d</button>
+                            <button onclick="setPresetFor(${id},30)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">30d</button>
+                            <button onclick="setPresetFor(${id},90)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">90d</button>
+                            <button onclick="setPresetFor(${id},365)" class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">1yr</button>
+                        </div>
+                        <button onclick="removeRange(${id})" title="Remove"
+                                class="ml-auto p-2 rounded-md text-slate-400 hover:text-red-500 hover:bg-white transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    `;
+                    container.appendChild(row);
+                    document.getElementById('label-' + id).value = dr.label || '';
+                    document.getElementById('start-' + id).value = dr.startDate || '';
+                    document.getElementById('end-' + id).value = dr.endDate || '';
+                });
+            } else {
+                addDateRange(14);
+            }
+
+            // GDD settings
+            document.getElementById('input-gdd-base').value = state.gddBase || '50';
+            document.getElementById('input-gdd-month').value = state.gddMonth || '03';
+            document.getElementById('input-gdd-day').value = state.gddDay || '1';
+
+            // GDD thresholds
+            gddThresholds.length = 0;
+            (state.gddThresholds || []).forEach(t => gddThresholds.push(t));
+            renderThresholdChips();
+
+            // Date markers
+            dateMarkers.length = 0;
+            (state.dateMarkers || []).forEach(d => dateMarkers.push(d));
+            renderDateMarkerChips();
+
+            // Forecast toggles
+            const tempFc = document.getElementById('include-temp-forecast');
+            if (tempFc) tempFc.checked = state.includeTempForecast !== false;
+            const gddFc = document.getElementById('include-gdd-forecast');
+            if (gddFc) gddFc.checked = state.includeGddForecast !== false;
+        }
+
+        function promptSaveSearch() {
+            console.log('[Firefly:promptSaveSearch] saving search...');
+            const searches = getSavedSearches();
+            if (searches.length >= MAX_SAVED_SEARCHES) {
+                alert(`You can save up to ${MAX_SAVED_SEARCHES} searches. Please delete one before saving a new one.`);
+                return;
+            }
+            const name = prompt('Name this search:');
+            if (!name || !name.trim()) return;
+            searches.push({
+                id: Date.now(),
+                name: name.trim(),
+                savedAt: new Date().toLocaleString(),
+                state: collectSearchState(),
+            });
+            setSavedSearches(searches);
+            console.log('[Firefly:promptSaveSearch] search saved as:', name.trim(), '| total saved:', searches.length);
+            renderSavedSearches();
+        }
+
+        function loadSavedSearch(id) {
+            console.log('[Firefly:loadSavedSearch] loading saved search id:', id);
+            const searches = getSavedSearches();
+            const entry = searches.find(s => s.id === id);
+            if (!entry) { console.warn('[Firefly:loadSavedSearch] search not found:', id); return; }
+
+            // Visual feedback: highlight the clicked card
+            const cards = document.querySelectorAll('#saved-searches-list > div');
+            cards.forEach(c => c.classList.remove('ring-2', 'ring-lime-400'));
+            const idx = searches.findIndex(s => s.id === id);
+            if (idx >= 0 && cards[idx]) {
+                cards[idx].classList.add('ring-2', 'ring-lime-400');
+                const nameEl = cards[idx].querySelector('p');
+                if (nameEl) nameEl.textContent = 'Loading…';
+            }
+
+            restoreSearchState(entry.state);
+            doSearch();
+        }
+
+        function deleteSavedSearch(id) {
+            console.log('[Firefly:deleteSavedSearch] deleting search id:', id);
+            let searches = getSavedSearches();
+            searches = searches.filter(s => s.id !== id);
+            setSavedSearches(searches);
+            renderSavedSearches();
+        }
+
+        function getLocationSummary(state) {
+            if (state.tab === 'city') return [state.city, state.state, state.country].filter(Boolean).join(', ') || 'City/State';
+            if (state.tab === 'latlon') return [state.lat, state.lon].filter(Boolean).join(', ') || 'Lat/Lon';
+            return '';
+        }
+
+        function renderSavedSearches() {
+            const searches = getSavedSearches();
+            const section = document.getElementById('saved-searches-section');
+            const list = document.getElementById('saved-searches-list');
+            if (searches.length === 0) {
+                section.classList.add('hidden');
+                return;
+            }
+            section.classList.remove('hidden');
+            list.innerHTML = '';
+            searches.forEach(s => {
+                const loc = getLocationSummary(s.state);
+                const rangeCount = (s.state.dateRanges || []).length;
+                const card = document.createElement('div');
+                card.className = 'flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 transition';
+                card.innerHTML = `
+                    <div class="flex-1 min-w-0 cursor-pointer" onclick="loadSavedSearch(${s.id})">
+                        <p class="text-sm font-medium text-slate-800 truncate">${esc(s.name)}</p>
+                        <p class="text-xs text-slate-500 mt-0.5">${esc(loc)} &middot; ${rangeCount} range${rangeCount !== 1 ? 's' : ''} &middot; Saved ${esc(s.savedAt)}</p>
+                    </div>
+                    <div class="flex items-center gap-2 ml-3 flex-shrink-0">
+                        <button onclick="loadSavedSearch(${s.id})"
+                                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-lime-50 hover:bg-lime-100 text-lime-800 text-xs font-medium transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            Load
+                        </button>
+                        <button onclick="deleteSavedSearch(${s.id})"
+                                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                            Delete
+                        </button>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
+
+        // Render saved searches on page load
+        renderSavedSearches();
+
+        // Helper: get GDD accumulation start as MM-DD string
+        function getGddStartMD() {
+            const mm = document.getElementById('input-gdd-month').value;
+            const dd = String(document.getElementById('input-gdd-day').value).padStart(2, '0');
+            return mm + '-' + dd;
+        }
+
+        /* ── Coordinate parsing (decimal degrees or DMS) ── */
+        function parseCoord(input) {
+            if (!input) return NaN;
+            const s = input.trim();
+            if (/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+            const dmsRe = /^(-?)(\d+)[°\s]+(\d+(?:\.\d+)?)['′\s]+(?:(\d+(?:\.\d+)?)["\u2033\s]*)?\s*([NSEWnsew]?)$/;
+            const m = s.match(dmsRe);
+            if (m) {
+                let deg = parseFloat(m[2]) + parseFloat(m[3]) / 60;
+                if (m[4]) deg += parseFloat(m[4]) / 3600;
+                if (m[1] === '-' || /[SWsw]/.test(m[5])) deg = -deg;
+                return Math.round(deg * 1000000) / 1000000;
+            }
+            return parseFloat(s);
+        }
+
+        /* ── Tab switching ───────────────────────────────── */
+        function switchTab(tab) {
+            console.log('[Firefly:switchTab] switching to:', tab);
+            currentTab = tab;
+            ['city', 'latlon'].forEach(t => {
+                const btn = document.getElementById('tab-' + t);
+                if (t === tab) {
+                    btn.classList.add('tab-active');
+                    btn.classList.remove('text-slate-500');
+                } else {
+                    btn.classList.remove('tab-active');
+                    btn.classList.add('text-slate-500');
+                }
+            });
+            
+            // Show/hide inline inputs based on active tab
+            document.getElementById('input-city-inline').classList.toggle('hidden', tab !== 'city');
+            document.getElementById('input-state-inline').classList.toggle('hidden', tab !== 'city');
+            document.getElementById('input-country-inline').classList.toggle('hidden', tab !== 'city');
+            document.getElementById('dms-hint').classList.toggle('hidden', tab !== 'latlon');
+            document.getElementById('input-lat-inline').classList.toggle('hidden', tab !== 'latlon');
+            document.getElementById('input-lon-inline').classList.toggle('hidden', tab !== 'latlon');
+        }
+
+        /* ── Search ────────────────────────────────────── */
+        async function doSearch() {
+            console.log('[Firefly:doSearch] === SEARCH START === mode:', currentTab);
+            const body = { mode: currentTab };
+
+            if (currentTab === 'city') {
+                body.city    = document.getElementById('input-city-inline').value;
+                body.state   = document.getElementById('input-state-inline').value;
+                body.country = document.getElementById('input-country-inline').value;
+            } else {
+                const rawLat = document.getElementById('input-lat-inline').value;
+                const rawLon = document.getElementById('input-lon-inline').value;
+                const parsedLat = parseCoord(rawLat);
+                const parsedLon = parseCoord(rawLon);
+                if (isNaN(parsedLat) || isNaN(parsedLon)) {
+                    showError('Invalid coordinates. Use decimal degrees (35.4564) or DMS (35° 27\' 23" N).');
+                    return;
+                }
+                body.lat = parsedLat;
+                body.lon = parsedLon;
+            }
+
+            const ranges = getDateRanges();
+
+            // Extend each range's startDate back to the GDD accumulation start
+            // so that GDD calculations always honor the user's accumulation start date.
+            const accumStartMD = getGddStartMD(); // 'MM-DD'
+            body.dateRanges = ranges.map(r => {
+                let startDate = r.startDate;
+                if (startDate) {
+                    const rangeStartMD = startDate.slice(5); // 'MM-DD'
+                    if (rangeStartMD > accumStartMD) {
+                        const year = startDate.slice(0, 4);
+                        startDate = year + '-' + accumStartMD;
+                        console.log('[Firefly:doSearch] extended range "' + r.label + '" startDate from', r.startDate, 'to', startDate, 'for GDD accumulation');
+                    }
+                }
+                return { label: r.label, startDate, endDate: r.endDate };
+            });
+
+            console.log('[Firefly:doSearch] request body:', JSON.stringify(body));
+
+            const cacheKey = makeCacheKey(body);
+            const cache = getResultCache();
+            const cached = cache[cacheKey];
+
+            // If we have cached results, render them immediately
+            if (cached) {
+                console.log('[Firefly:doSearch] LOCAL CACHE HIT — rendering cached results while refreshing');
+                document.getElementById('error-box').classList.add('hidden');
+                renderResults(cached, ranges);
+            } else {
+                console.log('[Firefly:doSearch] LOCAL CACHE MISS — fetching from server');
+            }
+
+            // UI: show loading (subtle if cached), hide errors
+            document.getElementById('loading').classList.remove('hidden');
+            if (!cached) {
+                document.getElementById('results').classList.add('hidden');
+            }
+            document.getElementById('error-box').classList.add('hidden');
+            document.getElementById('service-outage-warning').classList.add('hidden');
+            document.getElementById('fallback-warning').classList.add('hidden');
+            document.getElementById('provider-fallback-warning').classList.add('hidden');
+            document.getElementById('btn-search').disabled = true;
+
+            setLoadingMsg(cached ? 'Refreshing data…' : 'Geocoding location…');
+
+            try {
+                console.log('[Firefly:doSearch] POSTing to /api/search...');
+                const resp = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+
+                console.log('[Firefly:doSearch] response status:', resp.status);
+                let data;
+                try {
+                    data = await resp.json();
+                } catch (parseErr) {
+                    console.error('[Firefly:doSearch] response not valid JSON — status:', resp.status, 'parseError:', parseErr.message);
+                    if (!cached) showError(`Server returned an unexpected response (HTTP ${resp.status}). The data provider may be experiencing issues.`);
+                    return;
+                }
+
+                if (!resp.ok) {
+                    console.error('[Firefly:doSearch] API error — status:', resp.status, 'error:', data.error, 'service_error:', data.service_error);
+                    if (data.service_error && data.service_error.transient) {
+                        const outageBox = document.getElementById('service-outage-warning');
+                        document.getElementById('service-outage-msg').textContent =
+                            data.error || `${data.service_error.service || 'A weather data provider'} is temporarily unavailable.`;
+                        outageBox.classList.remove('hidden');
+                        console.warn('[Firefly:doSearch] transient service outage:', data.service_error);
+                        return;
+                    }
+                    if (!cached) showError(data.error || 'An unknown error occurred.');
+                    return;
+                }
+
+                console.log('[Firefly:doSearch] API success — station:', data.station?.station_id, data.station?.station_name, '| ranges:', data.ranges?.length);
+
+                // Save to cache with timestamp for LRU eviction
+                const updatedCache = getResultCache();
+                data._ts = Date.now();
+                updatedCache[cacheKey] = data;
+                setResultCache(updatedCache);
+                console.log('[Firefly:doSearch] results cached locally');
+
+                // Show forecast unavailable warning
+                if (data.forecast_unavailable) {
+                    console.warn('[Firefly:doSearch] forecast unavailable — Open-Meteo Forecast API is not responding. Forecast data will be missing from results.');
+                    const outageBox = document.getElementById('service-outage-warning');
+                    document.getElementById('service-outage-msg').textContent =
+                        'The Open-Meteo Forecast API is currently unavailable. Recent and future forecast data may be missing from your results.';
+                    outageBox.classList.remove('hidden');
+                }
+
+                // Show fallback warnings if applicable
+                const warnBox = document.getElementById('fallback-warning');
+                const provFallbackBox = document.getElementById('provider-fallback-warning');
+                if (data.is_fallback) {
+                    console.warn('[Firefly:doSearch] country fallback active — using Open-Meteo reanalysis for unsupported country:', data.country_code);
+                    warnBox.classList.remove('hidden');
+                } else {
+                    warnBox.classList.add('hidden');
+                }
+                if (data.provider_fallback) {
+                    console.warn('[Firefly:doSearch] provider fallback active — reason:', data.fallback_reason);
+                    document.getElementById('provider-fallback-msg').textContent = data.fallback_reason;
+                    provFallbackBox.classList.remove('hidden');
+                } else {
+                    provFallbackBox.classList.add('hidden');
+                }
+                console.log('[Firefly:doSearch] provider:', data.provider, '| country:', data.country_code, '| is_fallback:', data.is_fallback, '| provider_fallback:', data.provider_fallback, '| forecast_unavailable:', data.forecast_unavailable);
+
+                renderResults(data, ranges);
+
+            } catch (err) {
+                console.error('[Firefly:doSearch] network/fetch error:', err.message, err.stack);
+                if (!cached) showError('Network error — is the server running? ' + err.message);
+            } finally {
+                console.log('[Firefly:doSearch] === SEARCH END ===');
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('btn-search').disabled = false;
+            }
+        }
+
+        /* ── Helpers ───────────────────────────────────── */
+        function setLoadingMsg(msg) {
+            document.getElementById('loading-msg').textContent = msg;
+        }
+
+        function showError(msg) {
+            console.error('[Firefly:showError]', msg);
+            const box = document.getElementById('error-box');
+            box.textContent = msg;
+            box.classList.remove('hidden');
+        }
+
+        /* ── Render ────────────────────────────────────── */
+        function renderResults(data, localRanges) {
+            console.log('[Firefly:renderResults] rendering results — location:', data.location, '| station:', data.station?.station_id, '| ranges:', data.ranges?.length);
+            const { location, search_lat, search_lon, station, ranges } = data;
+
+            // Station info
+            document.getElementById('res-location').textContent = location;
+            document.getElementById('res-coords').textContent = `${search_lat.toFixed(4)}, ${search_lon.toFixed(4)}`;
+            document.getElementById('res-station-name').textContent = station.station_name;
+            document.getElementById('res-station-id').textContent = `Station ID: ${station.station_id}`;
+            document.getElementById('res-station-dist').textContent =
+                `${station.distance_miles} mi away  ·  ${station.station_lat.toFixed(4)}, ${station.station_lon.toFixed(4)}`;
+
+            // Dynamic chart title
+            document.getElementById('chart-title').textContent = 'Temperature (°F)';
+
+            // Split temperature data by year across all ranges
+            const tempYearGroups = [];
+            ranges.forEach((r, i) => {
+                const byYear = {};
+                r.temperatures.forEach(t => {
+                    const yr = t.date.slice(0, 4);
+                    if (!byYear[yr]) byYear[yr] = [];
+                    byYear[yr].push(t);
+                });
+                const years = Object.keys(byYear).sort();
+                years.forEach(yr => {
+                    const rangeLabel = r.label || ('Range ' + (i + 1));
+                    const label = years.length > 1 ? `${rangeLabel} (${yr})` : rangeLabel;
+                    tempYearGroups.push({ year: yr, temps: byYear[yr], rangeIdx: i, label });
+                });
+            });
+            tempYearGroups.forEach((yg, i) => { yg.colorIdx = i % SERIES_COLORS.length; yg.seriesIdx = i; });
+
+            // Build unified x-axis by MM-DD (year-agnostic)
+            const allTempMDs = new Set();
+            tempYearGroups.forEach(yg => yg.temps.forEach(t => allTempMDs.add(t.date.slice(5))));
+            const sortedTempMDs = [...allTempMDs].sort();
+            const tempLabels = sortedTempMDs.map(md => {
+                const dt = new Date(`2000-${md}T00:00:00`);
+                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+
+            const datasets = [];
+            // Track which years have actual data for legend filtering
+            const tempYearsWithActualData = new Set();
+            tempYearGroups.forEach((yg) => {
+                const byMD = {};
+                yg.temps.forEach(t => { byMD[t.date.slice(5)] = t; });
+                const maxColor = SERIES_COLORS[(yg.seriesIdx * 2) % SERIES_COLORS.length];
+                const minColor = SERIES_COLORS[(yg.seriesIdx * 2 + 1) % SERIES_COLORS.length];
+
+                // Check if this year group has actual data within the date ranges
+                const hasActualData = yg.temps && yg.temps.length > 0 && yg.temps.some(t => {
+                    // Check if this temperature entry falls within any of the selected date ranges
+                    return ranges.some(range => {
+                        const tempDate = new Date(t.date);
+                        const startDate = new Date(range.startDate);
+                        const endDate = new Date(range.endDate);
+                        return tempDate >= startDate && tempDate <= endDate;
+                    });
+                });
+                if (hasActualData) {
+                    tempYearsWithActualData.add(String(yg.year)); // Store as string
+                }
+
+                // Separate actual and forecast data
+                const maxActualData = sortedTempMDs.map(md => {
+                    const point = byMD[md];
+                    return point && !point.is_forecast ? point.TMAX : null;
+                });
+                const maxForecastData = sortedTempMDs.map(md => {
+                    const point = byMD[md];
+                    return point && point.is_forecast ? point.TMAX : null;
+                });
+                
+                const minActualData = sortedTempMDs.map(md => {
+                    const point = byMD[md];
+                    return point && !point.is_forecast ? point.TMIN : null;
+                });
+                const minForecastData = sortedTempMDs.map(md => {
+                    const point = byMD[md];
+                    return point && point.is_forecast ? point.TMIN : null;
+                });
+
+                // Actual data (solid lines)
+                datasets.push({
+                    label: `${yg.year} Max (°F)`,
+                    data: maxActualData,
+                    borderColor: maxColor.hex,
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: maxColor.hex,
+                    spanGaps: false,
+                    borderDash: [], // Solid line
+                });
+                datasets.push({
+                    label: `${yg.year} Min (°F)`,
+                    data: minActualData,
+                    borderColor: minColor.hex,
+                    backgroundColor: minColor.bg + '0.08)',
+                    borderWidth: 3,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: minColor.hex,
+                    spanGaps: false,
+                    borderDash: [], // Solid line for actual data
+                });
+
+                // Forecast data (dashed lines) - only if forecast is enabled
+                if (document.getElementById('include-temp-forecast').checked) {
+                    datasets.push({
+                        label: 'Max (°F) Forecast',
+                        data: maxForecastData,
+                        borderColor: maxColor.hex,
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointBackgroundColor: maxColor.hex,
+                        spanGaps: false,
+                        borderDash: [8, 4], // Dashed line for forecast
+                        hidden: false, // Show in legend
+                    });
+                    datasets.push({
+                        label: 'Min (°F) Forecast',
+                        data: minForecastData,
+                        borderColor: minColor.hex,
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointBackgroundColor: minColor.hex,
+                        spanGaps: false,
+                        borderDash: [8, 4], // Dashed line for forecast
+                        hidden: false, // Show in legend
+                    });
+                }
+            });
+
+            // Add average lines if multiple datasets
+            if (tempYearGroups.length > 1) {
+                // Pre-build byMD lookup once per year group
+                const tempByMDMaps = tempYearGroups.map(yg => {
+                    const map = {};
+                    yg.temps.forEach(t => { map[t.date.slice(5)] = t; });
+                    return map;
+                });
+
+                const avgMaxData = sortedTempMDs.map(md => {
+                    const values = tempByMDMaps
+                        .map(m => m[md] ? m[md].TMAX : null)
+                        .filter(v => v !== null);
+                    return values.length > 0 ? values.reduce((a, b) => a + b) / values.length : null;
+                });
+
+                const avgMinData = sortedTempMDs.map(md => {
+                    const values = tempByMDMaps
+                        .map(m => m[md] ? m[md].TMIN : null)
+                        .filter(v => v !== null);
+                    return values.length > 0 ? values.reduce((a, b) => a + b) / values.length : null;
+                });
+
+                datasets.push({
+                    label: 'Average Max (°F)',
+                    data: avgMaxData,
+                    borderColor: '#54637f',
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: '#54637f',
+                    borderDash: [6, 3],
+                    spanGaps: false,
+                    borderWidth: 1.5,
+                });
+
+                datasets.push({
+                    label: 'Average Min (°F)',
+                    data: avgMinData,
+                    borderColor: '#54637f',
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: '#54637f',
+                    borderDash: [6, 3],
+                    spanGaps: false,
+                    borderWidth: 1.5,
+                });
+            }
+
+            if (chart) chart.destroy();
+
+            // Create the legend filter function with access to tempYearsWithActualData
+            const createTempLegendFilter = (yearsSet) => {
+                return function(legendItem, chartData) {
+                    // Hide forecast entries from legend
+                    if (legendItem.text.includes('Forecast')) {
+                        return false;
+                    }
+                    // Hide daily datasets from legend (show only aggregated year datasets)
+                    if (legendItem.text.includes('Daily')) {
+                        return false;
+                    }
+                    // Only show years that have actual data
+                    const yearMatch = legendItem.text.match(/(\d{4})/);
+                    if (yearMatch) {
+                        const year = yearMatch[1]; // Keep as string
+                        return yearsSet.has(year);
+                    }
+                    return true; // Show non-year entries (like averages)
+                };
+            };
+
+            const ctx = document.getElementById('tempChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: tempLabels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        datalabels: { display: false },
+                        legend: { 
+                            position: 'top', 
+                            labels: { 
+                                usePointStyle: true, 
+                                padding: 16, 
+                                font: { size: 11 },
+                                filter: createTempLegendFilter(tempYearsWithActualData)
+                            } 
+                        },
+                        tooltip: {
+                            backgroundColor: '#2a3348',
+                            titleFont: { weight: '600' },
+                            bodyFont: { size: 11 },
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            padding: 10,
+                            cornerRadius: 6,
+                            displayColors: true,
+                            filter: item => item.parsed.y !== null,
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y + ' °F'}`,
+                            },
+                        },
+                        annotation: {
+                            annotations: {
+                                ...Object.fromEntries(
+                                    dateMarkers.map((d, i) => {
+                                        const idx = sortedTempMDs.indexOf(d.md);
+                                        return [
+                                            'datemark_' + i,
+                                            {
+                                                type: 'line',
+                                                xMin: idx >= 0 ? idx : d.md,
+                                                xMax: idx >= 0 ? idx : d.md,
+                                                xScaleID: 'x',
+                                                borderColor: '#54637f',
+                                                borderWidth: 2,
+                                                borderDash: [6, 4],
+                                                display: idx >= 0,
+                                                label: {
+                                                    display: idx >= 0,
+                                                    content: d.label,
+                                                    position: 'start',
+                                                    backgroundColor: 'rgba(62,74,100,.9)',
+                                                    color: '#fff',
+                                                    font: { size: 11, weight: '600' },
+                                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                                    borderRadius: 4,
+                                                },
+                                            },
+                                        ];
+                                    })
+                                ),
+                            },
+                        },
+                    },
+                    scales: {
+                        y: {
+                            title: { display: true, text: '°F', font: { weight: '600' } },
+                            grid: { color: '#eef1f6' },
+                        },
+                        x: { grid: { display: false } },
+                    },
+                },
+            });
+
+            // Precipitation Chart — build unified x-axis from actual (non-forecast) data
+            const allPrecipMDs = new Set();
+            tempYearGroups.forEach(yg => {
+                yg.temps.filter(t => !t.is_forecast).forEach(t => allPrecipMDs.add(t.date.slice(5)));
+            });
+            const sortedPrecipMDs = [...allPrecipMDs].sort();
+            const precipLabels = sortedPrecipMDs.map(md => {
+                const dt = new Date(`2000-${md}T00:00:00`);
+                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+
+            const precipDatasets = [];
+
+            tempYearGroups.forEach((yg) => {
+                const sc = SERIES_COLORS[yg.colorIdx];
+
+                // Index actual data by MM-DD
+                const byMD = {};
+                yg.temps.filter(t => !t.is_forecast).forEach(t => { byMD[t.date.slice(5)] = t; });
+
+                // Daily precipitation bars aligned to unified x-axis
+                const precipData = sortedPrecipMDs.map(md => {
+                    const t = byMD[md];
+                    return t ? (t.PRCP || 0) : null;
+                });
+
+                // Accumulation line
+                const accumData = [];
+                let accum = 0;
+                sortedPrecipMDs.forEach(md => {
+                    const t = byMD[md];
+                    accum += (t ? (t.PRCP || 0) : 0);
+                    accumData.push(t ? accum : null);
+                });
+
+                precipDatasets.push(
+                    {
+                        label: `${yg.year} - Daily`,
+                        data: precipData,
+                        backgroundColor: sc.hex,
+                        borderColor: sc.hex,
+                        borderWidth: 0,
+                        type: 'bar',
+                        yAxisID: 'y',
+                        order: 2,
+                        borderRadius: 4,
+                    },
+                    {
+                        label: `${yg.year} - Accumulation`,
+                        data: accumData,
+                        borderColor: sc.hex,
+                        backgroundColor: 'transparent',
+                        borderWidth: 3,
+                        fill: false,
+                        type: 'line',
+                        yAxisID: 'y1',
+                        tension: 0.3,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        order: 1,
+                    }
+                );
+            });
+
+            const precipCtx = document.getElementById('precipChart').getContext('2d');
+            if (precipChart) {
+                precipChart.destroy();
+            }
+            precipChart = new Chart(precipCtx, {
+                type: 'bar',
+                data: { labels: precipLabels, datasets: precipDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        datalabels: {
+                            display: function(ctx) {
+                                // Only show labels on bars with precipitation > 0
+                                return ctx.dataset.type === 'bar'
+                                    ? ctx.parsed.y > 0
+                                    : false;
+                            },
+                            color: '#3e4a64',
+                            font: { size: 10, weight: '500' },
+                            anchor: 'end',
+                            align: 'top',
+                            offset: 4,
+                            formatter: val => val !== null ? val.toFixed(2) : '',
+                        },
+                        legend: { 
+                            position: 'top', 
+                            labels: { 
+                                usePointStyle: true, 
+                                padding: 16, 
+                                font: { size: 11 },
+                                filter: function(legendItem, chartData) {
+                                    if (legendItem.text.includes('Daily')) return false;
+                                    if (legendItem.text.includes('Forecast')) return false;
+                                    return true;
+                                }
+                            } 
+                        },
+                        tooltip: {
+                            backgroundColor: '#2a3348',
+                            titleFont: { weight: '600' },
+                            bodyFont: { size: 11 },
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            padding: 10,
+                            cornerRadius: 6,
+                            displayColors: true,
+                            filter: item => item.parsed.y !== null,
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} in`,
+                            },
+                        },
+                        annotation: {
+                            annotations: {
+                                ...Object.fromEntries(
+                                    dateMarkers.map((d, i) => {
+                                        const idx = sortedPrecipMDs.indexOf(d.md);
+                                        return [
+                                            'datemark_' + i,
+                                            {
+                                                type: 'line',
+                                                xMin: idx >= 0 ? idx : d.md,
+                                                xMax: idx >= 0 ? idx : d.md,
+                                                xScaleID: 'x',
+                                                borderColor: '#54637f',
+                                                borderWidth: 2,
+                                                borderDash: [6, 4],
+                                                display: idx >= 0,
+                                                label: {
+                                                    display: idx >= 0,
+                                                    content: d.label,
+                                                    position: 'start',
+                                                    backgroundColor: 'rgba(62,74,100,.9)',
+                                                    color: '#fff',
+                                                    font: { size: 11, weight: '600' },
+                                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                                    borderRadius: 4,
+                                                },
+                                            },
+                                        ];
+                                    })
+                                ),
+                            },
+                        },
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: 'Daily Precip (in)', font: { weight: '600' } },
+                            grid: { color: '#eef1f6' },
+                            beginAtZero: true,
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: 'Accumulation (in)', font: { weight: '600' } },
+                            grid: { drawOnChartArea: false },
+                            beginAtZero: true,
+                        },
+                        x: { grid: { display: false } },
+                    },
+                },
+            });
+
+            // Data tables -- one card per year-group
+            const tablesDiv = document.getElementById('temp-data-tables-container');
+            if (tablesDiv) {
+                tablesDiv.innerHTML = '';
+                tempYearGroups.forEach((yg) => {
+                    const maxC = SERIES_COLORS[(yg.seriesIdx * 2) % SERIES_COLORS.length];
+                    const minC = SERIES_COLORS[(yg.seriesIdx * 2 + 1) % SERIES_COLORS.length];
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden';
+                    let rows = '';
+                    yg.temps.forEach((t, j) => {
+                        const isFc = t.is_forecast;
+                        const isCc = t.is_calculated;
+                        const cls = isFc ? 'bg-amber-50/60' : isCc ? 'bg-blue-50/60' : (j % 2 === 0 ? 'bg-white' : 'bg-slate-50/60');
+                        const dateStr = new Date(t.date + 'T00:00:00').toLocaleDateString('en-US', {
+                            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                        });
+                        const fcBadge = isFc ? ' <span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800">Forecast</span>' : '';
+                        const ccBadge = isCc ? ' <span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-200 text-blue-800">Calculated</span>' : '';
+                        rows += `<tr class="${cls}">
+                            <td class="px-6 py-3 text-slate-700">${dateStr}${fcBadge}${ccBadge}</td>
+                            <td class="px-6 py-3 text-right font-medium" style="color:${minC.hex}">${t.TMIN !== null ? t.TMIN + '°' : '—'}</td>
+                            <td class="px-6 py-3 text-right font-medium" style="color:${maxC.hex}">${t.TMAX !== null ? t.TMAX + '°' : '—'}</td>
+                        </tr>`;
+                    });
+                    card.innerHTML = `
+                        <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full" style="background:${maxC.hex}"></span>
+                            <h3 class="text-base font-semibold text-slate-800">${yg.label}</h3>
+                            <span class="text-xs text-slate-400 ml-auto">${yg.temps.length} days</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left">Date</th>
+                                        <th class="px-6 py-3 text-right">Min Temp (°F)</th>
+                                        <th class="px-6 py-3 text-right">Max Temp (°F)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                    `;
+                    tablesDiv.appendChild(card);
+                });
+            }
+
+            // Precipitation Data tables -- one card per year-group
+            const precipTablesDiv = document.getElementById('precip-data-tables-container');
+            if (precipTablesDiv) {
+                precipTablesDiv.innerHTML = '';
+                tempYearGroups.forEach((yg) => {
+                    const sc = SERIES_COLORS[yg.colorIdx];
+                    const card = document.createElement('div');
+                    card.className = 'bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden';
+
+                    let rows = '';
+                    let totalPrecip = 0;
+                    yg.temps.forEach((t, j) => {
+                        const isFc = t.is_forecast;
+                        const cls = isFc ? 'bg-amber-50/60' : (j % 2 === 0 ? 'bg-white' : 'bg-slate-50/60');
+                        const dateStr = new Date(t.date + 'T00:00:00').toLocaleDateString('en-US', {
+                            weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                        });
+                        const fcBadge = isFc ? ' <span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800">Forecast</span>' : '';
+                        const precip = t.PRCP || 0;
+                        totalPrecip += precip;
+                        const accum = t.PRCP_ACCUM || 0;
+                        rows += `<tr class="${cls}">
+                            <td class="px-6 py-3 text-slate-700">${dateStr}${fcBadge}</td>
+                            <td class="px-6 py-3 text-right font-medium" style="color:${sc.hex}">${precip > 0 ? precip.toFixed(2) + '"' : '0.00"'}</td>
+                            <td class="px-6 py-3 text-right font-semibold" style="color:${sc.hex}">${accum.toFixed(2) + '"'}</td>
+                        </tr>`;
+                    });
+
+                    card.innerHTML = `
+                        <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full" style="background:${sc.hex}"></span>
+                            <h3 class="text-base font-semibold text-slate-800">Precipitation - ${yg.label}</h3>
+                            <span class="text-xs text-slate-400 ml-auto">${yg.temps.length} days</span>
+                            <span class="ml-auto text-sm font-bold" style="color:${sc.hex}">Total: ${totalPrecip.toFixed(2) + '"'}</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left">Date</th>
+                                        <th class="px-6 py-3 text-right">Daily (in)</th>
+                                        <th class="px-6 py-3 text-right">Accumulation (in)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                            </table>
+                        </div>
+                    `;
+                    precipTablesDiv.appendChild(card);
+                });
+            }
+
+            // ── GDD Calculation & Rendering ──
+            renderGDD(ranges, localRanges);
+
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.classList.remove('hidden');
+            resultsDiv.classList.add('fade-in');
+            resultsDiv.style.display = '';
+            console.log('[Firefly:renderResults] rendering complete — charts and tables built');
+        }
+
+        /* ── Temperature preview range ───────────────────── */
+        function applyTempPreview() {
+            if (!chart) return;
+            console.log('[Firefly:applyTempPreview] applying temperature chart preview range');
+            const sm = document.getElementById('temp-preview-start-month').value;
+            const sd = String(document.getElementById('temp-preview-start-day').value).padStart(2, '0');
+            const em = document.getElementById('temp-preview-end-month').value;
+            const ed = String(document.getElementById('temp-preview-end-day').value).padStart(2, '0');
+            const xScale = chart.options.scales.x;
+            xScale.min = new Date(`2000-${sm}-${sd}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            xScale.max = new Date(`2000-${em}-${ed}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            chart.update();
+        }
+
+        function resetTempPreview() {
+            if (!chart) return;
+            console.log('[Firefly:resetTempPreview] resetting temperature chart preview range');
+            delete chart.options.scales.x.min;
+            delete chart.options.scales.x.max;
+            chart.update();
+        }
+
+        /* ── GDD preview range ──────────────────────────── */
+        function applyGddPreview() {
+            if (!gddChart) return;
+            console.log('[Firefly:applyGddPreview] applying GDD chart preview range');
+            const sm = document.getElementById('gdd-preview-start-month').value;
+            const sd = String(document.getElementById('gdd-preview-start-day').value).padStart(2, '0');
+            const em = document.getElementById('gdd-preview-end-month').value;
+            const ed = String(document.getElementById('gdd-preview-end-day').value).padStart(2, '0');
+            const startMD = sm + '-' + sd;
+            const endMD = em + '-' + ed;
+            const xScale = gddChart.options.scales.x;
+            xScale.min = new Date(`2000-${startMD}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            xScale.max = new Date(`2000-${endMD}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            gddChart.update();
+        }
+
+        function resetGddPreview() {
+            if (!gddChart) return;
+            console.log('[Firefly:resetGddPreview] resetting GDD chart preview range');
+            delete gddChart.options.scales.x.min;
+            delete gddChart.options.scales.x.max;
+            gddChart.update();
+        }
+
+        /* ---- Precipitation preview range ---- */
+        function applyPrecipPreview() {
+            if (!precipChart) return;
+            console.log('[Firefly:applyPrecipPreview] applying precipitation chart preview range');
+            const sm = document.getElementById('precip-preview-start-month').value;
+            const sd = String(document.getElementById('precip-preview-start-day').value).padStart(2, '0');
+            const em = document.getElementById('precip-preview-end-month').value;
+            const ed = String(document.getElementById('precip-preview-end-day').value).padStart(2, '0');
+            const startMD = sm + '-' + sd;
+            const endMD = em + '-' + ed;
+            const xScale = precipChart.options.scales.x;
+            xScale.min = new Date(`2000-${startMD}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            xScale.max = new Date(`2000-${endMD}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            precipChart.update();
+        }
+
+        function resetPrecipPreview() {
+            if (!precipChart) return;
+            console.log('[Firefly:resetPrecipPreview] resetting precipitation chart preview range');
+            delete precipChart.options.scales.x.min;
+            delete precipChart.options.scales.x.max;
+            precipChart.update();
+        }
+
+        /* ── GDD Calculation ──────────────────────────── */
+        function computeGDD(temperatures, baseTemp, accumStartMD, maxTemp) {
+            maxTemp = maxTemp != null ? maxTemp : 86;
+            console.log('[Firefly:computeGDD] baseTemp:', baseTemp, 'maxTemp:', maxTemp, 'accumStart:', accumStartMD, 'records:', temperatures.length);
+            // accumStartMD = 'MM-DD' (no year)
+            const sorted = [...temperatures].sort((a, b) => a.date.localeCompare(b.date));
+
+            // Pre-pass: interpolate missing data across multi-day gaps
+            // For each gap of missing days, find the nearest known day before
+            // and after and linearly interpolate all days in between.
+            let i = 0;
+            while (i < sorted.length) {
+                if (sorted[i].TMIN !== null && sorted[i].TMAX !== null) { i++; continue; }
+                // Find start of gap
+                const gapStart = i;
+                // Find the previous known day
+                const prev = gapStart > 0 ? sorted[gapStart - 1] : null;
+                // Advance past all consecutive missing days
+                while (i < sorted.length && (sorted[i].TMIN === null || sorted[i].TMAX === null)) { i++; }
+                // Find the next known day (i now points to it, or past the end)
+                const next = i < sorted.length ? sorted[i] : null;
+                if (prev && next && prev.TMIN !== null && prev.TMAX !== null && next.TMIN !== null && next.TMAX !== null) {
+                    const gapLen = i - gapStart;
+                    for (let g = 0; g < gapLen; g++) {
+                        const t = sorted[gapStart + g];
+                        const frac = (g + 1) / (gapLen + 1);
+                        t.TMIN = Math.round((prev.TMIN + (next.TMIN - prev.TMIN) * frac) * 10) / 10;
+                        t.TMAX = Math.round((prev.TMAX + (next.TMAX - prev.TMAX) * frac) * 10) / 10;
+                        t.is_calculated = true;
+                        console.log('[Firefly:computeGDD] interpolated missing data for', t.date, '→ TMIN:', t.TMIN, 'TMAX:', t.TMAX, '(gap', g + 1, '/' + gapLen + ')');
+                    }
+                }
+            }
+
+            let cumulative = 0;
+            let prevYear = null;
+            const results = [];
+
+            for (const t of sorted) {
+                const dateYear = t.date.slice(0, 4);
+                const dateMD = t.date.slice(5); // 'MM-DD'
+
+                // Reset cumulative on Jan 1 or when crossing into a new year
+                if (prevYear !== null && dateYear !== prevYear) {
+                    cumulative = 0;
+                }
+                prevYear = dateYear;
+
+                // Only accumulate on or after accumulation start month-day
+                const isActive = dateMD >= accumStartMD;
+
+                let daily = 0;
+                if (isActive && t.TMIN !== null && t.TMAX !== null) {
+                    const cappedMax = Math.min(t.TMAX, maxTemp);
+                    const avg = (cappedMax + t.TMIN) / 2;
+                    daily = Math.max(0, avg - baseTemp);
+                }
+
+                if (isActive) {
+                    cumulative += daily;
+                } else {
+                    cumulative = 0;
+                }
+
+                results.push({
+                    date: t.date,
+                    md: dateMD,
+                    avg: (t.TMIN !== null && t.TMAX !== null) ? Math.round(((t.TMAX + t.TMIN) / 2) * 10) / 10 : null,
+                    daily: Math.round(daily * 10) / 10,
+                    cumulative: Math.round(cumulative * 10) / 10,
+                    is_forecast: t.is_forecast || false,
+                    is_calculated: t.is_calculated || false,
+                });
+            }
+            console.log('[Firefly:computeGDD] computed', results.length, 'GDD records, final cumulative:', results.length > 0 ? results[results.length - 1].cumulative : 0);
+            return results;
+        }
+
+        function renderGDD(ranges, localRanges) {
+            const baseTemp = parseFloat(document.getElementById('input-gdd-base').value) || 50;
+            const maxTemp = parseFloat(document.getElementById('input-gdd-max').value) || 86;
+            const accumStartMD = getGddStartMD(); // 'MM-DD'
+            console.log('[Firefly:renderGDD] baseTemp:', baseTemp, 'maxTemp:', maxTemp, 'accumStart:', accumStartMD, 'ranges:', ranges.length);
+
+            // Format MM-DD for display
+            const startLabel = new Date(`2000-${accumStartMD}T00:00:00`)
+                .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+            // Update chart title
+            document.getElementById('gdd-chart-title').textContent =
+                `Cumulative Growing Degree Days (Base ${baseTemp}°F, from ${startLabel})`;
+
+            // Compute GDD for each range, then split by year
+            const gddByRange = ranges.map(r => computeGDD(r.temperatures, baseTemp, accumStartMD, maxTemp));
+
+            // Split each range's GDD data by year → flat list of { year, gdd, rangeIdx, label }
+            const yearGroups = [];
+            gddByRange.forEach((gdd, i) => {
+                const byYear = {};
+                gdd.forEach(g => {
+                    const yr = g.date.slice(0, 4);
+                    if (!byYear[yr]) byYear[yr] = [];
+                    byYear[yr].push(g);
+                });
+                const years = Object.keys(byYear).sort();
+                years.forEach(yr => {
+                    const rangeLabel = ranges[i].label || ('Range ' + (i + 1));
+                    const label = years.length > 1 ? `${rangeLabel} (${yr})` : rangeLabel;
+                    yearGroups.push({ year: yr, gdd: byYear[yr], rangeIdx: i, label });
+                });
+            });
+
+            // Assign colors: one per year-group from SERIES_COLORS (sequential)
+            yearGroups.forEach((yg, i) => {
+                yg.colorIdx = i % SERIES_COLORS.length;
+                // Track if this year group has actual data (not just forecast)
+                yg.hasActualData = yg.gdd && yg.gdd.some(g => !g.is_forecast);
+            });
+
+            // Build unified x-axis by MM-DD (year-agnostic)
+            const allMDs = new Set();
+            yearGroups.forEach(yg => yg.gdd.forEach(d => allMDs.add(d.md)));
+            const sortedMDs = [...allMDs].sort();
+            const labels = sortedMDs.map(md => {
+                const dt = new Date(`2000-${md}T00:00:00`);
+                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            });
+
+            const datasets = [];
+            // Track which years have actual data for legend filtering
+            const yearsWithActualData = new Set();
+            yearGroups.forEach((yg, i) => {
+                const byMD = {};
+                yg.gdd.forEach(g => { byMD[g.md] = g; });
+                const sc = SERIES_COLORS[yg.colorIdx];
+
+                // Check if this year group has actual data within the date ranges
+                const hasActualData = yg.gdd && yg.gdd.length > 0 && yg.gdd.some(g => {
+                    // Check if this GDD entry falls within any of the selected date ranges
+                    return ranges.some(range => {
+                        const gddDate = new Date(g.date);
+                        const startDate = new Date(range.startDate);
+                        const endDate = new Date(range.endDate);
+                        return gddDate >= startDate && gddDate <= endDate;
+                    });
+                });
+                if (hasActualData) {
+                    yearsWithActualData.add(String(yg.year)); // Store as string
+                }
+
+                // Separate actual and forecast data
+                const cumulativeActualData = sortedMDs.map(md => {
+                    const point = byMD[md];
+                    return point && !point.is_forecast ? point.cumulative : null;
+                });
+                const cumulativeForecastData = sortedMDs.map(md => {
+                    const point = byMD[md];
+                    return point && point.is_forecast ? point.cumulative : null;
+                });
+                
+                const dailyActualData = sortedMDs.map(md => {
+                    const point = byMD[md];
+                    return point && !point.is_forecast ? point.daily : null;
+                });
+                const dailyForecastData = sortedMDs.map(md => {
+                    const point = byMD[md];
+                    return point && point.is_forecast ? point.daily : null;
+                });
+
+                // Actual data (solid lines/bars)
+                datasets.push({
+                    label: `${yg.year} Cumulative GDD`,
+                    data: cumulativeActualData,
+                    borderColor: sc.hex,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointBackgroundColor: sc.hex,
+                    tension: 0.1,
+                    spanGaps: false,
+                    yAxisID: 'y',
+                    order: 2,
+                });
+                datasets.push({
+                    label: 'Daily GDD',
+                    data: dailyActualData,
+                    type: 'bar',
+                    backgroundColor: sc.bg + '0.35)',
+                    borderColor: sc.bg + '0.35)',
+                    borderWidth: 0,
+                    yAxisID: 'y1',
+                    order: 2,
+                });
+
+                // Forecast data (dashed lines/bars) - only if forecast is enabled
+                if (document.getElementById('include-gdd-forecast').checked) {
+                    datasets.push({
+                        label: 'Cumulative GDD Forecast',
+                        data: cumulativeForecastData,
+                        borderColor: sc.hex,
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointBackgroundColor: sc.hex,
+                        yAxisID: 'y',
+                        order: 0, // Behind other lines
+                        borderDash: [8, 4], // Dashed line for forecast
+                    });
+                    datasets.push({
+                        label: 'Daily GDD Forecast',
+                        data: dailyForecastData,
+                        type: 'bar',
+                        backgroundColor: sc.bg + '0.2)',
+                        borderColor: sc.bg + '0.2)',
+                        borderWidth: 0,
+                        yAxisID: 'y1',
+                        order: 3, // On top of other bars
+                    });
+                }
+            });
+
+            // Add average lines if multiple datasets
+            if (yearGroups.length > 1) {
+                // Pre-build byMD lookup once per year group
+                const gddByMDMaps = yearGroups.map(yg => {
+                    const map = {};
+                    yg.gdd.forEach(g => { map[g.md] = g; });
+                    return map;
+                });
+
+                const avgCumulativeData = sortedMDs.map(md => {
+                    const values = gddByMDMaps
+                        .map(m => m[md] ? m[md].cumulative : null)
+                        .filter(v => v !== null);
+                    return values.length > 0 ? values.reduce((a, b) => a + b) / values.length : null;
+                });
+
+                
+                datasets.push({
+                    label: 'Average Cumulative GDD',
+                    data: avgCumulativeData,
+                    borderColor: '#54637f',
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: '#54637f',
+                    yAxisID: 'y',
+                    order: 0, // Behind other lines
+                    borderWidth: 1.5,
+                });
+            }
+
+            if (gddChart) gddChart.destroy();
+
+            // Create the legend filter function with access to yearsWithActualData
+            const createLegendFilter = (yearsSet) => {
+                return function(legendItem, chartData) {
+                    // Hide bar datasets and forecast entries from legend
+                    if (legendItem.text.includes('Daily GDD') || legendItem.text.includes('Forecast')) {
+                        return false;
+                    }
+                    // Only show years that have actual data
+                    const yearMatch = legendItem.text.match(/(\d{4})/);
+                    if (yearMatch) {
+                        const year = yearMatch[1]; // Keep as string
+                        return yearsSet.has(year);
+                    }
+                    return true; // Show non-year entries (like averages)
+                };
+            };
+
+            const ctx = document.getElementById('gddChart').getContext('2d');
+            gddChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        datalabels: { display: false },
+                        legend: { 
+                            position: 'top', 
+                            labels: { 
+                                usePointStyle: true, 
+                                padding: 16, 
+                                font: { size: 11 },
+                                filter: createLegendFilter(yearsWithActualData)
+                            } 
+                        },
+                        tooltip: {
+                            backgroundColor: '#2a3348',
+                            titleFont: { weight: '600' },
+                            bodyFont: { size: 11 },
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            padding: 10,
+                            cornerRadius: 6,
+                            displayColors: true,
+                            filter: item => item.parsed.y !== null,
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}`,
+                            },
+                        },
+                        annotation: {
+                            annotations: {
+                                ...Object.fromEntries(
+                                    gddThresholds.map((t, i) => [
+                                        'thresh_' + i,
+                                        {
+                                            type: 'line',
+                                            yMin: t.value,
+                                            yMax: t.value,
+                                            yScaleID: 'y',
+                                            borderColor: '#54637f',
+                                            borderWidth: 2,
+                                            borderDash: [6, 4],
+                                            label: {
+                                                display: true,
+                                                content: t.label,
+                                                position: 'start',
+                                                backgroundColor: 'rgba(62,74,100,.9)',
+                                                color: '#fff',
+                                                font: { size: 11, weight: '600' },
+                                                padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                                borderRadius: 4,
+                                            },
+                                        },
+                                    ])
+                                ),
+                                ...Object.fromEntries(
+                                    dateMarkers.map((d, i) => {
+                                        const idx = sortedMDs.indexOf(d.md);
+                                        return [
+                                            'datemark_' + i,
+                                            {
+                                                type: 'line',
+                                                xMin: idx >= 0 ? idx : d.md,
+                                                xMax: idx >= 0 ? idx : d.md,
+                                                xScaleID: 'x',
+                                                borderColor: '#54637f',
+                                                borderWidth: 2,
+                                                borderDash: [6, 4],
+                                                display: idx >= 0,
+                                                label: {
+                                                    display: idx >= 0,
+                                                    content: d.label,
+                                                    position: 'start',
+                                                    backgroundColor: 'rgba(62,74,100,.9)',
+                                                    color: '#fff',
+                                                    font: { size: 11, weight: '600' },
+                                                    padding: { top: 2, bottom: 2, left: 6, right: 6 },
+                                                    borderRadius: 4,
+                                                },
+                                            },
+                                        ];
+                                    })
+                                ),
+                            },
+                        },
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            title: { display: true, text: 'Cumulative GDD', font: { weight: '600' } },
+                            grid: { color: '#eef1f6' },
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            title: { display: true, text: 'Daily GDD', font: { weight: '600' } },
+                            grid: { drawOnChartArea: false },
+                        },
+                        x: { grid: { display: false } },
+                    },
+                },
+            });
+
+            // GDD Tables — one per year-group
+            const gddTablesDiv = document.getElementById('data-tables-container');
+            if (!gddTablesDiv) return;
+            gddTablesDiv.innerHTML = '';
+            yearGroups.forEach((yg) => {
+                const rc = SERIES_COLORS[yg.colorIdx];
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden';
+
+                let rows = '';
+                yg.gdd.forEach((g, j) => {
+                    const isFc = g.is_forecast;
+                    const isCc = g.is_calculated;
+                    const cls = isFc ? 'bg-amber-50/60' : isCc ? 'bg-blue-50/60' : (j % 2 === 0 ? 'bg-white' : 'bg-slate-50/60');
+                    const dateStr = new Date(g.date + 'T00:00:00').toLocaleDateString('en-US', {
+                        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                    });
+                    const fcBadge = isFc ? ' <span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800">Forecast</span>' : '';
+                    const ccBadge = isCc ? ' <span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-200 text-blue-800">Calculated</span>' : '';
+                    rows += `<tr class="${cls}">
+                        <td class="px-6 py-2.5 text-slate-700">${dateStr}${fcBadge}${ccBadge}</td>
+                        <td class="px-6 py-2.5 text-right text-slate-500">${g.avg !== null ? g.avg + '°' : '—'}</td>
+                        <td class="px-6 py-2.5 text-right font-medium" style="color:${rc.hex}">${g.daily}</td>
+                        <td class="px-6 py-2.5 text-right font-semibold" style="color:${rc.hex}">${g.cumulative}</td>
+                    </tr>`;
+                });
+
+                const lastCum = yg.gdd.length ? yg.gdd[yg.gdd.length - 1].cumulative : 0;
+                card.innerHTML = `
+                    <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full" style="background:${rc.hex}"></span>
+                        <h3 class="text-base font-semibold text-slate-800">GDD — ${yg.label}</h3>
+                        <span class="text-xs text-slate-400 ml-2">Base ${baseTemp}°F</span>
+                        <span class="ml-auto text-sm font-bold" style="color:${rc.hex}">Total: ${lastCum}</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                                <tr>
+                                    <th class="px-6 py-3 text-left">Date</th>
+                                    <th class="px-6 py-3 text-right">Avg Temp (°F)</th>
+                                    <th class="px-6 py-3 text-right">Daily GDD</th>
+                                    <th class="px-6 py-3 text-right">Cumulative GDD</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+                gddTablesDiv.appendChild(card);
+            });
+        }
+
+        /* ── Chart Export ─────────────────────────────── */
+        function exportChart(chartId, filename) {
+            console.log('[Firefly:exportChart] exporting chart:', chartId, 'as:', filename);
+            const chartCanvas = document.getElementById(chartId);
+            if (!chartCanvas) {
+                console.error('[Firefly:exportChart] canvas not found:', chartId);
+                alert('Chart not found');
+                return;
+            }
+            
+            // Get chart title
+            let chartTitle = '';
+            if (chartId === 'gddChart') {
+                chartTitle = document.getElementById('gdd-chart-title').textContent;
+            } else if (chartId === 'tempChart') {
+                chartTitle = document.getElementById('chart-title').textContent;
+            } else if (chartId === 'precipChart') {
+                chartTitle = document.getElementById('precip-chart-title').textContent;
+            }
+            
+            // Create a temporary canvas with white background
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = chartCanvas.width;
+            tempCanvas.height = chartCanvas.height + 50; // Extra space for title
+            
+            // Fill white background
+            tempCtx.fillStyle = 'white';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height + 50);
+            
+            // Add title at the top
+            tempCtx.fillStyle = '#2a3348';
+            tempCtx.font = 'bold 18px Inter, sans-serif';
+            tempCtx.textAlign = 'center';
+            tempCtx.fillText(chartTitle, tempCanvas.width / 2, 30);
+            
+            // Draw the chart below the title
+            tempCtx.drawImage(chartCanvas, 0, 50);
+            
+            // Convert to blob and download
+            tempCanvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${filename}-${new Date().toISOString().split('T')[0]}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        /* ── CSV Table Export ─────────────────────────── */
+        function exportTableCSV(containerId, filename) {
+            console.log('[Firefly:exportTableCSV] exporting CSV from:', containerId, 'as:', filename);
+            const container = document.getElementById(containerId);
+            if (!container) { console.error('[Firefly:exportTableCSV] container not found:', containerId); alert('No data to export.'); return; }
+
+            const tables = container.querySelectorAll('table');
+            if (tables.length === 0) { console.warn('[Firefly:exportTableCSV] no tables found in container'); alert('No data to export.'); return; }
+
+            const csvRows = [];
+
+            tables.forEach((table, ti) => {
+                // Get section label from the card header
+                const card = table.closest('.bg-white');
+                const heading = card ? card.querySelector('h3') : null;
+                if (heading) {
+                    if (ti > 0) csvRows.push(''); // blank line between sections
+                    csvRows.push('"' + heading.textContent.trim().replace(/"/g, '""') + '"');
+                }
+
+                // Header row
+                const thCells = table.querySelectorAll('thead th');
+                if (thCells.length) {
+                    csvRows.push(
+                        Array.from(thCells).map(th => '"' + th.textContent.trim().replace(/"/g, '""') + '"').join(',')
+                    );
+                }
+
+                // Data rows
+                table.querySelectorAll('tbody tr').forEach(tr => {
+                    const cells = tr.querySelectorAll('td');
+                    csvRows.push(
+                        Array.from(cells).map(td => {
+                            let val = td.textContent.trim();
+                            // Strip degree symbols and quote marks for clean CSV
+                            val = val.replace(/°/g, '').replace(/"/g, '""');
+                            return '"' + val + '"';
+                        }).join(',')
+                    );
+                });
+            });
+
+            const csvContent = csvRows.join('\n');
+            console.log('[Firefly:exportTableCSV] CSV generated:', csvRows.length, 'rows from', tables.length, 'table(s)');
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${filename}-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        /* ── Dropdown text updates ───────────────────────── */
+        function updateDropdownText() {
+            const dropdowns = document.querySelectorAll('details');
+            dropdowns.forEach(dropdown => {
+                const textSpan = dropdown.querySelector('summary span.text-xs');
+                if (textSpan) {
+                    textSpan.textContent = dropdown.open ? 'Click to collapse' : 'Click to expand';
+                }
+            });
+        }
+
+        // Add event listeners to all dropdowns
+        document.addEventListener('DOMContentLoaded', () => {
+            const dropdowns = document.querySelectorAll('details');
+            dropdowns.forEach(dropdown => {
+                dropdown.addEventListener('toggle', updateDropdownText);
+            });
+            // Set initial text
+            updateDropdownText();
+        });
+
+        /* ── Enter-key support (location inputs only) ── */
+        ['input-city-inline', 'input-state-inline', 'input-country-inline', 'input-lat-inline', 'input-lon-inline'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+        });
+
+        /* ── Forecast toggle listeners ───────────────── */
+        const tempForecastToggle = document.getElementById('include-temp-forecast');
+        if (tempForecastToggle) {
+            tempForecastToggle.addEventListener('change', () => {
+                console.log('[Firefly:tempForecastToggle] show forecast:', tempForecastToggle.checked);
+                // Toggle forecast dataset visibility directly
+                if (chart) {
+                    const showForecast = tempForecastToggle.checked;
+                    chart.data.datasets.forEach(dataset => {
+                        if (dataset.label.includes('Forecast')) {
+                            dataset.hidden = !showForecast;
+                        }
+                    });
+                    chart.update();
+                }
+            });
+        }
+
+        const gddForecastToggle = document.getElementById('include-gdd-forecast');
+        if (gddForecastToggle) {
+            gddForecastToggle.addEventListener('change', () => {
+                console.log('[Firefly:gddForecastToggle] show forecast:', gddForecastToggle.checked);
+                // Toggle forecast dataset visibility directly
+                if (gddChart) {
+                    const showForecast = gddForecastToggle.checked;
+                    gddChart.data.datasets.forEach(dataset => {
+                        if (dataset.label.includes('Forecast')) {
+                            dataset.hidden = !showForecast;
+                        }
+                    });
+                    gddChart.update();
+                }
+            });
+        }
+        /* ── Mobile Menu ────────────────────────────────── */
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const hamburger = document.getElementById('hamburger-icon');
+            const close = document.getElementById('close-icon');
+            menu.classList.toggle('hidden');
+            hamburger.classList.toggle('hidden');
+            close.classList.toggle('hidden');
+        }
+
+        /* ── Settings Panel ────────────────────────────── */
+        function toggleSettings() {
+            console.log('[Firefly:toggleSettings] toggling settings panel');
+            const panel = document.getElementById('settings-panel');
+            panel.classList.toggle('open');
+        }
+
+        // Close settings & mobile menu when clicking outside
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('settings-panel');
+            const btn = document.getElementById('settings-btn');
+            if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+            const mobileMenu = document.getElementById('mobile-menu');
+            const mobileBtn = document.getElementById('mobile-menu-btn');
+            if (mobileMenu && mobileBtn && !mobileMenu.contains(e.target) && !mobileBtn.contains(e.target)) {
+                mobileMenu.classList.add('hidden');
+                document.getElementById('hamburger-icon').classList.remove('hidden');
+                document.getElementById('close-icon').classList.add('hidden');
+            }
+        });
+
+        /* ── Dark Mode ────────────────────────────────── */
+        function updateThemeToggleUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const toggle = document.getElementById('theme-toggle');
+            const dot = document.getElementById('theme-toggle-dot');
+            if (toggle && dot) {
+                if (isDark) {
+                    toggle.classList.remove('bg-slate-200');
+                    toggle.classList.add('bg-lime-600');
+                    dot.classList.remove('translate-x-1');
+                    dot.classList.add('translate-x-6');
+                } else {
+                    toggle.classList.remove('bg-lime-600');
+                    toggle.classList.add('bg-slate-200');
+                    dot.classList.remove('translate-x-6');
+                    dot.classList.add('translate-x-1');
+                }
+            }
+        }
+
+        function toggleTheme() {
+            const isDark = document.documentElement.classList.contains('dark');
+            if (isDark) {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('firefly-theme', 'light');
+                console.log('[Firefly:toggleTheme] switched to light mode');
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('firefly-theme', 'dark');
+                console.log('[Firefly:toggleTheme] switched to dark mode');
+            }
+            updateThemeToggleUI();
+        }
+
+        // Initialize toggle UI on load
+        updateThemeToggleUI();
+
+        /* ── Clear Local Cache ────────────────────────── */
+        function clearLocalCache(e) {
+            console.log('[Firefly:clearLocalCache] clearing all local storage data');
+            const keys = ['firefly_saved_searches', 'firefly_result_cache'];
+            keys.forEach(key => localStorage.removeItem(key));
+            renderSavedSearches();
+            console.log('[Firefly:clearLocalCache] cache cleared successfully');
+            // Visual feedback
+            const btn = (e || event).target.closest('button');
+            const originalText = btn.textContent;
+            btn.textContent = 'Cleared!';
+            btn.classList.remove('text-red-600', 'bg-red-50', 'hover:bg-red-100');
+            btn.classList.add('text-green-600', 'bg-green-50');
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.remove('text-green-600', 'bg-green-50');
+                btn.classList.add('text-red-600', 'bg-red-50', 'hover:bg-red-100');
+            }, 2000);
+        }
+    </script>
+    <script src="/feedback.js"></script>
+</body>
+</html>

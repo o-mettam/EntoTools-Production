@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collection Database</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
+        if (localStorage.getItem('firefly-theme') === 'dark' ||
+            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-active { background: white; color: #3e4a64; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+        .dark .tab-active { background: #abd037; color: #1a2030; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+        .fade-in { animation: fadeIn .4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .dark body, html.dark body { background-color: #1a2030; color: #d8dee9; }
+        .dark nav { background-color: #2a3348; border-color: #3e4a64; }
+        .dark nav a { color: #9ca9c0; }
+        .dark nav a:hover { color: #eef1f6; }
+        .dark nav a.text-lime-600 { color: #c4e055; }
+        .dark header { background-color: #2a3348; }
+        .dark section, .dark .bg-white { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .bg-slate-50, .dark .bg-slate-100 { background-color: #3e4a64 !important; }
+        .dark .bg-slate-200 { background-color: #54637f !important; }
+        .dark .border-slate-200, .dark .border-slate-100, .dark .border-slate-300 { border-color: #3e4a64 !important; }
+        .dark .text-slate-800, .dark .text-slate-900 { color: #eef1f6 !important; }
+        .dark .text-slate-700 { color: #d8dee9 !important; }
+        .dark .text-slate-600 { color: #9ca9c0 !important; }
+        .dark .text-slate-500 { color: #9ca9c0 !important; }
+        .dark .text-slate-400 { color: #9ca9c0 !important; }
+        .dark input, .dark select, .dark textarea { background-color: #3e4a64 !important; border-color: #54637f !important; color: #eef1f6 !important; }
+        .dark input::placeholder, .dark textarea::placeholder { color: #7b8ba8 !important; }
+        .dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.3) !important; }
+        .dark table tbody tr { border-color: #3e4a64 !important; }
+        .dark table tbody tr:hover { background-color: #3e4a64 !important; }
+        .dark .detail-panel { background-color: #1a2030 !important; border-color: #3e4a64 !important; }
+        .settings-panel { transform: translateY(-8px); opacity: 0; pointer-events: none; transition: transform .2s ease, opacity .2s ease; }
+        .settings-panel.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+        .dark .settings-panel { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .settings-panel h3 { color: #eef1f6; }
+        .dark .settings-panel span { color: #d8dee9 !important; }
+        .dark .settings-panel hr { border-color: #3e4a64; }
+        .dark .settings-panel p { color: #7b8ba8 !important; }
+        .dark #settings-btn { color: #9ca9c0; }
+        .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 relative z-40">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-14 sm:h-16">
+                <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
+                <div class="flex items-center gap-1">
+                    <div class="relative">
+                        <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                        </button>
+                        <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
+                            <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
+                                    <span class="text-sm text-slate-700">Dark Mode</span>
+                                </div>
+                                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                    <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                                </button>
+                            </div>
+                            <hr class="my-2 border-slate-100">
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                                    </svg>
+                                    <span class="text-sm text-slate-700">Clear Local Cache</span>
+                                </div>
+                                <button onclick="clearLocalCache(event)" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">
+                                    Clear
+                                </button>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Removes cached search results and saved searches from your browser.</p>
+                        </div>
+                    </div>
+                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                        <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        </svg>
+                        <svg id="close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white">
+            <div class="px-4 py-3 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Home</a>
+                <a href="/degree-day-calculator" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Degree Day Calculator</a>
+                <a href="/gdd-lookup" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">GDD Lookup</a>
+                <a href="/sample-collection" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Label Data</a>
+                <a href="/collection-database" class="block px-3 py-2 rounded-lg text-lime-600 font-medium bg-lime-50">Collection Database</a>
+                <a href="/documentation" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Documentation</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="bg-slate-700 text-white shadow-lg">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Collection Database</h1>
+            <p class="text-lime-200 text-sm mt-1">Browse, search, and manage all saved specimen collection records. NOTE: This is a local browser database, and if you clear your cache or reset your browser, the database will be lost. It is HIGHLY recommended to export the CSV file after each session.</p>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+
+        <!-- Info Banner -->
+        <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3 text-sm">
+            <svg class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
+            <p class="text-blue-800">Records are created on the <a href="/sample-collection" class="font-semibold underline hover:text-blue-900">Label Data</a> page. Save a collection there and it will appear here automatically.</p>
+        </div>
+
+        <!-- Toolbar -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-lg font-semibold text-slate-800">Saved Collections</h2>
+                    <span id="record-count" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-lime-100 text-lime-800">0</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <input id="search-input" type="text" placeholder="Search records..."
+                           oninput="debouncedRender()"
+                           class="w-full sm:w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    <button onclick="exportAllCSV()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                        Export CSV
+                    </button>
+                    <button onclick="document.getElementById('csv-file-input').click()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition border border-slate-300">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
+                        Import CSV
+                    </button>
+                    <input id="csv-file-input" type="file" accept=".csv" class="hidden" onchange="importCSV(this)" />
+                    <a href="/sample-collection" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition border border-slate-300">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                        Create New Label
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Empty State -->
+        <section id="empty-state" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
+            <svg class="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z"/></svg>
+            <h3 class="text-lg font-semibold text-slate-700 mb-2">No collections saved yet</h3>
+            <p class="text-sm text-slate-500 mb-4">Create a collection on the <a href="/sample-collection" class="text-lime-600 font-medium hover:text-lime-700 underline">Label Data</a> page and click "Save to Collection Database" to add it here.</p>
+            <p class="text-sm text-slate-500 mb-6">You can also <button onclick="document.getElementById('csv-file-input').click()" class="text-lime-600 font-medium hover:text-lime-700 underline">import a CSV</button> exported from this site.</p>
+            <a href="/sample-collection" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm transition shadow-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                Create Your First Label
+            </a>
+        </section>
+
+        <!-- Table -->
+        <section id="table-section" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('specimenId')">Specimen ID <span id="sort-specimenId" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('identification')">Identification <span id="sort-identification" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('siteName')">Site <span id="sort-siteName" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('location')">Location <span id="sort-location" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('dateStart')">Date <span id="sort-dateStart" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('collector')">Collector <span id="sort-collector" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 text-center w-24">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 py-6 space-y-1">
+        <p>Data sourced from <a href="https://www.ncei.noaa.gov/" class="underline hover:text-slate-600">NOAA NCEI</a>.
+        Geocoding by <a href="https://nominatim.openstreetmap.org/" class="underline hover:text-slate-600">Nominatim / OpenStreetMap</a>.
+        <a href="https://github.com/aceargle/Firefly-Dashboard" class="underline hover:text-slate-600">GitHub</a>.</p>
+        <p>Developed by Owen Mettam &amp; Alana Eargle</p>
+    </footer>
+
+    <script>
+        /* ── State ── */
+        const STORAGE_KEY = 'fireflyLabelSheet';
+        let entries = [];
+        let sortField = 'dateStart';
+        let sortDir = 'desc';
+        let expandedIdx = -1;
+        let dirtyThisSession = false;
+        let searchDebounceTimer = null;
+
+        function debouncedRender() {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(renderTable, 150);
+        }
+
+        /* ── Mobile Menu ── */
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const hamburger = document.getElementById('hamburger-icon');
+            const close = document.getElementById('close-icon');
+            menu.classList.toggle('hidden');
+            hamburger.classList.toggle('hidden');
+            close.classList.toggle('hidden');
+        }
+
+        /* ── Settings / Theme ── */
+        function toggleSettings() { document.getElementById('settings-panel').classList.toggle('open'); }
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('settings-panel');
+            const btn = document.getElementById('settings-btn');
+            if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) panel.classList.remove('open');
+            const mobileMenu = document.getElementById('mobile-menu');
+            const mobileBtn = document.getElementById('mobile-menu-btn');
+            if (mobileMenu && mobileBtn && !mobileMenu.contains(e.target) && !mobileBtn.contains(e.target)) {
+                mobileMenu.classList.add('hidden');
+                document.getElementById('hamburger-icon').classList.remove('hidden');
+                document.getElementById('close-icon').classList.add('hidden');
+            }
+        });
+        function updateThemeToggleUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const toggle = document.getElementById('theme-toggle');
+            const dot = document.getElementById('theme-toggle-dot');
+            if (isDark) { toggle.classList.remove('bg-slate-200'); toggle.classList.add('bg-lime-600'); dot.classList.remove('translate-x-1'); dot.classList.add('translate-x-6'); }
+            else { toggle.classList.add('bg-slate-200'); toggle.classList.remove('bg-lime-600'); dot.classList.add('translate-x-1'); dot.classList.remove('translate-x-6'); }
+        }
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('firefly-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            updateThemeToggleUI();
+        }
+        updateThemeToggleUI();
+
+        /* ── Clear Local Cache ────────────────────────── */
+        function clearLocalCache(e) {
+            console.log('[Firefly:clearLocalCache] clearing all local storage data');
+            const keys = ['firefly_saved_searches', 'firefly_result_cache'];
+            keys.forEach(key => localStorage.removeItem(key));
+            console.log('[Firefly:clearLocalCache] cache cleared successfully');
+            // Visual feedback
+            const btn = (e || event).target.closest('button');
+            const originalText = btn.textContent;
+            btn.textContent = 'Cleared!';
+            btn.classList.remove('text-red-600', 'bg-red-50', 'hover:bg-red-100');
+            btn.classList.add('text-green-600', 'bg-green-50');
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.classList.remove('text-green-600', 'bg-green-50');
+                btn.classList.add('text-red-600', 'bg-red-50', 'hover:bg-red-100');
+            }, 2000);
+        }
+
+        /* ── Helpers ── */
+        function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function fmtDate(d) {
+            if (!d) return '—';
+            const [y, m, day] = d.split('-');
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            return `${months[parseInt(m)-1]} ${parseInt(day)}, ${y}`;
+        }
+
+        function fmtTime12(t) {
+            if (!t) return '';
+            const [h, m] = t.split(':').map(Number);
+            const suffix = h >= 12 ? 'PM' : 'AM';
+            return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${suffix}`;
+        }
+        function fmtTimeRange(d) {
+            if (d.timeStart && d.timeEnd) return fmtTime12(d.timeStart) + ' – ' + fmtTime12(d.timeEnd);
+            if (d.timeStart) return fmtTime12(d.timeStart);
+            if (d.timeOfCollection && d.timeOfCollection.includes(' - ')) {
+                const parts = d.timeOfCollection.split(' - ');
+                return fmtTime12(parts[0].trim()) + ' – ' + fmtTime12(parts[1].trim());
+            }
+            return d.timeOfCollection ? fmtTime12(d.timeOfCollection) : '';
+        }
+        function parse12hTo24h(str) {
+            if (!str) return '';
+            str = str.trim();
+            // If already in 24h format (HH:MM), return as-is
+            if (/^\d{1,2}:\d{2}$/.test(str)) return str;
+            const match = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+            if (!match) return '';
+            let h = parseInt(match[1]);
+            const m = match[2];
+            const ampm = match[3].toUpperCase();
+            if (ampm === 'PM' && h !== 12) h += 12;
+            if (ampm === 'AM' && h === 12) h = 0;
+            return String(h).padStart(2, '0') + ':' + m;
+        }
+        function parseTimeRangeStart(timeStr) {
+            if (!timeStr) return '';
+            // Handle "HH:MM - HH:MM" (24h stored format)
+            if (timeStr.includes(' - ') && /^\d{2}:\d{2}/.test(timeStr)) return timeStr.split(' - ')[0].trim();
+            // Handle "1:00 PM – 4:00 PM" (12h display format)
+            const sep = timeStr.includes('–') ? '–' : timeStr.includes(' - ') ? ' - ' : null;
+            if (sep) return parse12hTo24h(timeStr.split(sep)[0].trim());
+            return parse12hTo24h(timeStr.trim());
+        }
+        function parseTimeRangeEnd(timeStr) {
+            if (!timeStr) return '';
+            // Handle "HH:MM - HH:MM" (24h stored format)
+            if (timeStr.includes(' - ') && /^\d{2}:\d{2}/.test(timeStr)) {
+                const parts = timeStr.split(' - ');
+                return parts.length > 1 ? parts[1].trim() : '';
+            }
+            // Handle "1:00 PM – 4:00 PM" (12h display format)
+            const sep = timeStr.includes('–') ? '–' : timeStr.includes(' - ') ? ' - ' : null;
+            if (sep) {
+                const parts = timeStr.split(sep);
+                return parts.length > 1 ? parse12hTo24h(parts[1].trim()) : '';
+            }
+            return '';
+        }
+
+        /* ── Load Data ── */
+        function loadEntries() {
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                entries = stored ? JSON.parse(stored) : [];
+                console.log('[CollectionDB] loaded', entries.length, 'entries from localStorage');
+            } catch (e) { console.warn('[CollectionDB] localStorage load failed:', e); entries = []; }
+        }
+
+        function saveEntries() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+                console.log('[CollectionDB] saved', entries.length, 'entries to localStorage');
+            }
+            catch (e) { console.warn('[CollectionDB] localStorage save failed:', e); }
+        }
+
+        /* ── Sort ── */
+        function sortBy(field) {
+            if (sortField === field) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+            else { sortField = field; sortDir = 'asc'; }
+            console.log('[CollectionDB] sort by', field, sortDir);
+            expandedIdx = -1;
+            renderTable();
+        }
+
+        /* ── Render ── */
+        function renderTable() {
+            loadEntries();
+            const query = (document.getElementById('search-input').value || '').toLowerCase().trim();
+            const countEl = document.getElementById('record-count');
+            const emptyEl = document.getElementById('empty-state');
+            const tableEl = document.getElementById('table-section');
+            const tbody = document.getElementById('table-body');
+
+            // Filter
+            let filtered = entries.map((e, i) => ({ ...e, _idx: i }));
+            if (query) {
+                filtered = filtered.filter(e => {
+                    if (!e.data) return false;
+                    const d = e.data;
+                    const haystack = [d.specimenId, d.identification, d.siteName, d.location, d.dateStart, d.collector, d.identifier, d.collectionMethod, d.userNotes].filter(Boolean).join(' ').toLowerCase();
+                    return haystack.includes(query);
+                });
+            }
+
+            // Sort
+            filtered.sort((a, b) => {
+                const va = (a.data && a.data[sortField]) || '';
+                const vb = (b.data && b.data[sortField]) || '';
+                const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+                return sortDir === 'asc' ? cmp : -cmp;
+            });
+
+            // Update count & visibility
+            if (entries.length === 0) {
+                countEl.textContent = '0';
+                emptyEl.classList.remove('hidden');
+                tableEl.classList.add('hidden');
+                return;
+            }
+            countEl.textContent = query ? `${filtered.length} / ${entries.length}` : entries.length;
+            emptyEl.classList.add('hidden');
+            tableEl.classList.remove('hidden');
+
+            // Sort indicators
+            ['specimenId', 'identification', 'siteName', 'location', 'dateStart', 'collector'].forEach(f => {
+                const el = document.getElementById('sort-' + f);
+                if (el) el.textContent = sortField === f ? (sortDir === 'asc' ? '\u25B2' : '\u25BC') : '';
+            });
+
+            // Build rows
+            tbody.innerHTML = '';
+            filtered.forEach(entry => {
+                const d = entry.data || {};
+                const i = entry._idx;
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition';
+                tr.onclick = () => { expandedIdx = expandedIdx === i ? -1 : i; renderTable(); };
+                tr.innerHTML = `
+                    <td class="px-4 py-3 font-medium text-slate-800">${esc(d.specimenId || '—')}</td>
+                    <td class="px-4 py-3 text-slate-600 italic">${esc(d.identification || '—')}</td>
+                    <td class="px-4 py-3 text-slate-600">${esc(d.siteName || '—')}</td>
+                    <td class="px-4 py-3 text-slate-600">${esc(d.location || '—')}</td>
+                    <td class="px-4 py-3 text-slate-600 whitespace-nowrap">${fmtDate(d.dateStart)}</td>
+                    <td class="px-4 py-3 text-slate-600">${esc(d.collector || '—')}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button onclick="event.stopPropagation(); deleteEntry(${i})" class="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition" title="Delete">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+
+                // Expanded detail row
+                if (expandedIdx === i) {
+                    const detailTr = document.createElement('tr');
+                    detailTr.innerHTML = `<td colspan="7" class="px-0 py-0"><div class="detail-panel bg-slate-50 border-t border-slate-200 px-6 py-4 fade-in">${buildDetail(d)}</div></td>`;
+                    tbody.appendChild(detailTr);
+                }
+            });
+
+            if (filtered.length === 0 && query) {
+                tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">No records match "<strong>${esc(query)}</strong>"</td></tr>`;
+            }
+        }
+
+        /* ── Detail Panel ── */
+        function buildDetail(d) {
+            const row = (label, val) => val && val !== '—' ? `<div class="flex gap-2"><span class="font-semibold text-slate-600 whitespace-nowrap">${label}:</span><span class="text-slate-800">${val}</span></div>` : '';
+
+            const coordEst = d.inputMode !== 'latlon' ? 'Yes (estimated)' : 'No';
+            const humVal = d.humidity ? (d.humidity.atTime || d.humidity.avg || '—') + '%' : '—';
+            const gddVal = d.isRange ? `${d.gddStart} – ${d.gddEnd}` : String(d.gddStart || '—');
+            const dateVal = d.isRange ? `${fmtDate(d.dateStart)} – ${fmtDate(d.dateEnd)}` : fmtDate(d.dateStart);
+
+            return `
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2 text-sm">
+                    <div class="sm:col-span-2 lg:col-span-3 mb-1"><h4 class="font-bold text-slate-800 text-base">${esc(d.specimenId || 'Untitled')}${d.identification ? ' — <em>' + esc(d.identification) + '</em>' : ''}</h4></div>
+
+                    ${row('Site Name', esc(d.siteName || ''))}
+                    ${row('Location', esc(d.location || ''))}
+                    ${row('Coordinates', d.lat != null && d.lon != null ? d.lat + ', ' + d.lon : '')}
+                    ${row('Coords Estimated', coordEst)}
+                    ${row('Elevation', d.elevation != null ? d.elevation + ' m' : '')}
+                    ${row('Date', dateVal)}
+                    ${row('Time', fmtTimeRange(d))}
+                    ${row('Sunset', d.sunset || '')}
+                    ${row('Collector', esc(d.collector || ''))}
+                    ${row('Determiner', esc(d.identifier || ''))}
+                    ${row('Specimens', d.numSpecimens || '')}
+                    ${row('Collection Method', esc(d.collectionMethod || ''))}
+                    ${row('High Temp', d.highTemp != null ? d.highTemp + '\u00b0F' : '')}
+                    ${row('Low Temp', d.lowTemp != null ? d.lowTemp + '\u00b0F' : '')}
+                    ${row('Avg Temp', d.avgTemp != null ? d.avgTemp + '\u00b0F' : '')}
+                    ${row('Temp at Collection', d.tempAtTime != null ? d.tempAtTime + '\u00b0F' : '')}
+                    ${row('mGDD', gddVal)}
+                    ${row('Humidity', humVal)}
+                    ${row('Rainfall (7d)', d.rainfallWeek != null ? d.rainfallWeek + ' in' : '')}
+                    ${row('Rainfall (30d)', d.rainfallMonth != null ? d.rainfallMonth + ' in' : '')}
+                    ${row('Weather Station', d.stationName ? esc(d.stationName) + ' (' + esc(d.stationId) + ')' : '')}
+                    ${row('Station Distance', d.stationDist != null ? d.stationDist + ' mi' : '')}
+                    ${row('GDD Base Temp', d.baseTemp != null ? d.baseTemp + '\u00b0F' : '')}
+                    ${row('GDD Max Temp', d.maxTemp != null ? d.maxTemp + '\u00b0F' : '')}
+                    ${row('GDD Accum Start', d.accumStartMD || '')}
+                    ${d.userNotes ? `<div class="sm:col-span-2 lg:col-span-3 mt-2 pt-2 border-t border-slate-200"><span class="font-semibold text-slate-600">Notes:</span><p class="text-slate-800 mt-1 whitespace-pre-wrap">${esc(d.userNotes)}</p></div>` : ''}
+                </div>
+            `;
+        }
+
+        /* ── Delete ── */
+        function deleteEntry(idx) {
+            if (!confirm('Delete this collection record? This cannot be undone.')) return;
+            console.log('[CollectionDB] deleting entry at index', idx);
+            entries.splice(idx, 1);
+            saveEntries();
+            dirtyThisSession = true;
+            expandedIdx = -1;
+            renderTable();
+        }
+
+        /* ── Export CSV ── */
+        function exportAllCSV() {
+            loadEntries();
+            if (entries.length === 0) { console.warn('[CollectionDB] export called but no entries'); return; }
+            console.log('[CollectionDB] exporting', entries.length, 'entries to CSV');
+
+            const headers = [
+                'Specimen ID','Specimen Identification','Number of Specimens',
+                'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
+                'Date Start','Date End','Sunset','Time of Collection',
+                'Collector','Determiner',
+                'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
+                'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
+                'Weather Station','Station ID','Station Distance (mi)','Data Provider',
+                'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
+                'Collection Method','Notes'
+            ];
+
+            const csvRow = vals => vals.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+            let csv = csvRow(headers) + '\n';
+
+            entries.forEach(entry => {
+                const d = entry.data;
+                if (!d) return;
+                csv += csvRow([
+                    d.specimenId, d.identification, d.numSpecimens,
+                    d.siteName, d.location, d.country || d.countryCode || '', d.lat, d.lon, d.inputMode !== 'latlon' ? 'Yes' : 'No', d.elevation,
+                    d.dateStart, d.dateEnd, d.sunset || '', fmtTimeRange(d),
+                    d.collector, d.identifier,
+                    d.highTemp, d.lowTemp, d.avgTemp, d.tempAtTime ?? '', d.isRange ? d.gddStart + ' - ' + d.gddEnd : d.gddStart,
+                    d.humidity && (d.humidity.atTime || d.humidity.avg) || '', d.rainfallWeek, d.rainfallMonth,
+                    d.stationName, d.stationId, d.stationDist, d.provider || '',
+                    d.baseTemp, d.maxTemp, d.accumStartMD,
+                    d.collectionMethod || '', d.userNotes || ''
+                ]) + '\n';
+            });
+
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `collection_database_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        /* ── CSV Import ── */
+        const CSV_HEADERS = [
+            'Specimen ID','Specimen Identification','Number of Specimens',
+            'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
+            'Date Start','Date End','Sunset','Time of Collection',
+            'Collector','Determiner',
+            'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
+            'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
+            'Weather Station','Station ID','Station Distance (mi)','Data Provider',
+            'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
+            'Collection Method','Notes'
+        ];
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const ch = line[i];
+                if (inQuotes) {
+                    if (ch === '"') {
+                        if (i + 1 < line.length && line[i + 1] === '"') { current += '"'; i++; }
+                        else inQuotes = false;
+                    } else current += ch;
+                } else {
+                    if (ch === '"') inQuotes = true;
+                    else if (ch === ',') { result.push(current.trim()); current = ''; }
+                    else current += ch;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        function csvRowToData(headerMap, vals) {
+            const g = (name) => vals[headerMap[name]] ?? '';
+            const num = (name) => { const v = g(name); return v !== '' ? parseFloat(v) : null; };
+
+            const coordsEstimated = g('Coordinates Estimated').toLowerCase();
+            const gddRaw = g('mGDD');
+            let gddStart = 0, gddEnd = 0, isRange = false;
+            if (gddRaw.includes('-') || gddRaw.includes('–')) {
+                const parts = gddRaw.split(/\s*[-–]\s*/);
+                gddStart = parseFloat(parts[0]) || 0;
+                gddEnd = parseFloat(parts[1]) || 0;
+                isRange = true;
+            } else {
+                gddStart = parseFloat(gddRaw) || 0;
+                gddEnd = gddStart;
+            }
+
+            const dateEnd = g('Date End');
+            if (dateEnd && dateEnd !== g('Date Start')) isRange = true;
+
+            return {
+                specimenId: g('Specimen ID'),
+                identification: g('Specimen Identification'),
+                numSpecimens: g('Number of Specimens'),
+                siteName: g('Site Name'),
+                location: g('Location'),
+                country: g('Country'),
+                lat: num('Latitude'),
+                lon: num('Longitude'),
+                inputMode: coordsEstimated === 'yes' ? 'city' : 'latlon',
+                elevation: num('Elevation (m)'),
+                dateStart: g('Date Start'),
+                dateEnd: dateEnd || g('Date Start'),
+                isRange,
+                sunset: g('Sunset'),
+                timeOfCollection: g('Time of Collection'),
+                timeStart: parseTimeRangeStart(g('Time of Collection')),
+                timeEnd: parseTimeRangeEnd(g('Time of Collection')),
+                collector: g('Collector'),
+                identifier: g('Determiner'),
+                highTemp: num('High Temp (F)'),
+                lowTemp: num('Low Temp (F)'),
+                avgTemp: num('Avg Temp (F)'),
+                tempAtTime: num('Temp at Collection (F)'),
+                gddStart, gddEnd,
+                humidity: { atTime: null, avg: num('Humidity (%)') },
+                rainfallWeek: num('Rainfall Last 7 Days (in)'),
+                rainfallMonth: num('Rainfall Last 30 Days (in)'),
+                stationName: g('Weather Station'),
+                stationId: g('Station ID'),
+                stationDist: num('Station Distance (mi)'),
+                provider: g('Data Provider'),
+                baseTemp: num('mGDD Base Temp (F)'),
+                maxTemp: num('mGDD Max Temp (F)'),
+                accumStartMD: g('mGDD Accum Start Date'),
+                collectionMethod: g('Collection Method'),
+                userNotes: g('Notes'),
+            };
+        }
+
+        function buildLabelHtml(d) {
+            const dateDisplay = d.isRange && d.dateEnd !== d.dateStart
+                ? `${fmtDate(d.dateStart)} – ${fmtDate(d.dateEnd)}`
+                : fmtDate(d.dateStart);
+            const gddDisplay = d.isRange && d.gddEnd !== d.gddStart
+                ? `mGDD: ${d.gddStart} – ${d.gddEnd}`
+                : `mGDD: ${d.gddStart}`;
+            const coordPrefix = d.inputMode !== 'latlon' ? 'APPROX. ' : '';
+            let html = '';
+            if (d.siteName) html += `<div>${esc(d.siteName)}</div>`;
+            if (d.location) html += `<div>${esc(d.location)}</div>`;
+            if (d.lat != null && d.lon != null) html += `<div>${esc(coordPrefix + d.lat + ', ' + d.lon)}</div>`;
+            const timeStr = fmtTimeRange(d);
+            html += `<div>${esc(dateDisplay)}${timeStr ? ', ' + esc(timeStr) : ''}</div>`;
+            html += `<div>${esc(gddDisplay)}, Elev. ${d.elevation != null ? d.elevation + ' m' : '—'}</div>`;
+            if (d.collector) html += `<div>COLL. ${esc(d.collector)}</div>`;
+            return html;
+        }
+
+        function importCSV(input) {
+            const file = input.files[0];
+            if (!file) return;
+            console.log('[CollectionDB] importing CSV file:', file.name, '(' + file.size + ' bytes)');
+            input.value = ''; // reset so same file can be re-imported
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const text = e.target.result;
+                    const lines = text.split(/\r?\n/).filter(l => l.trim());
+                    if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row.');
+
+                    // Map header names to column indices
+                    const headerCells = parseCSVLine(lines[0]);
+                    const headerMap = {};
+                    headerCells.forEach((h, i) => { headerMap[h.trim()] = i; });
+
+                    // Check for required columns
+                    const missing = ['Date Start', 'Latitude', 'Longitude'].filter(h => !(h in headerMap));
+                    if (missing.length) throw new Error('CSV is missing required columns: ' + missing.join(', '));
+
+                    loadEntries();
+                    let imported = 0;
+
+                    for (let r = 1; r < lines.length; r++) {
+                        const vals = parseCSVLine(lines[r]);
+                        if (vals.length < 3) continue; // skip empty/malformed rows
+
+                        const data = csvRowToData(headerMap, vals);
+                        const label1 = buildLabelHtml(data);
+                        let label2 = null;
+                        if (data.specimenId || data.identification || data.identifier) {
+                            let l2 = '';
+                            if (data.specimenId) l2 += `<div>${esc(data.specimenId)}</div>`;
+                            if (data.identification) l2 += `<div><em>${esc(data.identification)}</em></div>`;
+                            if (data.identifier) l2 += `<div>DET. ${esc(data.identifier)}</div>`;
+                            label2 = l2;
+                        }
+
+                        entries.push({ label1, label2, data });
+                        imported++;
+                    }
+
+                    saveEntries();
+                    dirtyThisSession = true;
+                    expandedIdx = -1;
+                    renderTable();
+                    console.log('[CollectionDB] imported', imported, 'records, total entries:', entries.length);
+                    alert(`Successfully imported ${imported} record${imported !== 1 ? 's' : ''}.`);
+                } catch (err) {
+                    alert('Import failed: ' + err.message);
+                    console.error('[CollectionDB] import error:', err);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        /* ── Beforeunload warning ── */
+        window.addEventListener('beforeunload', function(e) {
+            if (!dirtyThisSession) return;
+            const msg = 'You made changes this session. Consider downloading your CSV backup before leaving.';
+            e.preventDefault();
+            e.returnValue = msg;
+            return msg;
+        });
+
+        /* ── Init ── */
+        console.log('[CollectionDB] page initialized');
+        renderTable();
+    </script>
+    <script src="/feedback.js"></script>
+</body>
+</html>

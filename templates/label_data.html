@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Label Data</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
+        if (localStorage.getItem('firefly-theme') === 'dark' ||
+            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tab-active { background: white; color: #3e4a64; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+        .dark .tab-active { background: #abd037; color: #1a2030; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+        .loader { border: 4px solid #bdc6d8; border-top: 4px solid #abd037; border-radius: 50%; width: 40px; height: 40px; animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn .4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .dark body, html.dark body { background-color: #1a2030; color: #d8dee9; }
+        .dark nav { background-color: #2a3348; border-color: #3e4a64; }
+        .dark nav a { color: #9ca9c0; }
+        .dark nav a:hover { color: #eef1f6; }
+        .dark nav a.text-lime-600 { color: #c4e055; }
+        .dark header { background-color: #2a3348; }
+        .dark section, .dark .bg-white { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .bg-slate-50, .dark .bg-slate-100 { background-color: #3e4a64 !important; }
+        .dark .bg-slate-200 { background-color: #54637f !important; }
+        .dark .border-slate-200, .dark .border-slate-100, .dark .border-slate-300 { border-color: #3e4a64 !important; }
+        .dark .text-slate-800, .dark .text-slate-900 { color: #eef1f6 !important; }
+        .dark .text-slate-700 { color: #d8dee9 !important; }
+        .dark .text-slate-600 { color: #9ca9c0 !important; }
+        .dark .text-slate-500 { color: #9ca9c0 !important; }
+        .dark .text-slate-400 { color: #9ca9c0 !important; }
+        .dark input, .dark select, .dark textarea { background-color: #3e4a64 !important; border-color: #54637f !important; color: #eef1f6 !important; }
+        .dark input::placeholder, .dark textarea::placeholder { color: #7b8ba8 !important; }
+        .dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.3) !important; }
+        .dark .rounded-lg.bg-slate-100 button { color: #d8dee9 !important; }
+        .settings-panel { transform: translateY(-8px); opacity: 0; pointer-events: none; transition: transform .2s ease, opacity .2s ease; }
+        .settings-panel.open { transform: translateY(0); opacity: 1; pointer-events: auto; }
+        .dark .settings-panel { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .settings-panel h3 { color: #eef1f6; }
+        .dark .settings-panel span { color: #d8dee9 !important; }
+        .dark .settings-panel hr { border-color: #3e4a64; }
+        .dark .settings-panel p { color: #7b8ba8 !important; }
+        .dark #settings-btn { color: #9ca9c0; }
+        .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
+        .label-preview { border: 2px solid #2a3348; padding: 1rem; font-family: 'Inter', sans-serif; font-size: 0.8rem; line-height: 1.4; background: white; color: #1e293b; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 relative z-40">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-14 sm:h-16">
+                <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
+                <div class="flex items-center gap-1">
+                    <div class="relative">
+                        <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                        </button>
+                        <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
+                            <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
+                                    <span class="text-sm text-slate-700">Dark Mode</span>
+                                </div>
+                                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                    <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                                </button>
+                            </div>
+                            <hr class="my-2 border-slate-100">
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                    <span class="text-sm text-slate-700">Clear Local Cache</span>
+                                </div>
+                                <button onclick="clearLocalCache(event)" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">Clear</button>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Removes cached search results and saved searches from your browser.</p>
+                        </div>
+                    </div>
+                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                        <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        </svg>
+                        <svg id="close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white">
+            <div class="px-4 py-3 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Home</a>
+                <a href="/degree-day-calculator" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Degree Day Calculator</a>
+                <a href="/gdd-lookup" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">GDD Lookup</a>
+                <a href="/sample-collection" class="block px-3 py-2 rounded-lg text-lime-600 font-medium bg-lime-50">Label Data</a>
+                <a href="/collection-database" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Collection Database</a>
+                <a href="/documentation" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Documentation</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="bg-slate-700 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Label Data</h1>
+            <p class="text-lime-200 text-sm mt-1">Generate printable labels, notes, and CSV exports for specimen collections.</p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
+
+        <!-- Info Banner -->
+        <div class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-3 text-sm">
+            <svg class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
+            <p class="text-blue-800">Collections you save here are stored in the <a href="/collection-database" class="font-semibold underline hover:text-blue-900">Collection Database</a>, where you can browse, search, export, and manage all your records.</p>
+        </div>
+
+        <!-- Input Card -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <h2 class="text-lg font-semibold text-slate-800 mb-4">Collection Details</h2>
+
+            <!-- Site Name -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Site Name <span class="text-slate-400 font-normal">(optional)</span></label>
+                <input id="input-site-name" type="text" placeholder="e.g. Smoky Mountain National Park"
+                       class="w-full sm:w-96 rounded-lg border border-slate-300 px-4 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+            </div>
+
+            <!-- Location Tabs -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Location</label>
+                <div class="inline-flex flex-wrap rounded-lg bg-slate-100 p-1 mb-3 text-sm font-medium items-center gap-1">
+                    <button onclick="switchTab('city')"   id="tab-city"   class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">City / State / Country</button>
+                    <button onclick="switchTab('latlon')" id="tab-latlon" class="px-3 sm:px-4 py-2 rounded-md transition tab-active">Lat / Long</button>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <input id="input-city-inline" type="text" placeholder="City"
+                           class="w-full sm:w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none hidden" />
+                    <input id="input-state-inline" type="text" placeholder="State / Province"
+                           class="w-full sm:w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none hidden" />
+                    <input id="input-country-inline" type="text" placeholder="Country"
+                           class="w-full sm:w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none hidden" />
+                    <input id="input-lat-inline" type="text" placeholder="e.g. 35.4564 or 35° 27' 23&quot; N"
+                           class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    <input id="input-lon-inline" type="text" placeholder="e.g. -83.4392 or 83° 26' 21&quot; W"
+                           class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                </div>
+                <p class="text-xs text-slate-500 mt-1.5">Accepts decimal degrees (35.4564) or DMS (35° 27' 23" N)</p>
+            </div>
+
+            <!-- Date -->
+            <div class="mt-5 pt-5 border-t border-slate-100">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Collection Date</label>
+                <div class="flex flex-wrap items-center gap-3 mb-2">
+                    <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                        <input type="radio" name="date-mode" value="single" checked onchange="toggleDateMode()" class="accent-lime-600" />
+                        Single Date
+                    </label>
+                    <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                        <input type="radio" name="date-mode" value="range" onchange="toggleDateMode()" class="accent-lime-600" />
+                        Date Range
+                    </label>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <input id="input-date-start" type="date" class="rounded-lg border border-slate-300 px-4 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    <span id="date-range-sep" class="hidden self-center text-slate-400 text-sm">to</span>
+                    <input id="input-date-end" type="date" class="hidden rounded-lg border border-slate-300 px-4 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                </div>
+            </div>
+
+            <!-- GDD Settings -->
+            <div class="mt-5 pt-5 border-t border-slate-100">
+                <p class="text-sm font-medium text-slate-600 mb-2">GDD Settings</p>
+                <div class="flex flex-wrap items-stretch gap-3">
+                    <div class="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Base Temp (&deg;F)</label>
+                        <input id="input-gdd-base" type="number" value="50" step="1"
+                               class="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                    </div>
+                    <div class="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Max Temp (&deg;F)</label>
+                        <input id="input-gdd-max" type="number" value="86" step="1"
+                               class="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                    </div>
+                    <div class="rounded-xl border-2 border-slate-300 bg-slate-50 px-4 py-3">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Accumulation Start</label>
+                        <div class="flex gap-1.5">
+                            <select id="input-gdd-month" class="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none">
+                                <option value="01">Jan</option><option value="02">Feb</option>
+                                <option value="03" selected>Mar</option><option value="04">Apr</option>
+                                <option value="05">May</option><option value="06">Jun</option>
+                                <option value="07">Jul</option><option value="08">Aug</option>
+                                <option value="09">Sep</option><option value="10">Oct</option>
+                                <option value="11">Nov</option><option value="12">Dec</option>
+                            </select>
+                            <input id="input-gdd-day" type="number" value="1" min="1" max="31"
+                                   class="w-16 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1.5">Resets each Jan 1</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Optional Fields -->
+            <div class="mt-5 pt-5 border-t border-slate-100">
+                <p class="text-sm font-medium text-slate-600 mb-3">Optional Fields</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Time of Collection</label>
+                        <div class="flex items-center gap-2">
+                            <input id="input-time-start" type="time" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                            <span class="text-slate-400 text-sm">to</span>
+                            <input id="input-time-end" type="time" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">Start and end of sampling period (end is optional)</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Collector</label>
+                        <input id="input-collector" type="text" placeholder="e.g. J. Smith"
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Specimen ID</label>
+                        <input id="input-specimen-id" type="text" placeholder="e.g. SPEC-001"
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Specimen Identification</label>
+                        <input id="input-identification" type="text" placeholder="e.g. Photinus pyralis"
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Determiner</label>
+                        <input id="input-identifier" type="text" placeholder="e.g. Dr. A. Jones"
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Number of Specimens</label>
+                        <input id="input-num-specimens" type="number" min="1" placeholder="e.g. 5"
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Notes</label>
+                        <textarea id="input-notes" rows="3" placeholder="Field observations, habitat description, weather conditions, etc."
+                                  class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none resize-y"></textarea>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Collection Method</label>
+                        <input id="input-collection-method" type="text" placeholder="e.g. Light trap, Hand collection, Malaise trap"
+                               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generate Button -->
+            <div class="mt-5 flex flex-wrap items-center gap-3">
+                <button id="btn-generate" onclick="doGenerate()"
+                        class="inline-flex items-center gap-2 bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm px-6 py-2.5 rounded-lg transition shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
+                    </svg>
+                    Generate Labels &amp; Notes
+                </button>
+                <button id="btn-view-saved" onclick="document.getElementById('print-sheet-section').scrollIntoView({ behavior: 'smooth', block: 'start' })" class="hidden inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition border border-slate-300">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"/></svg>
+                    Saved Collections (<span id="saved-badge">0</span>)
+                </button>
+            </div>
+        </section>
+
+        <!-- Loading -->
+        <div id="loading" class="hidden flex flex-col items-center gap-3 py-8">
+            <div class="loader"></div>
+            <p class="text-sm text-slate-500" id="loading-text">Fetching weather &amp; location data&hellip;</p>
+        </div>
+
+        <!-- Error -->
+        <div id="error-box" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm"></div>
+
+        <!-- Fallback provider warning (country not supported) -->
+        <div id="fallback-warning" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl px-4 py-3 text-sm fade-in">
+            <strong>Note:</strong> Your location is in a country without a dedicated weather data source. Results are provided via Open-Meteo global reanalysis data and may be less accurate than station-based observations.
+        </div>
+
+        <!-- Provider fallback warning (primary API failed) -->
+        <div id="provider-fallback-warning" class="hidden bg-amber-50 border border-amber-300 text-amber-800 rounded-xl px-4 py-3 text-sm fade-in">
+            <strong>Warning:</strong> <span id="provider-fallback-msg"></span>
+        </div>
+
+        <!-- Results -->
+        <div id="results" class="hidden space-y-6 fade-in">
+
+            <!-- Station Info -->
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <h2 class="text-lg font-semibold text-slate-800 mb-3">Station &amp; Location Info</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div><span class="text-slate-500">Location:</span> <span id="res-location" class="font-medium text-slate-800 ml-1"></span></div>
+                    <div><span class="text-slate-500">Station:</span> <span id="res-station" class="font-medium text-slate-800 ml-1"></span></div>
+                    <div><span class="text-slate-500">Coordinates:</span> <span id="res-coords" class="font-mono text-slate-700 ml-1"></span></div>
+                    <div><span class="text-slate-500">Elevation:</span> <span id="res-elevation" class="font-medium text-slate-800 ml-1"></span></div>
+                </div>
+            </section>
+
+            <!-- Labels Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <!-- Label 1: Collection Label -->
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800">Collection Label</h2>
+                    <button onclick="printLabel('label1')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
+                        Print
+                    </button>
+                </div>
+                <div id="label1" class="label-preview rounded-lg"></div>
+            </section>
+
+            <!-- Label 2: Specimen Label (conditional) -->
+            <section id="label2-section" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800">Specimen Label</h2>
+                    <button onclick="printLabel('label2')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
+                        Print
+                    </button>
+                </div>
+                <div id="label2" class="label-preview rounded-lg"></div>
+            </section>
+
+            </div><!-- end Labels Grid -->
+
+            <!-- Save to Database -->
+            <div class="flex justify-center mt-2 mb-2">
+                <button onclick="addToSheet()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm transition shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                    Save to Collection Database
+                </button>
+            </div>
+
+            <!-- Notes Page -->
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-slate-800">Collection Notes</h2>
+                    <button onclick="printLabel('notes-content')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
+                        Print
+                    </button>
+                </div>
+                <div id="notes-content" class="label-preview rounded-lg"></div>
+            </section>
+
+            <!-- CSV Download -->
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-800">Export CSV</h2>
+                        <p class="text-sm text-slate-500 mt-1">Download all collection data as a CSV file.</p>
+                    </div>
+                    <button onclick="downloadCSV()" class="inline-flex items-center gap-2 bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm px-5 py-2.5 rounded-lg transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                        Download CSV
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <!-- Saved Collections (persists outside results) -->
+        <section id="print-sheet-section" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-800">Saved Collections</h2>
+                    <p class="text-sm text-slate-500 mt-0.5"><span id="sheet-count">0</span> collection(s) saved &mdash; <a href="/collection-database" class="text-lime-600 hover:text-lime-700 font-medium underline">View in Database</a></p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="printSheet()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
+                        Print All
+                    </button>
+                    <button onclick="downloadAllCSV()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                        Download All CSV
+                    </button>
+                    <button onclick="clearSheet()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                        Clear
+                    </button>
+                </div>
+            </div>
+            <div id="sheet-labels" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+        </section>
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 py-6 space-y-1">
+        <p>Data sourced from <a href="https://www.ncei.noaa.gov/" class="underline hover:text-slate-600">NOAA NCEI</a>.
+        Geocoding by <a href="https://nominatim.openstreetmap.org/" class="underline hover:text-slate-600">Nominatim / OpenStreetMap</a>.
+        <a href="https://github.com/aceargle/Firefly-Dashboard" class="underline hover:text-slate-600">GitHub</a>.</p>
+        <p>Developed by Owen Mettam &amp; Alana Eargle</p>
+    </footer>
+
+    <script>
+        /* ── State ── */
+        let currentTab = 'latlon';
+        let collectionData = {}; // populated after generate
+        let labelSheet = []; // accumulated labels for multi-label print sheet
+
+        /* ── Coordinate parsing (decimal degrees or DMS) ── */
+        function parseCoord(input) {
+            if (!input) return NaN;
+            const s = input.trim();
+            // Plain decimal
+            if (/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+            // DMS: 35° 27' 23" N, 35 27 23 N, 35°27'23"N, etc.
+            const dmsRe = /^(-?)(\d+)[°\s]+(\d+(?:\.\d+)?)['′\s]+(?:(\d+(?:\.\d+)?)["\u2033\s]*)?\s*([NSEWnsew]?)$/;
+            const m = s.match(dmsRe);
+            if (m) {
+                let deg = parseFloat(m[2]) + parseFloat(m[3]) / 60;
+                if (m[4]) deg += parseFloat(m[4]) / 3600;
+                if (m[1] === '-' || /[SWsw]/.test(m[5])) deg = -deg;
+                return Math.round(deg * 1000000) / 1000000;
+            }
+            return parseFloat(s);
+        }
+
+        /* ── localStorage persistence ── */
+        const STORAGE_KEY = 'fireflyLabelSheet';
+        function saveSheet() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(labelSheet));
+                console.log('[LabelData] saved', labelSheet.length, 'collection(s) to localStorage');
+            }
+            catch (e) { console.warn('[LabelData] localStorage save failed:', e); }
+        }
+        function loadSheet() {
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                if (stored) {
+                    labelSheet = JSON.parse(stored);
+                    console.log('[LabelData] loaded', labelSheet.length, 'collection(s) from localStorage');
+                    updateSheetUI();
+                } else {
+                    console.log('[LabelData] no saved collections found in localStorage');
+                }
+            } catch (e) { console.warn('[LabelData] localStorage load failed:', e); }
+        }
+
+        /* ── Mobile Menu ── */
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const hamburger = document.getElementById('hamburger-icon');
+            const close = document.getElementById('close-icon');
+            menu.classList.toggle('hidden');
+            hamburger.classList.toggle('hidden');
+            close.classList.toggle('hidden');
+        }
+
+        /* ── Settings / Theme (shared) ── */
+        function toggleSettings() { document.getElementById('settings-panel').classList.toggle('open'); }
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('settings-panel');
+            const btn = document.getElementById('settings-btn');
+            if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) panel.classList.remove('open');
+            const mobileMenu = document.getElementById('mobile-menu');
+            const mobileBtn = document.getElementById('mobile-menu-btn');
+            if (mobileMenu && mobileBtn && !mobileMenu.contains(e.target) && !mobileBtn.contains(e.target)) {
+                mobileMenu.classList.add('hidden');
+                document.getElementById('hamburger-icon').classList.remove('hidden');
+                document.getElementById('close-icon').classList.add('hidden');
+            }
+        });
+        function updateThemeToggleUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const toggle = document.getElementById('theme-toggle');
+            const dot = document.getElementById('theme-toggle-dot');
+            if (toggle && dot) {
+                toggle.classList.toggle('bg-lime-600', isDark);
+                toggle.classList.toggle('bg-slate-200', !isDark);
+                dot.classList.toggle('translate-x-6', isDark);
+                dot.classList.toggle('translate-x-1', !isDark);
+            }
+        }
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('firefly-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            updateThemeToggleUI();
+        }
+        updateThemeToggleUI();
+        function clearLocalCache(e) {
+            console.log('[LabelData] clearing local cache');
+            ['firefly_saved_searches', 'firefly_result_cache'].forEach(k => localStorage.removeItem(k));
+            const btn = (e || event).target.closest('button');
+            const orig = btn.textContent; btn.textContent = 'Cleared!';
+            btn.classList.replace('text-red-600', 'text-green-600'); btn.classList.replace('bg-red-50', 'bg-green-50');
+            setTimeout(() => { btn.textContent = orig; btn.classList.replace('text-green-600', 'text-red-600'); btn.classList.replace('bg-green-50', 'bg-red-50'); }, 2000);
+        }
+
+        /* ── Tab switching ── */
+        function switchTab(tab) {
+            currentTab = tab;
+            ['city', 'latlon'].forEach(t => {
+                const btn = document.getElementById('tab-' + t);
+                btn.classList.toggle('tab-active', t === tab);
+                btn.classList.toggle('text-slate-500', t !== tab);
+            });
+            document.getElementById('input-city-inline').classList.toggle('hidden', tab !== 'city');
+            document.getElementById('input-state-inline').classList.toggle('hidden', tab !== 'city');
+            document.getElementById('input-country-inline').classList.toggle('hidden', tab !== 'city');
+            document.getElementById('input-lat-inline').classList.toggle('hidden', tab !== 'latlon');
+            document.getElementById('input-lon-inline').classList.toggle('hidden', tab !== 'latlon');
+        }
+
+        /* ── Date mode toggle ── */
+        function toggleDateMode() {
+            const isRange = document.querySelector('input[name="date-mode"]:checked').value === 'range';
+            document.getElementById('date-range-sep').classList.toggle('hidden', !isRange);
+            document.getElementById('input-date-end').classList.toggle('hidden', !isRange);
+        }
+
+        /* ── Set default date to today ── */
+        (function() {
+            const today = new Date();
+            const str = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+            document.getElementById('input-date-start').value = str;
+            document.getElementById('input-date-end').value = str;
+        })();
+
+        /* ── Helpers ── */
+        function esc(s) { const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
+        function getGddStartMD() {
+            return document.getElementById('input-gdd-month').value + '-' + String(document.getElementById('input-gdd-day').value).padStart(2, '0');
+        }
+        const ROMAN_MONTHS = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
+        function fmtDate(d) {
+            const dt = new Date(d + 'T00:00:00');
+            return String(dt.getDate()).padStart(2,'0') + '-' + ROMAN_MONTHS[dt.getMonth()] + '-' + dt.getFullYear();
+        }
+        function fmtDateLong(d) { return fmtDate(d); }
+        function fmtTime12(t) {
+            if (!t) return '';
+            const [h, m] = t.split(':').map(Number);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const hr = h % 12 || 12;
+            return hr + ':' + String(m).padStart(2,'0') + ' ' + ampm;
+        }
+        function fmtTimeRange(d) {
+            if (d.timeStart && d.timeEnd) return fmtTime12(d.timeStart) + ' – ' + fmtTime12(d.timeEnd);
+            if (d.timeStart) return fmtTime12(d.timeStart);
+            if (d.timeOfCollection && d.timeOfCollection.includes(' - ')) {
+                const parts = d.timeOfCollection.split(' - ');
+                return fmtTime12(parts[0].trim()) + ' – ' + fmtTime12(parts[1].trim());
+            }
+            return d.timeOfCollection ? fmtTime12(d.timeOfCollection) : '';
+        }
+        const STATE_ABBR = {Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY'};
+        const COUNTRY_ABBR = {'United States':'USA','United States of America':'USA','Canada':'CAN','Mexico':'MEX','United Kingdom':'UK'};
+        function abbrState(s) { return STATE_ABBR[s] || s; }
+        function abbrCountry(c) { return COUNTRY_ABBR[c] || c; }
+
+        /* ── GDD Calculation (reused from Degree Day Calculator) ── */
+        function computeGDD(temperatures, baseTemp, accumStartMD, maxTemp) {
+            maxTemp = maxTemp != null ? maxTemp : 86;
+            const sorted = [...temperatures].sort((a, b) => a.date.localeCompare(b.date));
+
+            // Pre-pass: interpolate missing data across multi-day gaps
+            {
+                let i = 0;
+                while (i < sorted.length) {
+                    if (sorted[i].TMIN !== null && sorted[i].TMAX !== null) { i++; continue; }
+                    const gapStart = i;
+                    const prev = gapStart > 0 ? sorted[gapStart - 1] : null;
+                    while (i < sorted.length && (sorted[i].TMIN === null || sorted[i].TMAX === null)) { i++; }
+                    const next = i < sorted.length ? sorted[i] : null;
+                    if (prev && next && prev.TMIN !== null && prev.TMAX !== null && next.TMIN !== null && next.TMAX !== null) {
+                        const gapLen = i - gapStart;
+                        for (let g = 0; g < gapLen; g++) {
+                            const t = sorted[gapStart + g];
+                            const frac = (g + 1) / (gapLen + 1);
+                            t.TMIN = Math.round((prev.TMIN + (next.TMIN - prev.TMIN) * frac) * 10) / 10;
+                            t.TMAX = Math.round((prev.TMAX + (next.TMAX - prev.TMAX) * frac) * 10) / 10;
+                            t.is_calculated = true;
+                            console.log('[LabelData:computeGDD] interpolated missing data for', t.date, '→ TMIN:', t.TMIN, 'TMAX:', t.TMAX, '(gap', g + 1, '/' + gapLen + ')');
+                        }
+                    }
+                }
+            }
+
+            let cumulative = 0, prevYear = null;
+            const results = [];
+            for (const t of sorted) {
+                const dateYear = t.date.slice(0, 4), dateMD = t.date.slice(5);
+                if (prevYear !== null && dateYear !== prevYear) cumulative = 0;
+                prevYear = dateYear;
+                const isActive = dateMD >= accumStartMD;
+                let daily = 0;
+                if (isActive && t.TMIN !== null && t.TMAX !== null) { const cappedMax = Math.min(t.TMAX, maxTemp); daily = Math.max(0, (cappedMax + t.TMIN) / 2 - baseTemp); }
+                cumulative = isActive ? cumulative + daily : 0;
+                results.push({
+                    date: t.date, md: dateMD,
+                    avg: (t.TMIN !== null && t.TMAX !== null) ? Math.round(((t.TMAX + t.TMIN) / 2) * 10) / 10 : null,
+                    daily: Math.round(daily * 10) / 10, cumulative: Math.round(cumulative * 10) / 10,
+                    TMIN: t.TMIN, TMAX: t.TMAX, PRCP: t.PRCP, is_forecast: t.is_forecast || false,
+                });
+            }
+            return results;
+        }
+
+        /* ── Reverse geocode to get City, State, Country ── */
+        async function reverseGeocode(lat, lon) {
+            try {
+                const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`, {
+                    headers: { 'User-Agent': 'EntoTools/1.0 (educational-project)' }
+                });
+                const data = await resp.json();
+                const a = data.address || {};
+                const city = a.city || a.town || a.village || a.hamlet || a.county || '';
+                const state = a.state || '';
+                const country = a.country || '';
+                const stateAbbr = abbrState(state);
+                const countryAbbr = abbrCountry(country);
+                return { city, state, country, stateAbbr, countryAbbr, display: [city, stateAbbr, countryAbbr].filter(Boolean).join(', ') };
+            } catch (e) { console.warn('[SampleCollection] reverse geocode failed:', e); return { city: '', state: '', country: '', display: '' }; }
+        }
+
+        /* ── Get elevation from Open-Meteo ── */
+        async function getElevation(lat, lon) {
+            try {
+                const resp = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+                const data = await resp.json();
+                return data.elevation != null ? Math.round(data.elevation[0]) : null;
+            } catch (e) { console.warn('[SampleCollection] elevation fetch failed:', e); return null; }
+        }
+
+        /* ── Get sunset time ── */
+        async function getSunset(lat, lon, date) {
+            try {
+                const resp = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&date=${date}&formatted=0`);
+                const data = await resp.json();
+                if (data.status === 'OK' && data.results && data.results.sunset) {
+                    return new Date(data.results.sunset).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+                }
+                return null;
+            } catch (e) { console.warn('[SampleCollection] sunset fetch failed:', e); return null; }
+        }
+
+        /* ── Get humidity & temperature at collection time from Open-Meteo archive ── */
+        async function getHourlyConditions(lat, lon, date, time) {
+            try {
+                const resp = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${date}&end_date=${date}&hourly=relative_humidity_2m,temperature_2m&temperature_unit=fahrenheit&timezone=auto`);
+                const data = await resp.json();
+                const result = { humidity: { atTime: null, avg: null }, tempAtTime: null };
+                if (data.hourly) {
+                    // Humidity
+                    if (data.hourly.relative_humidity_2m) {
+                        const raw = data.hourly.relative_humidity_2m;
+                        const valid = raw.filter(h => h != null);
+                        result.humidity.avg = valid.length > 0 ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : null;
+                        if (time) {
+                            const targetHour = parseInt(time.split(':')[0]);
+                            result.humidity.atTime = targetHour < raw.length ? (raw[targetHour] ?? null) : null;
+                        }
+                    }
+                    // Temperature at collection time
+                    if (data.hourly.temperature_2m && time) {
+                        const rawTemp = data.hourly.temperature_2m;
+                        const targetHour = parseInt(time.split(':')[0]);
+                        const tempVal = targetHour < rawTemp.length ? rawTemp[targetHour] : null;
+                        result.tempAtTime = tempVal != null ? Math.round(tempVal * 10) / 10 : null;
+                    }
+                }
+                return result;
+            } catch (e) { console.warn('[SampleCollection] hourly conditions fetch failed:', e); return { humidity: { atTime: null, avg: null }, tempAtTime: null }; }
+        }
+
+        /* ── Main Generate ── */
+        async function doGenerate() {
+            const loadingEl = document.getElementById('loading');
+            const errorBox = document.getElementById('error-box');
+            const resultsEl = document.getElementById('results');
+            const genBtn = document.getElementById('btn-generate');
+
+            errorBox.classList.add('hidden'); errorBox.textContent = '';
+            document.getElementById('fallback-warning').classList.add('hidden');
+            document.getElementById('provider-fallback-warning').classList.add('hidden');
+            resultsEl.classList.add('hidden');
+            loadingEl.classList.remove('hidden');
+            genBtn.disabled = true; genBtn.classList.add('opacity-50');
+
+            try {
+                console.log('[LabelData] generate started, mode:', currentTab);
+                // Gather inputs
+                const siteName = document.getElementById('input-site-name').value.trim();
+                const dateStart = document.getElementById('input-date-start').value;
+                const isRange = document.querySelector('input[name="date-mode"]:checked').value === 'range';
+                const dateEnd = isRange ? document.getElementById('input-date-end').value : dateStart;
+                const timeStart = document.getElementById('input-time-start').value;
+                const timeEnd = document.getElementById('input-time-end').value;
+                const timeOfCollection = timeStart && timeEnd ? timeStart + ' - ' + timeEnd : timeStart || '';
+                const collector = document.getElementById('input-collector').value.trim();
+                const specimenId = document.getElementById('input-specimen-id').value.trim();
+                const identification = document.getElementById('input-identification').value.trim();
+                const identifier = document.getElementById('input-identifier').value.trim();
+                const numSpecimens = document.getElementById('input-num-specimens').value.trim();
+                const userNotes = document.getElementById('input-notes').value.trim();
+                const collectionMethod = document.getElementById('input-collection-method').value.trim();
+                const baseTemp = parseFloat(document.getElementById('input-gdd-base').value) || 50;
+                const maxTemp = parseFloat(document.getElementById('input-gdd-max').value) || 86;
+                const accumStartMD = getGddStartMD();
+
+                if (!dateStart) throw new Error('Please select a collection date.');
+                if (isRange && !dateEnd) throw new Error('Please select an end date for the range.');
+                if (isRange && dateEnd < dateStart) throw new Error('End date must be after start date.');
+
+                // Build search body — extend 30 days back for rainfall calculation
+                const yearStart = dateStart.slice(0, 4);
+                let fetchStart = yearStart + '-' + accumStartMD;
+                if (dateStart < fetchStart) fetchStart = yearStart + '-01-01';
+                // Also go back 30 days from dateStart for rainfall
+                const d30 = new Date(dateStart + 'T00:00:00');
+                d30.setDate(d30.getDate() - 30);
+                const rainfallStart = d30.toISOString().slice(0, 10);
+                if (rainfallStart < fetchStart) fetchStart = rainfallStart;
+
+                const body = { mode: currentTab };
+                if (currentTab === 'city') { body.city = document.getElementById('input-city-inline').value; body.state = document.getElementById('input-state-inline').value; body.country = document.getElementById('input-country-inline').value; }
+                else {
+                    const rawLat = document.getElementById('input-lat-inline').value;
+                    const rawLon = document.getElementById('input-lon-inline').value;
+                    const parsedLat = parseCoord(rawLat);
+                    const parsedLon = parseCoord(rawLon);
+                    if (isNaN(parsedLat) || isNaN(parsedLon)) throw new Error('Invalid coordinates. Use decimal degrees (35.4564) or DMS (35° 27\' 23" N).');
+                    body.lat = parsedLat;
+                    body.lon = parsedLon;
+                }
+                body.dateRanges = [{ label: 'Collection', startDate: fetchStart, endDate: dateEnd }];
+                console.log('[LabelData] request:', JSON.stringify(body));
+
+                // Fire all API calls in parallel
+                document.getElementById('loading-text').textContent = 'Fetching weather & location data\u2026';
+                const searchPromise = fetch('/api/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+                const searchData = await searchPromise;
+                console.log('[LabelData] API response:', searchData);
+                if (searchData.error) throw new Error(searchData.error);
+
+                const lat = searchData.search_lat;
+                const lon = searchData.search_lon;
+
+                // Parallel supplemental fetches
+                console.log('[LabelData] fetching supplemental data for', lat, lon);
+                const [geoInfo, elevation, sunset, hourlyConditions] = await Promise.all([
+                    reverseGeocode(lat, lon),
+                    getElevation(lat, lon),
+                    getSunset(lat, lon, dateStart),
+                    getHourlyConditions(lat, lon, dateStart, timeStart),
+                ]);
+                const humidity = hourlyConditions.humidity;
+                const tempAtTime = hourlyConditions.tempAtTime;
+                console.log('[LabelData] supplemental data:', { geoInfo, elevation, sunset, humidity, tempAtTime });
+
+                // Compute GDD
+                const temps = searchData.ranges[0].temperatures;
+                const gddResults = computeGDD(temps, baseTemp, accumStartMD, maxTemp);
+
+                // Find GDD for specific dates
+                const gddStart = gddResults.find(g => g.date === dateStart);
+                const gddEnd = isRange ? gddResults.find(g => g.date === dateEnd) : gddStart;
+
+                // Rainfall calculations
+                const d7 = new Date(dateStart + 'T00:00:00');
+                d7.setDate(d7.getDate() - 7);
+                const weekAgo = d7.toISOString().slice(0, 10);
+                let rainfallMonth = 0, rainfallWeek = 0;
+                for (const t of temps) {
+                    if (t.PRCP != null && t.date >= rainfallStart && t.date <= dateStart) rainfallMonth += t.PRCP;
+                    if (t.PRCP != null && t.date >= weekAgo && t.date <= dateStart) rainfallWeek += t.PRCP;
+                }
+                rainfallMonth = Math.round(rainfallMonth * 100) / 100;
+                rainfallWeek = Math.round(rainfallWeek * 100) / 100;
+
+                // High/Low on collection date(s)
+                const dayData = temps.find(t => t.date === dateStart);
+                const highTemp = dayData ? dayData.TMAX : null;
+                const lowTemp = dayData ? dayData.TMIN : null;
+
+                // Store all data for CSV/labels
+                collectionData = {
+                    siteName, dateStart, dateEnd, isRange, timeOfCollection, timeStart, timeEnd, collector,
+                    specimenId, identification, identifier, numSpecimens, baseTemp, accumStartMD,
+                    inputMode: currentTab,
+                    location: geoInfo.display, city: geoInfo.city, state: geoInfo.state, country: geoInfo.country,
+                    countryCode: searchData.country_code || '', provider: searchData.provider || '',
+                    lat, lon, elevation,
+                    stationName: searchData.station.station_name,
+                    stationId: searchData.station.station_id,
+                    stationDist: searchData.station.distance_miles,
+                    gddStart: gddStart ? gddStart.cumulative : 0,
+                    gddEnd: gddEnd ? gddEnd.cumulative : 0,
+                    dailyGddStart: gddStart ? gddStart.daily : 0,
+                    highTemp, lowTemp,
+                    avgTemp: gddStart ? gddStart.avg : null,
+                    tempAtTime,
+                    sunset, humidity,
+                    rainfallMonth, rainfallWeek,
+                    maxTemp: maxTemp, userNotes, collectionMethod,
+                };
+
+                console.log('[LabelData] collectionData assembled:', collectionData);
+
+                // Show fallback warnings if applicable
+                if (searchData.is_fallback) {
+                    console.warn('[LabelData] country fallback active — using Open-Meteo reanalysis for unsupported country:', searchData.country_code);
+                    document.getElementById('fallback-warning').classList.remove('hidden');
+                }
+                if (searchData.provider_fallback) {
+                    console.warn('[LabelData] provider fallback active — reason:', searchData.fallback_reason);
+                    document.getElementById('provider-fallback-msg').textContent = searchData.fallback_reason;
+                    document.getElementById('provider-fallback-warning').classList.remove('hidden');
+                }
+                console.log('[LabelData] provider:', searchData.provider, '| country:', searchData.country_code, '| is_fallback:', searchData.is_fallback, '| provider_fallback:', searchData.provider_fallback);
+
+                // Populate UI
+                renderResults();
+                resultsEl.classList.remove('hidden');
+                console.log('[LabelData] generate complete');
+            } catch (err) {
+                console.error('[LabelData] generate error:', err);
+                errorBox.textContent = err.message; errorBox.classList.remove('hidden');
+            } finally {
+                loadingEl.classList.add('hidden');
+                genBtn.disabled = false; genBtn.classList.remove('opacity-50');
+            }
+        }
+
+        /* ── Render Results ── */
+        function renderResults() {
+            const d = collectionData;
+
+            // Station info
+            document.getElementById('res-location').textContent = d.location || '—';
+            document.getElementById('res-station').textContent = `${d.stationName} (${d.stationId}) — ${d.stationDist} mi`;
+            document.getElementById('res-coords').textContent = `${d.lat}, ${d.lon}`;
+            document.getElementById('res-elevation').textContent = d.elevation != null ? `${d.elevation} m` : '—';
+
+            // Label 1: Collection Label
+            const dateDisplay = d.isRange
+                ? `${fmtDate(d.dateStart)} – ${fmtDate(d.dateEnd)}`
+                : fmtDate(d.dateStart);
+            const gddDisplay = d.isRange
+                ? `mGDD: ${d.gddStart} – ${d.gddEnd}`
+                : `mGDD: ${d.gddStart}`;
+            const timeDisplay = fmtTimeRange(d);
+
+            const coordPrefix = d.inputMode === 'latlon' ? '' : 'APPROX. ';
+            const coordStr = `${coordPrefix}${d.lat}, ${d.lon}`;
+
+            let label1Html = '';
+            if (d.siteName) label1Html += `<div>${esc(d.siteName)}</div>`;
+            label1Html += `<div>${esc(d.location)}</div>`;
+            label1Html += `<div>${esc(coordStr)}</div>`;
+            label1Html += `<div>${esc(dateDisplay)}${timeDisplay ? ', ' + esc(timeDisplay) : ''}</div>`;
+            label1Html += `<div>${esc(gddDisplay)}, Elev. ${d.elevation != null ? d.elevation + ' m' : '—'}</div>`;
+            if (d.collector) label1Html += `<div>COLL. ${esc(d.collector)}</div>`;
+            document.getElementById('label1').innerHTML = label1Html;
+
+            // Label 2: Specimen Label (shown if any of identifier, identification, or specimenId is filled)
+            const hasLabel2 = d.identifier || d.identification || d.specimenId;
+            document.getElementById('label2-section').classList.toggle('hidden', !hasLabel2);
+            if (hasLabel2) {
+                let label2Html = '';
+                if (d.specimenId) label2Html += `<div>${esc(d.specimenId)}</div>`;
+                if (d.identification) label2Html += `<div><em>${esc(d.identification)}</em></div>`;
+                if (d.identifier) label2Html += `<div>DET. ${esc(d.identifier)}</div>`;
+                document.getElementById('label2').innerHTML = label2Html;
+            }
+
+            // Notes
+            let notesHtml = '<table style="width:100%;border-collapse:collapse;font-size:0.8rem;">';
+            const row = (label, val) => `<tr><td style="padding:4px 8px 4px 0;font-weight:600;white-space:nowrap;vertical-align:top;color:#475569;">${label}</td><td style="padding:4px 0;color:#1e293b;">${val}</td></tr>`;
+            notesHtml += row('Sunset', d.sunset || '—');
+            notesHtml += row('High / Low Temp', (d.highTemp != null ? d.highTemp + '°F' : '—') + ' / ' + (d.lowTemp != null ? d.lowTemp + '°F' : '—'));
+            if (d.avgTemp != null) notesHtml += row('Average Temp', d.avgTemp + '°F');
+            const hasTime = d.timeStart || d.timeOfCollection;
+            if (hasTime) notesHtml += row('Time of Collection', fmtTimeRange(d));
+            if (hasTime && d.tempAtTime != null) notesHtml += row('Temp at Collection', d.tempAtTime + '°F');
+            else if (hasTime && d.avgTemp != null) notesHtml += row('Temp at Collection', d.avgTemp + '°F <span style="color:#94a3b8;font-size:0.7rem">(daily avg)</span>');
+            if (hasTime && d.humidity.atTime != null) notesHtml += row('Humidity at Collection', d.humidity.atTime + '%');
+            else if (d.humidity.avg != null) notesHtml += row('Humidity at Collection', d.humidity.avg + '%');
+            notesHtml += row('Rainfall (last 7 days)', d.rainfallWeek + ' in');
+            notesHtml += row('Rainfall (last 30 days)', d.rainfallMonth + ' in');
+            notesHtml += row('mGDD', d.isRange ? d.gddStart + ' – ' + d.gddEnd : String(d.gddStart));
+            notesHtml += row('Elevation', d.elevation != null ? d.elevation + ' m' : '—');
+            notesHtml += row('Weather Station', esc(d.stationName) + ' (' + esc(d.stationId) + ')');
+            if (d.numSpecimens) notesHtml += row('Specimens Collected', d.numSpecimens);
+            if (d.collectionMethod) notesHtml += row('Collection Method', esc(d.collectionMethod));
+            const notesContent = d.userNotes ? esc(d.userNotes).replace(/\n/g, '<br>') : '&nbsp;';
+            notesHtml += `<tr><td style="padding:8px 8px 4px 0;font-weight:600;white-space:nowrap;vertical-align:top;color:#475569;">Notes</td><td style="padding:8px 0;"><div style="min-height:60px;border:1px solid #cbd5e1;border-radius:6px;padding:6px;">${notesContent}</div></td></tr>`;
+            notesHtml += '</table>';
+            document.getElementById('notes-content').innerHTML = notesHtml;
+        }
+
+        /* ── Print ── */
+        function printLabel(elementId) {
+            const content = document.getElementById(elementId);
+            if (!content) return;
+            const win = window.open('', '_blank', 'width=600,height=400');
+            win.document.write(`<!DOCTYPE html><html><head><style>
+                body { font-family: 'Inter', Arial, sans-serif; padding: 10px; color: #1e293b; font-size: 9px; line-height: 1.3; }
+                .label-box { border: 1.5px solid #1e293b; padding: 0.3rem 0.4rem; display: inline-block; max-width: 2.5in; }
+                table { width: 100%; border-collapse: collapse; }
+                td { padding: 1px 4px 1px 0; }
+                strong { font-weight: 600; }
+                em { font-style: italic; }
+                @media print { body { padding: 0; } }
+            </style></head><body><div class="label-box">${content.innerHTML}</div></body></html>`);
+            win.document.close();
+            win.focus();
+            setTimeout(() => win.print(), 300);
+        }
+
+        /* ── CSV Download ── */
+        function downloadCSV() {
+            console.log('[LabelData] downloading single CSV');
+            const d = collectionData;
+            const headers = [
+                'Specimen ID','Specimen Identification','Number of Specimens',
+                'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
+                'Date Start','Date End','Sunset','Time of Collection',
+                'Collector','Determiner',
+                'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
+                'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
+                'Weather Station','Station ID','Station Distance (mi)','Data Provider',
+                'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
+                'Collection Method','Notes'
+            ];
+            const values = getCsvRow(d);
+            const csvRow = vals => vals.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+            const csv = csvRow(headers) + '\n' + csvRow(values) + '\n';
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `collection_${d.dateStart}${d.siteName ? '_' + d.siteName.replace(/\s+/g, '_') : ''}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function getCsvRow(d) {
+            return [
+                d.specimenId, d.identification, d.numSpecimens,
+                d.siteName, d.location, d.country || d.countryCode || '', d.lat, d.lon, d.inputMode !== 'latlon' ? 'Yes' : 'No', d.elevation,
+                d.dateStart, d.dateEnd, d.sunset || '', fmtTimeRange(d),
+                d.collector, d.identifier,
+                d.highTemp, d.lowTemp, d.avgTemp, d.tempAtTime ?? '', d.isRange ? d.gddStart + ' - ' + d.gddEnd : d.gddStart,
+                d.humidity && (d.humidity.atTime || d.humidity.avg) || '', d.rainfallWeek, d.rainfallMonth,
+                d.stationName, d.stationId, d.stationDist, d.provider || '',
+                d.baseTemp, d.maxTemp, d.accumStartMD,
+                d.collectionMethod || '', d.userNotes || ''
+            ];
+        }
+
+        function downloadAllCSV() {
+            if (labelSheet.length === 0) { console.warn('[LabelData] downloadAllCSV called but sheet is empty'); return; }
+            console.log('[LabelData] downloading CSV for', labelSheet.length, 'collection(s)');
+            const headers = [
+                'Specimen ID','Specimen Identification','Number of Specimens',
+                'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
+                'Date Start','Date End','Sunset','Time of Collection',
+                'Collector','Determiner',
+                'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
+                'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
+                'Weather Station','Station ID','Station Distance (mi)','Data Provider',
+                'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
+                'Collection Method','Notes'
+            ];
+            const csvRow = vals => vals.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+            let csv = csvRow(headers) + '\n';
+            labelSheet.forEach(item => {
+                if (item.data) csv += csvRow(getCsvRow(item.data)) + '\n';
+            });
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `collection_all_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        /* ── Print Sheet ── */
+        function addToSheet() {
+            const label1 = document.getElementById('label1').innerHTML;
+            if (!label1) { console.warn('[LabelData] addToSheet called but no label content'); return; }
+            const label2El = document.getElementById('label2-section');
+            const label2 = label2El.classList.contains('hidden') ? null : document.getElementById('label2').innerHTML;
+            labelSheet.push({ label1, label2, data: { ...collectionData } });
+            console.log('[LabelData] added to collection database, total:', labelSheet.length);
+            updateSheetUI();
+            saveSheet();
+            // Scroll to print sheet
+            document.getElementById('print-sheet-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function updateSheetUI() {
+            const section = document.getElementById('print-sheet-section');
+            const container = document.getElementById('sheet-labels');
+            const countEl = document.getElementById('sheet-count');
+            const viewBtn = document.getElementById('btn-view-saved');
+            const badge = document.getElementById('saved-badge');
+            if (labelSheet.length === 0) {
+                section.classList.add('hidden');
+                if (viewBtn) viewBtn.classList.add('hidden');
+                return;
+            }
+            section.classList.remove('hidden');
+            countEl.textContent = labelSheet.length;
+            if (viewBtn) { viewBtn.classList.remove('hidden'); badge.textContent = labelSheet.length; }
+            container.innerHTML = '';
+            labelSheet.forEach((item, i) => {
+                const card = document.createElement('div');
+                card.className = 'relative';
+                let html = `<div class="label-preview rounded-lg text-xs">${item.label1}</div>`;
+                if (item.label2) html += `<div class="label-preview rounded-lg text-xs mt-2">${item.label2}</div>`;
+                html += `<button onclick="removeFromSheet(${i})" class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600 transition" title="Remove">&times;</button>`;
+                card.innerHTML = html;
+                container.appendChild(card);
+            });
+        }
+
+        function removeFromSheet(index) {
+            console.log('[LabelData] removing collection at index', index);
+            labelSheet.splice(index, 1);
+            updateSheetUI();
+            saveSheet();
+        }
+
+        function printSheet() {
+            if (labelSheet.length === 0) { console.warn('[LabelData] printSheet called but sheet is empty'); return; }
+            console.log('[LabelData] printing sheet with', labelSheet.length, 'label(s)');
+            const win = window.open('', '_blank', 'width=800,height=600');
+            let labelsHtml = '';
+            labelSheet.forEach(item => {
+                labelsHtml += `<div class="label-box">${item.label1}</div>`;
+                if (item.label2) labelsHtml += `<div class="label-box">${item.label2}</div>`;
+            });
+            win.document.write(`<!DOCTYPE html><html><head><style>
+                body { font-family: 'Inter', Arial, sans-serif; padding: 8px; color: #1e293b; font-size: 9px; line-height: 1.3; display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
+                .label-box { border: 1.5px solid #1e293b; padding: 0.3rem 0.4rem; display: inline-block; vertical-align: top; max-width: 2.5in; box-sizing: border-box; }
+                table { width: 100%; border-collapse: collapse; }
+                td { padding: 1px 4px 1px 0; }
+                em { font-style: italic; }
+                @media print { body { padding: 0; margin: 0; } .label-box { page-break-inside: avoid; } }
+            </style></head><body>${labelsHtml}</body></html>`);
+            win.document.close();
+            win.focus();
+            setTimeout(() => win.print(), 300);
+        }
+
+        function clearSheet() {
+            console.log('[LabelData] clearing all saved collections');
+            labelSheet = [];
+            updateSheetUI();
+            saveSheet();
+        }
+
+        // Load saved labels from cache on page load
+        loadSheet();
+
+        // Enter key triggers generate
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                const active = document.activeElement;
+                if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) { e.preventDefault(); doGenerate(); }
+            }
+        });
+    </script>
+    <script src="/feedback.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+name = 'entotools'
+compatibility_date = "2024-12-01"
+pages_build_output_dir = "./public"
+
+[[kv_namespaces]]
+binding = "GEOCODE_CACHE"
+id = "f44e390b2fba41c78dc6e6fa2c487a9c"
