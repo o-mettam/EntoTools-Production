@@ -784,7 +784,7 @@ async function handleFeedback(request, env) {
   if (!ghResp.ok) {
     const errText = await ghResp.text();
     console.error('[Worker:handleFeedback] GitHub API error:', ghResp.status, errText);
-    return jsonResponse({ error: 'Failed to submit feedback. Please try again later.' }, 502);
+    return jsonResponse({ error: `Failed to submit feedback (GitHub ${ghResp.status}). Please try again later.` }, 502);
   }
 
   const issue = await ghResp.json();
