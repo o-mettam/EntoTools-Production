@@ -799,6 +799,56 @@ async function handleFeedback(request, env) {
   return jsonResponse({ success: true, issue_url: issue.html_url });
 }
 
+// ── Status / Health Checks ────────────────────────────────────────
+
+const STATUS_SERVICES = {
+  ncei: {
+    url: 'https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=USW00094728&startDate=2024-01-01&endDate=2024-01-01&dataTypes=TMAX&format=json',
+    timeout: 10000,
+  },
+  'open-meteo': {
+    url: 'https://api.open-meteo.com/v1/forecast?latitude=40&longitude=-74&current_weather=true',
+    timeout: 8000,
+  },
+  nominatim: {
+    url: 'https://nominatim.openstreetmap.org/search?q=New+York&format=json&limit=1',
+    timeout: 8000,
+  },
+  github: {
+    url: 'https://api.github.com/rate_limit',
+    timeout: 8000,
+  },
+};
+
+async function handleStatusCheck(url) {
+  const service = url.searchParams.get('service');
+  const config = STATUS_SERVICES[service];
+  if (!config) {
+    return jsonResponse({ error: 'Unknown service' }, 400);
+  }
+
+  const start = Date.now();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), config.timeout);
+    const resp = await fetch(config.url, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const latency = Date.now() - start;
+
+    if (!resp.ok) {
+      return jsonResponse({ ok: false, error: `HTTP ${resp.status}`, latency });
+    }
+    return jsonResponse({ ok: true, latency });
+  } catch (err) {
+    const latency = Date.now() - start;
+    const msg = err.name === 'AbortError' ? 'Timeout' : err.message;
+    return jsonResponse({ ok: false, error: msg, latency });
+  }
+}
+
 // ── Worker entry point ────────────────────────────────────────────
 
 export default {
@@ -832,6 +882,18 @@ export default {
       } catch (err) {
         console.error('[Worker:handleFeedback] unexpected error:', err.message, err.stack);
         return jsonResponse({ error: `Server error: ${err.message}` }, 500);
+      }
+    }
+
+    if (url.pathname === '/api/status/ping' && request.method === 'GET') {
+      return jsonResponse({ ok: true, ts: Date.now() });
+    }
+
+    if (url.pathname === '/api/status/check' && request.method === 'GET') {
+      try {
+        return await handleStatusCheck(url);
+      } catch (err) {
+        return jsonResponse({ ok: false, error: err.message });
       }
     }
 

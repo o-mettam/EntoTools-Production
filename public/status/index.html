@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Status — EntoTools</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
+        if (localStorage.getItem('firefly-theme') === 'dark' ||
+            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .fade-in { animation: fadeIn .4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+        .pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
+
+        /* Dark mode overrides */
+        .dark body, html.dark body { background-color: #1a2030; color: #d8dee9; }
+        .dark nav { background-color: #2a3348; border-color: #3e4a64; }
+        .dark nav a { color: #9ca9c0; }
+        .dark nav a:hover { color: #eef1f6; }
+        .dark nav a.text-lime-600 { color: #c4e055; }
+        .dark header { background-color: #2a3348; }
+        .dark section, .dark .bg-white { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .bg-slate-50 { background-color: #1a2030 !important; }
+        .dark .border-slate-200 { border-color: #3e4a64 !important; }
+        .dark .text-slate-800, .dark .text-slate-900 { color: #eef1f6 !important; }
+        .dark .text-slate-600 { color: #9ca9c0 !important; }
+        .dark .text-slate-500 { color: #7b8ba8 !important; }
+        .dark .text-slate-400 { color: #7b8ba8 !important; }
+        .dark .text-lime-600 { color: #c4e055 !important; }
+        .dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.3) !important; }
+        .dark footer a { color: #9ca9c0; }
+        .dark footer a:hover { color: #eef1f6; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 relative z-40">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-14 sm:h-16">
+                <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
+                <div class="flex items-center gap-1">
+                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                        <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        </svg>
+                        <svg id="close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white">
+            <div class="px-4 py-3 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Home</a>
+                <a href="/degree-day-calculator" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Degree Day Calculator</a>
+                <a href="/gdd-lookup" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">GDD Lookup</a>
+                <a href="/sample-collection" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Label Data</a>
+                <a href="/collection-database" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Collection Database</a>
+                <a href="/documentation" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Documentation</a>
+                <a href="/status" class="block px-3 py-2 rounded-lg text-lime-600 font-medium bg-lime-50">Status</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="bg-slate-700 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-1">Service Status</h1>
+            <p class="text-lime-400 text-sm sm:text-base">Real-time health checks for EntoTools and its dependencies</p>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+
+        <!-- Overall status banner -->
+        <div id="overall-status" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex items-center gap-4">
+            <div id="overall-dot" class="w-4 h-4 rounded-full bg-slate-300 pulse-dot shrink-0"></div>
+            <div>
+                <p id="overall-text" class="text-slate-800 font-semibold">Checking services…</p>
+                <p id="overall-sub" class="text-slate-500 text-sm">Running health checks</p>
+            </div>
+            <button onclick="runChecks()" id="refresh-btn" class="ml-auto px-4 py-2 text-sm font-medium bg-lime-600 hover:bg-lime-700 text-white rounded-lg transition flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                Refresh
+            </button>
+        </div>
+
+        <!-- Service cards -->
+        <div class="grid gap-4" id="services-grid">
+            <!-- Populated by JS -->
+        </div>
+
+        <p class="text-xs text-slate-400 text-center">
+            Checks are performed from your browser. Response times reflect latency from your location.
+            Last checked: <span id="last-checked">—</span>
+        </p>
+
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 py-6 space-y-1">
+        <p>Data sourced from <a href="https://www.ncei.noaa.gov/" class="underline hover:text-slate-600">NOAA NCEI</a>.
+        Geocoding by <a href="https://nominatim.openstreetmap.org/" class="underline hover:text-slate-600">Nominatim / OpenStreetMap</a>.
+        <a href="https://github.com/o-mettam/EntoTools-Production" class="underline hover:text-slate-600">GitHub</a>.</p>
+        <p>Developed by Owen Mettam &amp; Alana Eargle</p>
+    </footer>
+
+    <script>
+        /* ── Mobile Menu ── */
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const hamburger = document.getElementById('hamburger-icon');
+            const close = document.getElementById('close-icon');
+            menu.classList.toggle('hidden');
+            hamburger.classList.toggle('hidden');
+            close.classList.toggle('hidden');
+        }
+
+        /* ── Service Definitions ── */
+        const services = [
+            {
+                id: 'entotools-api',
+                name: 'EntoTools API',
+                description: 'Our own worker handling search, feedback, and data processing',
+                category: 'internal',
+                check: async () => {
+                    const resp = await fetch('/api/status/ping', { method: 'GET' });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    return resp;
+                },
+            },
+            {
+                id: 'noaa-ncei',
+                name: 'NOAA NCEI',
+                description: 'National Centers for Environmental Information — historical weather data',
+                category: 'external',
+                check: async () => {
+                    const resp = await fetch('/api/status/check?service=ncei', { method: 'GET' });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const data = await resp.json();
+                    if (!data.ok) throw new Error(data.error || 'Service unavailable');
+                    return { latency: data.latency };
+                },
+            },
+            {
+                id: 'open-meteo',
+                name: 'Open-Meteo',
+                description: 'Open-source weather API — forecast and archive data',
+                category: 'external',
+                check: async () => {
+                    const resp = await fetch('/api/status/check?service=open-meteo', { method: 'GET' });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const data = await resp.json();
+                    if (!data.ok) throw new Error(data.error || 'Service unavailable');
+                    return { latency: data.latency };
+                },
+            },
+            {
+                id: 'nominatim',
+                name: 'Nominatim (OpenStreetMap)',
+                description: 'Geocoding service for location lookups',
+                category: 'external',
+                check: async () => {
+                    const resp = await fetch('/api/status/check?service=nominatim', { method: 'GET' });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const data = await resp.json();
+                    if (!data.ok) throw new Error(data.error || 'Service unavailable');
+                    return { latency: data.latency };
+                },
+            },
+            {
+                id: 'github-api',
+                name: 'GitHub API',
+                description: 'Used for feedback/issue submission',
+                category: 'external',
+                check: async () => {
+                    const resp = await fetch('/api/status/check?service=github', { method: 'GET' });
+                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    const data = await resp.json();
+                    if (!data.ok) throw new Error(data.error || 'Service unavailable');
+                    return { latency: data.latency };
+                },
+            },
+        ];
+
+        /* ── Rendering ── */
+        const grid = document.getElementById('services-grid');
+
+        function renderCards() {
+            grid.innerHTML = services.map(s => `
+                <div id="card-${s.id}" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex items-center gap-4 fade-in">
+                    <div id="dot-${s.id}" class="w-3 h-3 rounded-full bg-slate-300 shrink-0"></div>
+                    <div class="flex-grow min-w-0">
+                        <div class="flex items-center gap-2">
+                            <p class="text-slate-800 font-medium text-sm">${s.name}</p>
+                            <span class="text-xs px-2 py-0.5 rounded-full ${s.category === 'internal' ? 'bg-lime-100 text-lime-800' : 'bg-slate-100 text-slate-600'}">${s.category === 'internal' ? 'Internal' : 'Third-party'}</span>
+                        </div>
+                        <p class="text-slate-500 text-xs mt-0.5">${s.description}</p>
+                    </div>
+                    <div id="result-${s.id}" class="text-right shrink-0">
+                        <span class="text-xs text-slate-400">Checking…</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function setCardStatus(id, status, latencyMs, errorMsg) {
+            const dot = document.getElementById(`dot-${id}`);
+            const result = document.getElementById(`result-${id}`);
+            if (!dot || !result) return;
+
+            dot.className = 'w-3 h-3 rounded-full shrink-0';
+            if (status === 'ok') {
+                dot.classList.add('bg-green-500');
+                result.innerHTML = `<span class="text-xs text-green-600 font-medium">Operational</span>${latencyMs != null ? `<br><span class="text-xs text-slate-400">${latencyMs}ms</span>` : ''}`;
+            } else if (status === 'degraded') {
+                dot.classList.add('bg-yellow-400');
+                result.innerHTML = `<span class="text-xs text-yellow-600 font-medium">Slow</span>${latencyMs != null ? `<br><span class="text-xs text-slate-400">${latencyMs}ms</span>` : ''}`;
+            } else {
+                dot.classList.add('bg-red-500');
+                result.innerHTML = `<span class="text-xs text-red-600 font-medium">Down</span>${errorMsg ? `<br><span class="text-xs text-slate-400" title="${errorMsg}">${errorMsg.slice(0, 30)}</span>` : ''}`;
+            }
+        }
+
+        function updateOverall(results) {
+            const dot = document.getElementById('overall-dot');
+            const text = document.getElementById('overall-text');
+            const sub = document.getElementById('overall-sub');
+            dot.classList.remove('pulse-dot');
+
+            const downCount = results.filter(r => r.status === 'down').length;
+            const degradedCount = results.filter(r => r.status === 'degraded').length;
+
+            if (downCount === 0 && degradedCount === 0) {
+                dot.className = 'w-4 h-4 rounded-full bg-green-500 shrink-0';
+                text.textContent = 'All systems operational';
+                sub.textContent = `All ${results.length} services responding normally`;
+            } else if (downCount === 0) {
+                dot.className = 'w-4 h-4 rounded-full bg-yellow-400 shrink-0';
+                text.textContent = 'Minor issues detected';
+                sub.textContent = `${degradedCount} service${degradedCount > 1 ? 's' : ''} responding slowly`;
+            } else {
+                dot.className = 'w-4 h-4 rounded-full bg-red-500 shrink-0';
+                text.textContent = 'Service disruption';
+                sub.textContent = `${downCount} service${downCount > 1 ? 's' : ''} unavailable`;
+            }
+        }
+
+        /* ── Run Checks ── */
+        async function runChecks() {
+            const btn = document.getElementById('refresh-btn');
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+
+            // Reset
+            document.getElementById('overall-dot').className = 'w-4 h-4 rounded-full bg-slate-300 pulse-dot shrink-0';
+            document.getElementById('overall-text').textContent = 'Checking services…';
+            document.getElementById('overall-sub').textContent = 'Running health checks';
+            renderCards();
+
+            const results = [];
+
+            for (const service of services) {
+                const start = performance.now();
+                try {
+                    const res = await service.check();
+                    const elapsed = res && res.latency != null ? res.latency : Math.round(performance.now() - start);
+                    const status = elapsed > 5000 ? 'degraded' : 'ok';
+                    setCardStatus(service.id, status, elapsed);
+                    results.push({ id: service.id, status, latency: elapsed });
+                } catch (err) {
+                    setCardStatus(service.id, 'down', null, err.message);
+                    results.push({ id: service.id, status: 'down', error: err.message });
+                }
+            }
+
+            updateOverall(results);
+            document.getElementById('last-checked').textContent = new Date().toLocaleTimeString();
+            btn.disabled = false;
+            btn.classList.remove('opacity-50');
+        }
+
+        /* ── Init ── */
+        renderCards();
+        runChecks();
+    </script>
+    <script src="/feedback.js" defer></script>
+</body>
+</html>
