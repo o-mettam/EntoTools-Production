@@ -6,6 +6,72 @@
 (function () {
   'use strict';
 
+  // ── Console Log Capture ──────────────────────────────────────────
+  const MAX_LOG_ENTRIES = 50;
+  const capturedLogs = [];
+
+  const PII_PATTERNS = [
+    // Email addresses
+    { regex: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, replacement: '[email redacted]' },
+    // IPv4 addresses
+    { regex: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, replacement: '[ip redacted]' },
+    // IPv6 addresses (simplified)
+    { regex: /\b([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g, replacement: '[ip redacted]' },
+    // Lat/lon coordinate pairs (e.g. 40.7128, -74.0060)
+    { regex: /-?\d{1,3}\.\d{4,}/g, replacement: '[coord redacted]' },
+    // Bearer/auth tokens
+    { regex: /(Bearer\s+|token[=:]\s*)[\w\-._~+/]+=*/gi, replacement: '$1[token redacted]' },
+    // Generic long hex/base64 strings (API keys, tokens)
+    { regex: /\b[A-Za-z0-9_\-]{32,}\b/g, replacement: '[key redacted]' },
+  ];
+
+  function sanitizeLogString(str) {
+    let sanitized = str;
+    for (const { regex, replacement } of PII_PATTERNS) {
+      sanitized = sanitized.replace(regex, replacement);
+    }
+    return sanitized;
+  }
+
+  function captureLog(level, args) {
+    try {
+      const message = args.map(a => {
+        if (typeof a === 'string') return a;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      const sanitized = sanitizeLogString(message);
+      capturedLogs.push({
+        ts: new Date().toISOString(),
+        level,
+        msg: sanitized.slice(0, 500),
+      });
+      if (capturedLogs.length > MAX_LOG_ENTRIES) capturedLogs.shift();
+    } catch { /* never break the app */ }
+  }
+
+  const originalConsole = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+  };
+
+  console.log = function (...args) { captureLog('log', args); originalConsole.log(...args); };
+  console.warn = function (...args) { captureLog('warn', args); originalConsole.warn(...args); };
+  console.error = function (...args) { captureLog('error', args); originalConsole.error(...args); };
+
+  // Also capture unhandled errors
+  window.addEventListener('error', (e) => {
+    captureLog('error', [`Unhandled: ${e.message} at ${e.filename}:${e.lineno}:${e.colno}`]);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    captureLog('error', [`Unhandled rejection: ${e.reason}`]);
+  });
+
+  function getFormattedLogs() {
+    if (capturedLogs.length === 0) return '';
+    return capturedLogs.map(e => `[${e.ts}] ${e.level.toUpperCase()}: ${e.msg}`).join('\n');
+  }
+
   // Inject styles
   const style = document.createElement('style');
   style.textContent = `
@@ -248,6 +314,7 @@
           description,
           email: email || undefined,
           page: window.location.pathname,
+          console_logs: type === 'bug' ? getFormattedLogs() : undefined,
         }),
       });
 

@@ -733,7 +733,7 @@ const FEEDBACK_TYPE_LABELS = {
 
 async function handleFeedback(request, env) {
   const body = await request.json();
-  const { type, title, description, email, page } = body;
+  const { type, title, description, email, page, console_logs } = body;
 
   if (!title || !title.trim()) {
     return jsonResponse({ error: 'A title is required.' }, 400);
@@ -758,6 +758,12 @@ async function handleFeedback(request, env) {
   if (page) issueBody += `**Page:** ${page}\n`;
   if (email && email.trim()) issueBody += `**Contact:** ${email.trim()}\n`;
   issueBody += `**Submitted:** ${new Date().toISOString()}\n`;
+
+  if (console_logs && console_logs.trim()) {
+    issueBody += '\n<details>\n<summary>Browser Console Logs (PII sanitized)</summary>\n\n```\n';
+    issueBody += console_logs.trim().slice(0, 5000);
+    issueBody += '\n```\n</details>\n';
+  }
 
   const issuePayload = {
     title: `[Feedback] ${title.trim()}`,
