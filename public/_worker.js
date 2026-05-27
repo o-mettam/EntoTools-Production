@@ -768,7 +768,7 @@ async function handleFeedback(request, env) {
   const issuePayload = {
     title: `[Feedback] ${title.trim()}`,
     body: issueBody,
-    labels: [label],
+    labels: [label, 'Needs Triage'],
   };
 
   console.log('[Worker:handleFeedback] creating GitHub issue:', issuePayload.title);
