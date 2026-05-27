@@ -157,59 +157,8 @@
                 <h2 class="text-xl font-semibold text-slate-800 mb-4">1. Data Sources</h2>
                 <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
 
-                    <!-- NOAA NCEI -->
-                    <h3 class="text-base font-semibold text-slate-800 mt-2">NOAA NCEI — Temperature &amp; Precipitation (US)</h3>
-                    <p>For locations within the United States, historical temperature and precipitation data is sourced from the NOAA National Centers for Environmental Information (NCEI) Daily Summaries dataset via their public API.</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>API Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://www.ncei.noaa.gov/access/services/data/v1</code></li>
-                        <li><strong>Dataset:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">daily-summaries</code></li>
-                        <li><strong>Data Types:</strong> TMIN (daily minimum temperature), TMAX (daily maximum temperature), PRCP (daily precipitation)</li>
-                        <li><strong>Units:</strong> Standard (°F for temperature, inches for precipitation)</li>
-                        <li><strong>Coverage:</strong> US locations only (determined by reverse geocoding the search coordinates)</li>
-                        <li><strong>Fallback:</strong> If NCEI is unreachable or returns no data, the system automatically falls back to Open-Meteo historical data</li>
-                        <li><strong>Used By:</strong> Degree Day Calculator, GDD Lookup, Label Data</li>
-                    </ul>
-
-                    <!-- Nominatim -->
-                    <h3 class="text-base font-semibold text-slate-800 mt-5">Nominatim / OpenStreetMap — Geocoding</h3>
-                    <p>Location lookups (city/state/country) are resolved to latitude and longitude coordinates using the Nominatim geocoding service. The Label Data page also uses Nominatim's reverse geocoding endpoint to resolve coordinates back to a human-readable city, state, and country name for specimen labels.</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>Forward Geocoding:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://nominatim.openstreetmap.org/search</code></li>
-                        <li><strong>Reverse Geocoding:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://nominatim.openstreetmap.org/reverse</code></li>
-                        <li><strong>Data Types:</strong> Latitude, longitude, display name, city, state, country</li>
-                        <li><strong>Caching:</strong> Forward geocode results are cached in Cloudflare KV for 24 hours</li>
-                        <li><strong>Used By:</strong> All pages (forward); Label Data (reverse)</li>
-                    </ul>
-
-                    <!-- Open-Meteo -->
-                    <h3 class="text-base font-semibold text-slate-800 mt-5">Open-Meteo — Historical Data, Forecast, Elevation &amp; Humidity</h3>
-                    <p>Open-Meteo is a free open-source weather API that serves multiple roles in EntoTools:</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>Historical Archive Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://archive-api.open-meteo.com/v1/archive</code></li>
-                        <li><strong>Forecast Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://api.open-meteo.com/v1/forecast</code></li>
-                        <li><strong>Elevation Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://api.open-meteo.com/v1/elevation</code></li>
-                        <li><strong>Historical Data:</strong> Primary temperature/precipitation source for all non-US locations, and automatic fallback for US locations if NCEI fails. Provides grid-point data derived from reanalysis models.</li>
-                        <li><strong>Forecast Data:</strong> 16-day daily TMAX, TMIN, and precipitation from NWP models (ECMWF, GFS, etc.). Used globally, regardless of the primary data provider.</li>
-                        <li><strong>Elevation:</strong> Meters above sea level for the search coordinates.</li>
-                        <li><strong>Humidity:</strong> Hourly relative humidity at 2m (%). If a collection time is provided, the closest hourly value is used; otherwise, the daily average is reported.</li>
-                        <li><strong>Used By:</strong> All calculators (historical data for non-US, fallback for US, forecast globally), Label Data (elevation, humidity)</li>
-                    </ul>
-
-                    <!-- Sunrise-Sunset -->
-                    <h3 class="text-base font-semibold text-slate-800 mt-5">Sunrise-Sunset.org — Sunset Time</h3>
-                    <p>Sunset times for specimen collection dates are fetched from the Sunrise-Sunset API.</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>API Endpoint:</strong> <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">https://api.sunrise-sunset.org/json</code></li>
-                        <li><strong>Data Types:</strong> Sunset time (ISO 8601, converted to local 12-hour format)</li>
-                        <li><strong>Used By:</strong> Label Data</li>
-                    </ul>
-
-                    <!-- Station Data -->
-                    <h3 class="text-base font-semibold text-slate-800 mt-5">Station Data — NOAA GHCN</h3>
-                    <p>A curated set of US weather stations (from NOAA's Global Historical Climatology Network) is stored in <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">stations.json</code> as a static asset. This file contains station IDs, names, and coordinates and is used for nearest-station lookups.</p>
-
                     <!-- Summary table -->
-                    <h3 class="text-base font-semibold text-slate-800 mt-5">Summary</h3>
+                    <h3 class="text-base font-semibold text-slate-800 mt-5">Data Source Table</h3>
                     <div class="overflow-x-auto mt-2">
                         <table class="w-full text-sm border border-slate-200 rounded-lg">
                             <thead class="bg-slate-50">
@@ -226,7 +175,7 @@
                                 <tr><td class="px-3 py-2 font-medium">Open-Meteo (extras)</td><td class="px-3 py-2">Elevation (m), humidity (%)</td><td class="px-3 py-2">Label Data</td></tr>
                                 <tr><td class="px-3 py-2 font-medium">Nominatim / OSM</td><td class="px-3 py-2">Lat/lon, city, state, country</td><td class="px-3 py-2">All pages</td></tr>
                                 <tr><td class="px-3 py-2 font-medium">Sunrise-Sunset.org</td><td class="px-3 py-2">Sunset time</td><td class="px-3 py-2">Label Data</td></tr>
-                                <tr><td class="px-3 py-2 font-medium">NOAA GHCN (static)</td><td class="px-3 py-2">Station IDs, names, coordinates</td><td class="px-3 py-2">US station lookup (via backend)</td></tr>
+                                <tr><td class="px-3 py-2 font-medium">NOAA GHCN (static)</td><td class="px-3 py-2">Station IDs, names, coordinates</td><td class="px-3 py-2">US station lookup</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -415,7 +364,7 @@
                     <p>The <a href="/status" class="underline hover:text-lime-600">Status Page</a> provides a real-time overview of the health and availability of all services that EntoTools depends on.</p>
                     <h3 class="text-base font-semibold text-slate-800 mt-4">Services Monitored</h3>
                     <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>EntoTools API:</strong> The internal Cloudflare Worker that powers all backend operations (geocoding, data fetching, feedback submission).</li>
+                        <li><strong>EntoTools API:</strong> The internal API that powers all backend operations (geocoding, data fetching, feedback submission).</li>
                         <li><strong>NOAA NCEI:</strong> The primary US weather data provider for temperature and precipitation.</li>
                         <li><strong>Open-Meteo:</strong> The global weather data and forecast provider.</li>
                         <li><strong>Nominatim / OpenStreetMap:</strong> The geocoding service used to resolve location names to coordinates.</li>
@@ -428,9 +377,6 @@
                         <li>The page displays the operational status (Operational, Degraded, or Down) and response latency for each service.</li>
                         <li>An overall status banner summarizes the health of all services at a glance.</li>
                         <li>You can manually re-check all services using the <strong>Refresh</strong> button.</li>
-                    </ul>
-                    <h3 class="text-base font-semibold text-slate-800 mt-4">Accessing the Status Page</h3>
-                    <p>The Status Page is available at <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">/status</code> and is linked from the navigation menu on every page.</p>
                 </div>
             </section>
 
