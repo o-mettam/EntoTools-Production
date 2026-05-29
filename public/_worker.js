@@ -811,7 +811,7 @@ const STATUS_SERVICES = {
     timeout: 8000,
   },
   nominatim: {
-    url: 'https://nominatim.openstreetmap.org/search?q=New+York&format=json&limit=1',
+    url: 'https://nominatim.openstreetmap.org/status?format=json',
     timeout: 8000,
   },
   github: {
