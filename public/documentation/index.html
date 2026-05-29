@@ -6,7 +6,7 @@
     <title>Documentation — EntoTools</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        tailwind.config = { darkMode: 'class' };
+        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
         if (localStorage.getItem('firefly-theme') === 'dark' ||
             (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
@@ -19,37 +19,48 @@
         .hover-lift { transition: transform .15s ease, box-shadow .15s ease; }
         .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
         .settings-panel {
-            display: none;
+            transform: translateY(-8px);
             opacity: 0;
-            transform: translateY(-4px);
-            transition: opacity .15s ease, transform .15s ease;
+            pointer-events: none;
+            transition: transform .2s ease, opacity .2s ease;
         }
         .settings-panel.open {
-            display: block;
-            opacity: 1;
             transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
         }
         /* Dark mode overrides */
-        .dark body, .dark { background-color: #1a2236; color: #e2e8f0; }
-        .dark .bg-white { background-color: #24304a !important; }
-        .dark .bg-slate-50 { background-color: #1a2236 !important; }
-        .dark .text-slate-800 { color: #eef1f6 !important; }
-        .dark .text-slate-700 { color: #cbd5e1 !important; }
+        .dark body, html.dark body { background-color: #1a2030; color: #d8dee9; }
+        .dark nav { background-color: #2a3348; border-color: #3e4a64; }
+        .dark nav a { color: #9ca9c0; }
+        .dark nav a:hover { color: #eef1f6; }
+        .dark nav a.text-lime-600 { color: #c4e055; }
+        .dark header { background-color: #2a3348; }
+        .dark section, .dark .bg-white { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .bg-slate-50, .dark .bg-slate-100 { background-color: #3e4a64 !important; }
+        .dark .bg-slate-200 { background-color: #54637f !important; }
+        .dark .border-slate-200, .dark .border-slate-100, .dark .border-slate-300 { border-color: #3e4a64 !important; }
+        .dark .text-slate-800, .dark .text-slate-900 { color: #eef1f6 !important; }
+        .dark .text-slate-700 { color: #d8dee9 !important; }
         .dark .text-slate-600 { color: #9ca9c0 !important; }
-        .dark .text-slate-500 { color: #7b8ba8 !important; }
-        .dark .text-slate-400 { color: #64748b !important; }
-        .dark .border-slate-200 { border-color: #334155 !important; }
-        .dark .border-slate-100 { border-color: #2a3348 !important; }
-        .dark .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,.3) !important; }
-        .dark .bg-slate-700 { background-color: #0f172a !important; }
-        .dark .settings-panel { background-color: #24304a !important; border-color: #334155 !important; }
-        .dark .settings-panel h3 { color: #eef1f6 !important; }
+        .dark .text-slate-500 { color: #9ca9c0 !important; }
+        .dark .text-slate-400 { color: #9ca9c0 !important; }
+        .dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.3) !important; }
+        .dark table thead { background-color: #3e4a64 !important; }
+        .dark table thead th { color: #9ca9c0 !important; }
+        .dark table tbody tr { border-color: #3e4a64 !important; }
+        .dark table tbody td { color: #d8dee9 !important; }
+        .dark .text-xs.text-slate-400 { color: #7b8ba8 !important; }
+        .dark .settings-panel { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
+        .dark .settings-panel h3 { color: #eef1f6; }
         .dark .settings-panel span { color: #d8dee9 !important; }
         .dark .settings-panel hr { border-color: #3e4a64; }
         .dark .settings-panel p { color: #7b8ba8 !important; }
         .dark #settings-btn { color: #9ca9c0; }
         .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
-        .dark code { background-color: #1e293b !important; color: #e2e8f0 !important; border: 1px solid #334155; }
+        .dark code { background-color: #3e4a64 !important; color: #d8dee9 !important; border: 1px solid #54637f; }
+        .dark footer a { color: #9ca9c0; }
+        .dark footer a:hover { color: #eef1f6; }
         .toc-link { transition: color .15s ease; }
         .toc-link:hover { color: #65a30d; }
     </style>
