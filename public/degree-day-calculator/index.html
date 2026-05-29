@@ -372,20 +372,36 @@
         <!-- Results -->
         <div id="results" class="hidden space-y-6" style="display: none;">
 
-            <!-- Station info cards -->
-            <div class="grid sm:grid-cols-2 gap-4">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Location Searched</p>
-                    <p class="text-slate-800 font-medium text-sm" id="res-location"></p>
-                    <p class="text-slate-500 text-xs mt-1" id="res-coords"></p>
+            <!-- Station Info -->
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+                <h2 class="text-lg font-semibold text-slate-800 mb-3">Station Info</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div>
+                        <span class="text-slate-500">Location:</span>
+                        <span id="res-location" class="font-medium text-slate-800 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Station:</span>
+                        <span id="res-station-name" class="font-medium text-slate-800 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Coordinates:</span>
+                        <span id="res-coords" class="font-mono text-slate-700 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Station ID:</span>
+                        <span id="res-station-id" class="font-mono text-slate-700 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Distance:</span>
+                        <span id="res-station-dist" class="font-medium text-slate-800 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Station Coords:</span>
+                        <span id="res-station-coords" class="font-mono text-slate-700 ml-1"></span>
+                    </div>
                 </div>
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Nearest Station</p>
-                    <p class="text-slate-800 font-medium text-sm" id="res-station-name"></p>
-                    <p class="text-blue-600 font-mono text-xs mt-1" id="res-station-id"></p>
-                    <p class="text-slate-500 text-xs mt-0.5" id="res-station-dist"></p>
-                </div>
-            </div>
+            </section>
 
             <!-- GDD Chart -->
             <details id="gdd-chart-details" class="group" open>
@@ -1329,9 +1345,9 @@
             document.getElementById('res-location').textContent = location;
             document.getElementById('res-coords').textContent = `${search_lat.toFixed(4)}, ${search_lon.toFixed(4)}`;
             document.getElementById('res-station-name').textContent = station.station_name;
-            document.getElementById('res-station-id').textContent = `Station ID: ${station.station_id}`;
-            document.getElementById('res-station-dist').textContent =
-                `${station.distance_miles} mi away  ·  ${station.station_lat.toFixed(4)}, ${station.station_lon.toFixed(4)}`;
+            document.getElementById('res-station-id').textContent = station.station_id;
+            document.getElementById('res-station-dist').textContent = station.distance_miles + ' mi';
+            document.getElementById('res-station-coords').textContent = `${station.station_lat.toFixed(4)}, ${station.station_lon.toFixed(4)}`;
 
             // Dynamic chart title
             document.getElementById('chart-title').textContent = 'Temperature (°F)';

@@ -319,12 +319,20 @@
                         <span id="res-station" class="font-medium text-slate-800 ml-1"></span>
                     </div>
                     <div>
+                        <span class="text-slate-500">Coordinates:</span>
+                        <span id="res-coords" class="font-mono text-slate-700 ml-1"></span>
+                    </div>
+                    <div>
                         <span class="text-slate-500">Station ID:</span>
                         <span id="res-station-id" class="font-mono text-slate-700 ml-1"></span>
                     </div>
                     <div>
                         <span class="text-slate-500">Distance:</span>
                         <span id="res-distance" class="font-medium text-slate-800 ml-1"></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">Station Coords:</span>
+                        <span id="res-station-coords" class="font-mono text-slate-700 ml-1"></span>
                     </div>
                 </div>
             </section>
@@ -730,8 +738,10 @@
                 // Populate station info
                 document.getElementById('res-location').textContent = data.location || '—';
                 document.getElementById('res-station').textContent = data.station.station_name || '—';
+                document.getElementById('res-coords').textContent = (data.search_lat != null && data.search_lon != null) ? `${data.search_lat.toFixed(4)}, ${data.search_lon.toFixed(4)}` : '—';
                 document.getElementById('res-station-id').textContent = data.station.station_id || '—';
                 document.getElementById('res-distance').textContent = data.station.distance_miles + ' mi';
+                document.getElementById('res-station-coords').textContent = (data.station.station_lat != null && data.station.station_lon != null) ? `${data.station.station_lat.toFixed(4)}, ${data.station.station_lon.toFixed(4)}` : '—';
 
                 // Populate GDD result
                 console.log('[GDDLookup] target entry:', targetEntry);
