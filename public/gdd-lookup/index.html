@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
         if (localStorage.getItem('firefly-theme') === 'dark' ||
@@ -190,6 +192,7 @@
             <div class="inline-flex flex-wrap rounded-lg bg-slate-100 p-1 mb-3 text-sm font-medium items-center gap-1">
                 <button onclick="switchTab('city')"   id="tab-city"   class="px-3 sm:px-4 py-2 rounded-md transition tab-active">City / State / Country</button>
                 <button onclick="switchTab('latlon')" id="tab-latlon" class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">Lat / Long</button>
+                <button onclick="switchTab('map')"    id="tab-map"    class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">Map</button>
             </div>
             <div class="flex flex-wrap gap-2 mb-5">
                 <input id="input-city-inline" type="text" placeholder="City"
@@ -204,6 +207,12 @@
                        class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none hidden" />
             </div>
             <p id="dms-hint" class="text-xs text-slate-500 -mt-4 mb-5 hidden">Accepts decimal degrees (35.4564) or DMS (35° 27' 23" N)</p>
+
+            <!-- Map Picker -->
+            <div id="map-picker-wrap" class="mb-5 hidden">
+                <div id="map-picker" class="w-full h-72 rounded-lg border border-slate-300 z-0"></div>
+                <p id="map-coords" class="text-xs text-slate-500 mt-2">Click anywhere on the map or drag the marker to choose a location.</p>
+            </div>
 
             <!-- Target Date -->
             <div class="mt-5 pt-5 border-t border-slate-100">
@@ -409,6 +418,10 @@
     <script>
         /* ── State ── */
         let currentTab = 'city';
+        let mapPicker = null;
+        let mapMarker = null;
+        let mapLat = null;
+        let mapLon = null;
 
         /* ── Mobile Menu ── */
         function toggleMobileMenu() {
@@ -507,7 +520,7 @@
         /* ── Tab switching ── */
         function switchTab(tab) {
             currentTab = tab;
-            ['city', 'latlon'].forEach(t => {
+            ['city', 'latlon', 'map'].forEach(t => {
                 const btn = document.getElementById('tab-' + t);
                 if (t === tab) {
                     btn.classList.add('tab-active');
@@ -523,6 +536,38 @@
             document.getElementById('dms-hint').classList.toggle('hidden', tab !== 'latlon');
             document.getElementById('input-lat-inline').classList.toggle('hidden', tab !== 'latlon');
             document.getElementById('input-lon-inline').classList.toggle('hidden', tab !== 'latlon');
+            document.getElementById('map-picker-wrap').classList.toggle('hidden', tab !== 'map');
+            if (tab === 'map') initMapPicker();
+        }
+
+        /* ── Map location picker ── */
+        function initMapPicker() {
+            if (mapPicker) {
+                setTimeout(() => mapPicker.invalidateSize(), 50);
+                return;
+            }
+            const start = [39.5, -98.35]; // Centre of contiguous US
+            mapPicker = L.map('map-picker').setView(start, 4);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(mapPicker);
+            mapMarker = L.marker(start, { draggable: true }).addTo(mapPicker);
+            mapMarker.on('dragend', () => {
+                const p = mapMarker.getLatLng();
+                setMapCoords(p.lat, p.lng);
+            });
+            mapPicker.on('click', (e) => {
+                mapMarker.setLatLng(e.latlng);
+                setMapCoords(e.latlng.lat, e.latlng.lng);
+            });
+            setTimeout(() => mapPicker.invalidateSize(), 50);
+        }
+
+        function setMapCoords(lat, lon) {
+            mapLat = Math.round(lat * 1e6) / 1e6;
+            mapLon = Math.round(lon * 1e6) / 1e6;
+            document.getElementById('map-coords').textContent = `Selected: ${mapLat}, ${mapLon}`;
         }
 
         /* ── Helpers ── */
@@ -676,6 +721,11 @@
                     body.city    = document.getElementById('input-city-inline').value;
                     body.state   = document.getElementById('input-state-inline').value;
                     body.country = document.getElementById('input-country-inline').value;
+                } else if (currentTab === 'map') {
+                    if (mapLat === null || mapLon === null) throw new Error('Please select a location on the map.');
+                    body.mode = 'latlon';
+                    body.lat = mapLat;
+                    body.lon = mapLon;
                 } else {
                     const rawLat = document.getElementById('input-lat-inline').value;
                     const rawLon = document.getElementById('input-lon-inline').value;
