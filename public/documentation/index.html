@@ -200,11 +200,11 @@
                     <p>EntoTools uses the <strong>modified Growing Degree Day (mGDD)</strong> method, also known as the "modified sine" or "simple average" method with an upper threshold cap.</p>
                     <h3 class="text-base font-semibold text-slate-800 mt-4">Formula</h3>
                     <div class="bg-slate-50 rounded-lg p-4 font-mono text-sm">
-                        <p>Daily GDD = max(0, ((min(TMAX, MaxTemp) + TMIN) / 2) − BaseTemp)</p>
+                        <p>Daily GDD = max(0, ((min(TMAX, MaxTemp) + max(TMIN, BaseTemp)) / 2) − BaseTemp)</p>
                     </div>
                     <h3 class="text-base font-semibold text-slate-800 mt-4">Parameters</h3>
                     <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>Base Temperature (default 50°F):</strong> The lower developmental threshold. Days where the average temperature is below this contribute 0 GDD.</li>
+                        <li><strong>Base Temperature (default 50°F):</strong> The lower developmental threshold. TMIN values below this are raised to this value before averaging (matching CLIMOD's modified method), and days where the resulting average is below this contribute 0 GDD.</li>
                         <li><strong>Max Temperature Cap (default 86°F):</strong> The upper developmental threshold. TMAX values above this are capped at this value before averaging, because insect development typically plateaus or ceases above certain temperatures.</li>
                         <li><strong>Accumulation Start Date:</strong> The month and day (e.g., Jan 1) when cumulative GDD resets and begins accumulating for the season.</li>
                     </ul>

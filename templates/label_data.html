@@ -605,7 +605,7 @@
                 prevYear = dateYear;
                 const isActive = dateMD >= accumStartMD;
                 let daily = 0;
-                if (isActive && t.TMIN !== null && t.TMAX !== null) { const cappedMax = Math.min(t.TMAX, maxTemp); daily = Math.max(0, (cappedMax + t.TMIN) / 2 - baseTemp); }
+                if (isActive && t.TMIN !== null && t.TMAX !== null) { const cappedMax = Math.min(t.TMAX, maxTemp); const cappedMin = Math.max(t.TMIN, baseTemp); daily = Math.max(0, (cappedMax + cappedMin) / 2 - baseTemp); }
                 cumulative = isActive ? cumulative + daily : 0;
                 results.push({
                     date: t.date, md: dateMD,

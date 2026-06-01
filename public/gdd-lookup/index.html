@@ -700,7 +700,8 @@
                 let daily = 0;
                 if (isActive && t.TMIN !== null && t.TMAX !== null) {
                     const cappedMax = Math.min(t.TMAX, maxTemp);
-                    const avg = (cappedMax + t.TMIN) / 2;
+                    const cappedMin = Math.max(t.TMIN, baseTemp);
+                    const avg = (cappedMax + cappedMin) / 2;
                     daily = Math.max(0, avg - baseTemp);
                 }
 
