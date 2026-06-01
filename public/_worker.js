@@ -19,6 +19,11 @@ const NCEI_MAX_RETRIES = 3;
 const OPEN_METEO_MAX_RETRIES = 3;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
+// ── Request limits (abuse / DoS protection) ──────────────────────
+const MAX_DATE_RANGES = 10;          // max number of date ranges per request
+const MAX_RANGE_DAYS = 366 * 5;      // max span of a single range (~5 years)
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 // ── Country → data-provider mapping ──────────────────────────────
 // Each key is a 2-letter ISO country code (lowercase).
 // Value is the provider key used in DATA_PROVIDERS below.
@@ -526,6 +531,8 @@ async function handleSearch(request, env) {
       lon = parseFloat(body.lon);
       if (isNaN(lat) || isNaN(lon))
         return jsonResponse({ error: 'Invalid latitude / longitude values.' }, 400);
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180)
+        return jsonResponse({ error: 'Latitude must be between -90 and 90, and longitude between -180 and 180.' }, 400);
       locationLabel = `${lat}, ${lon}`;
       // Reverse-geocode to determine country
       try {
@@ -587,6 +594,12 @@ async function handleSearch(request, env) {
   if (!dateRanges || !dateRanges.length) {
     dateRanges = [{ startDate: body.startDate, endDate: body.endDate, label: 'Range 1' }];
   }
+  if (!Array.isArray(dateRanges)) {
+    return jsonResponse({ error: 'Invalid date ranges.' }, 400);
+  }
+  if (dateRanges.length > MAX_DATE_RANGES) {
+    return jsonResponse({ error: `Too many date ranges (max ${MAX_DATE_RANGES}).` }, 400);
+  }
 
   console.log('[Worker:handleSearch] using', provider, '| station:', station.station_id, '— fetching', dateRanges.length, 'date range(s)');
 
@@ -616,6 +629,10 @@ async function handleSearch(request, env) {
     }
     if (edDate < sdDate) {
       return jsonResponse({ error: `End date is before start date for '${label || 'a range'}'.` }, 400);
+    }
+    const spanDays = Math.floor((edDate.getTime() - sdDate.getTime()) / MS_PER_DAY) + 1;
+    if (spanDays > MAX_RANGE_DAYS) {
+      return jsonResponse({ error: `Date range '${label || 'a range'}' is too large (max ${MAX_RANGE_DAYS} days).` }, 400);
     }
   }
 
