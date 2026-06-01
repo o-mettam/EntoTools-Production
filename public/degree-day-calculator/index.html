@@ -410,6 +410,13 @@
                         <span id="res-station-coords" class="font-mono text-slate-700 ml-1"></span>
                     </div>
                 </div>
+                <div id="station-map-wrap" class="mt-4 hidden">
+                    <div id="station-map" class="w-full h-64 rounded-lg border border-slate-300 z-0"></div>
+                    <p class="text-xs text-slate-500 mt-2">
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 align-middle"></span> Weather station
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-400 align-middle ml-3"></span> Searched location
+                    </p>
+                </div>
             </section>
 
             <!-- GDD Chart -->
@@ -676,6 +683,8 @@
         let mapMarker = null;
         let mapLat = null;
         let mapLon = null;
+        let stationMap = null;
+        let stationLayer = null;
         let chart = null;
         let gddChart = null;
         let precipChart = null;
@@ -1221,6 +1230,64 @@
             document.getElementById('map-coords').textContent = `Selected: ${mapLat}, ${mapLon}`;
         }
 
+        /* ── Station location map (read-only) ────────────── */
+        function renderStationMap(station, searchLat, searchLon) {
+            const wrap = document.getElementById('station-map-wrap');
+            const sLat = station && station.station_lat;
+            const sLon = station && station.station_lon;
+            if (sLat == null || sLon == null || isNaN(sLat) || isNaN(sLon)) {
+                wrap.classList.add('hidden');
+                return;
+            }
+            wrap.classList.remove('hidden');
+
+            if (!stationMap) {
+                stationMap = L.map('station-map');
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(stationMap);
+            }
+            if (stationLayer) {
+                stationLayer.remove();
+            }
+            stationLayer = L.layerGroup().addTo(stationMap);
+
+            const stationIcon = L.divIcon({
+                className: '',
+                html: '<span style="display:block;width:16px;height:16px;border-radius:50%;background:#3b82f6;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);"></span>',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8],
+            });
+            const stationPt = [sLat, sLon];
+            L.marker(stationPt, { icon: stationIcon })
+                .bindPopup(`<strong>${station.station_name || 'Weather station'}</strong><br>${sLat.toFixed(4)}, ${sLon.toFixed(4)}`)
+                .addTo(stationLayer);
+
+            const bounds = [stationPt];
+            if (searchLat != null && searchLon != null && !isNaN(searchLat) && !isNaN(searchLon)) {
+                const searchIcon = L.divIcon({
+                    className: '',
+                    html: '<span style="display:block;width:14px;height:14px;border-radius:50%;background:#94a3b8;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);"></span>',
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7],
+                });
+                const searchPt = [searchLat, searchLon];
+                L.marker(searchPt, { icon: searchIcon })
+                    .bindPopup(`<strong>Searched location</strong><br>${searchLat.toFixed(4)}, ${searchLon.toFixed(4)}`)
+                    .addTo(stationLayer);
+                L.polyline([searchPt, stationPt], { color: '#94a3b8', weight: 2, dashArray: '4 4' }).addTo(stationLayer);
+                bounds.push(searchPt);
+            }
+
+            if (bounds.length > 1) {
+                stationMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+            } else {
+                stationMap.setView(stationPt, 10);
+            }
+            setTimeout(() => stationMap.invalidateSize(), 50);
+        }
+
         /* ── Search ────────────────────────────────────── */
         async function doSearch() {
             console.log('[Firefly:doSearch] === SEARCH START === mode:', currentTab);
@@ -1401,6 +1468,9 @@
             document.getElementById('res-station-id').textContent = station.station_id;
             document.getElementById('res-station-dist').textContent = station.distance_miles + ' mi';
             document.getElementById('res-station-coords').textContent = `${station.station_lat.toFixed(4)}, ${station.station_lon.toFixed(4)}`;
+
+            // Station location map
+            renderStationMap(station, search_lat, search_lon);
 
             // Dynamic chart title
             document.getElementById('chart-title').textContent = 'Temperature (°F)';
