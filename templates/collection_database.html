@@ -738,7 +738,9 @@
         /* ── Beforeunload warning ── */
         window.addEventListener('beforeunload', function(e) {
             if (!dirtyThisSession) return;
-            const msg = 'You made changes this session. Consider downloading your CSV backup before leaving.';
+            // No need to warn if changes are already backed up to Google Drive.
+            if (window.EntoSync && EntoSync.isConnected()) return;
+            const msg = 'You made changes this session. Consider downloading your CSV backup or connecting Google Drive before leaving.';
             e.preventDefault();
             e.returnValue = msg;
             return msg;
