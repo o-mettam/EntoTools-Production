@@ -284,9 +284,17 @@
   function isConfigured() { return !!_provider && _provider.isConfigured(); }
   function lastSynced() { return _provider && _provider.lastSynced ? _provider.lastSynced() : null; }
 
-  async function fullSync() {
+  // interactive=true means the call came from a user gesture (Connect / Sync now)
+  // and is allowed to trigger the provider's auth UI. Background syncs (load,
+  // auto-push) pass false and silently defer if no valid token is held.
+  async function fullSync(interactive) {
     if (!_provider) throw new Error('No sync provider configured.');
     if (_syncing) return;
+    if (!interactive && _provider.hasToken && !_provider.hasToken()) {
+      notify({ type: 'sync-deferred' });
+      return;
+    }
+    if (_provider.setInteractive) _provider.setInteractive(!!interactive);
     _syncing = true;
     notify({ type: 'sync-start' });
     try {
@@ -303,11 +311,13 @@
       notify({ type: 'sync-success', at: lastSynced() });
       return merged;
     } catch (e) {
+      if (e && e.code === 'TOKEN_UNAVAILABLE') { notify({ type: 'sync-deferred' }); return; }
       console.error('[EntoSync] sync failed:', e);
       notify({ type: 'sync-error', error: e.message });
       throw e;
     } finally {
       _syncing = false;
+      if (_provider.setInteractive) _provider.setInteractive(false);
     }
   }
 
@@ -315,7 +325,7 @@
     if (!_provider) throw new Error('No sync provider configured.');
     await _provider.connect();
     notify({ type: 'connected' });
-    return fullSync();
+    return fullSync(true);
   }
 
   async function tryResume() {

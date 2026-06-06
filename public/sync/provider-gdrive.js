@@ -28,6 +28,7 @@
   let accessToken = null;
   let tokenExpiry = 0;
   let tokenClient = null;
+  let allowInteractive = false; // only true during explicit user actions (Connect / Sync now)
   const SESSION_TOKEN_KEY = 'entoDriveToken'; // sessionStorage cache (cleared on tab/browser close)
 
   // Restore a still-valid token from this browser session so refreshes don't re-prompt.
@@ -114,7 +115,9 @@
 
   async function ensureToken() {
     if (hasValidToken()) return accessToken;
-    return requestToken(''); // silent re-issue
+    // Never trigger Google's auth UI unless the call originated from a user gesture.
+    if (!allowInteractive) { const e = new Error('token-unavailable'); e.code = 'TOKEN_UNAVAILABLE'; throw e; }
+    return requestToken('');
   }
 
   // ── Drive REST helpers ─────────────────────────────────────────
@@ -209,26 +212,31 @@
 
     isConfigured: isConfigured,
     isConnected: function () { return !!loadConn().connected; },
+    hasToken: function () { return hasValidToken(); },
+    setInteractive: function (v) { allowInteractive = !!v; },
 
     async connect() {
-      await waitForGis(8000);
-      await requestToken('consent');
-      const conn = loadConn();
-      conn.connected = true;
-      saveConn(conn);
-      await ensureFolder(conn);
-      return true;
+      allowInteractive = true;
+      try {
+        await waitForGis(8000);
+        await requestToken('consent');
+        const conn = loadConn();
+        conn.connected = true;
+        saveConn(conn);
+        await ensureFolder(conn);
+        return true;
+      } finally {
+        allowInteractive = false;
+      }
     },
 
+    // Resume only from a cached session token. Never triggers Google's auth UI on
+    // page load — that requires an explicit user gesture (Connect / Sync now).
     async silentConnect() {
       const conn = loadConn();
       if (!conn.connected) return false;
       if (!isConfigured()) return false;
-      if (hasValidToken()) return true; // reuse cached session token — no prompt
-      const ready = await waitForGis(8000);
-      if (!ready) return false;
-      try { await requestToken(''); return true; }
-      catch (e) { console.warn('[GDrive] silent connect failed:', e.message); return false; }
+      return hasValidToken();
     },
 
     disconnect() {

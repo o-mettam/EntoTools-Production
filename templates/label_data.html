@@ -19,9 +19,9 @@
             document.documentElement.classList.add('dark');
         }
     </script>
-    <script src="/sync/config.js"></script>
-    <script src="/sync/sync-core.js"></script>
-    <script src="/sync/provider-gdrive.js"></script>
+    <script src="/sync/config.js?v=2"></script>
+    <script src="/sync/sync-core.js?v=2"></script>
+    <script src="/sync/provider-gdrive.js?v=2"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
@@ -1136,7 +1136,7 @@
             };
             window.entoDriveSyncNow = async function (e) {
                 if (e) e.stopPropagation();
-                try { await EntoSync.fullSync(); } catch (err) { /* surfaced via events */ }
+                try { await EntoSync.fullSync(true); } catch (err) { /* surfaced via events */ }
             };
             render();
             EntoSync.tryResume().then((ok) => { if (ok) render(); });
