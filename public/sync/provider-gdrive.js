@@ -28,6 +28,28 @@
   let accessToken = null;
   let tokenExpiry = 0;
   let tokenClient = null;
+  const SESSION_TOKEN_KEY = 'entoDriveToken'; // sessionStorage cache (cleared on tab/browser close)
+
+  // Restore a still-valid token from this browser session so refreshes don't re-prompt.
+  function restoreToken() {
+    if (accessToken && Date.now() < tokenExpiry) return;
+    try {
+      const s = sessionStorage.getItem(SESSION_TOKEN_KEY);
+      if (s) {
+        const t = JSON.parse(s);
+        if (t && t.accessToken && t.tokenExpiry > Date.now()) {
+          accessToken = t.accessToken; tokenExpiry = t.tokenExpiry;
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+  function persistToken() {
+    try { sessionStorage.setItem(SESSION_TOKEN_KEY, JSON.stringify({ accessToken: accessToken, tokenExpiry: tokenExpiry })); } catch (e) { /* ignore */ }
+  }
+  function clearToken() {
+    accessToken = null; tokenExpiry = 0;
+    try { sessionStorage.removeItem(SESSION_TOKEN_KEY); } catch (e) { /* ignore */ }
+  }
 
   // ── Persisted connection state (file ids, intent) ──────────────
   function loadConn() {
@@ -80,6 +102,7 @@
         if (resp && resp.error) { reject(new Error(resp.error)); return; }
         accessToken = resp.access_token;
         tokenExpiry = Date.now() + ((resp.expires_in || 3600) - 60) * 1000; // refresh 1 min early
+        persistToken();
         resolve(accessToken);
       };
       try { tokenClient.requestAccessToken({ prompt: prompt }); }
@@ -87,7 +110,7 @@
     });
   }
 
-  function hasValidToken() { return !!accessToken && Date.now() < tokenExpiry; }
+  function hasValidToken() { restoreToken(); return !!accessToken && Date.now() < tokenExpiry; }
 
   async function ensureToken() {
     if (hasValidToken()) return accessToken;
@@ -102,7 +125,7 @@
     const resp = await fetch(url, opts);
     if (resp.status === 401) {
       // token rejected — force one interactive-free refresh and retry once
-      accessToken = null; tokenExpiry = 0;
+      clearToken();
       const t2 = await requestToken('');
       opts.headers.Authorization = 'Bearer ' + t2;
       return fetch(url, opts);
@@ -201,6 +224,7 @@
       const conn = loadConn();
       if (!conn.connected) return false;
       if (!isConfigured()) return false;
+      if (hasValidToken()) return true; // reuse cached session token — no prompt
       const ready = await waitForGis(8000);
       if (!ready) return false;
       try { await requestToken(''); return true; }
@@ -211,7 +235,7 @@
       try {
         if (accessToken && gisReady()) global.google.accounts.oauth2.revoke(accessToken, function () {});
       } catch (e) { /* ignore */ }
-      accessToken = null; tokenExpiry = 0;
+      clearToken();
       clearConn();
     },
 
