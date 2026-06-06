@@ -1,5 +1,5 @@
 /**
- * Firefly Dashboard — Cloudflare Pages Worker (_worker.js)
+ * EntoTools Dashboard — Cloudflare Pages Worker (_worker.js)
  *
  * KV bindings required:
  *   GEOCODE_CACHE  – runtime cache for Nominatim geocode responses

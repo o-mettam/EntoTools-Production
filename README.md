@@ -3,3 +3,39 @@
 Please visit [entotools.com/documentation](https://entotools.com/documentation/) for the documentation on this website.
 
 **This is a port from a Fork Version of this Project by the same authors.**
+
+## Cloud Backup (Google Drive)
+
+The Label Collection Database is stored in the browser (`localStorage`, key `entoLabelSheetV2`).
+Users can optionally connect their own Google Drive from the Settings panel on the
+**Sample Collection** and **Collection Database** pages to two-way sync the database
+across devices. Files are written to a visible `EntoTools Backups/` folder:
+
+- `ento-collection.json` — canonical snapshot used for sync (lossless restore)
+- `ento-collection.csv` — human-readable mirror you can open in Excel/Sheets
+
+Sync is client-side only (Google Identity Services, implicit token flow, scope
+`drive.file`). No server secrets or token storage are involved, and the app can only
+see files it creates in the user's Drive.
+
+### One-time setup
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/), create/choose a project and **enable the Google Drive API**.
+2. Configure the **OAuth consent screen** (External); add the scope `.../auth/drive.file` and the authorized domain `entotools.com`.
+3. Create an **OAuth Client ID** (type: *Web application*). Authorized JavaScript origins:
+   - `https://entotools.com`
+   - `http://localhost:8788` (for `wrangler pages dev`)
+4. Paste the client ID into `public/sync/config.js` (`window.ENTO_GOOGLE_CLIENT_ID`).
+   The client ID is public and safe to commit; **no client secret is used**.
+
+Until a real client ID is configured, the Cloud Backup UI shows
+"Google Drive is not configured on this site" and the rest of the app works unchanged.
+
+### Source layout
+
+- `public/sync/sync-core.js` — versioned local store, legacy-key migration, merge engine, JSON/CSV helpers, sync orchestration.
+- `public/sync/provider-gdrive.js` — Google Drive `StorageProvider` (GIS auth + Drive REST v3).
+- `public/sync/config.js` — public OAuth client ID.
+
+After editing `templates/*.html` or `src/index.js`, run `npm run build-public`
+(or `bash scripts/build-public.sh`) to regenerate `public/`.

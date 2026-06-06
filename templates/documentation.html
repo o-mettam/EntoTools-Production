@@ -7,8 +7,13 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class' };
-        if (localStorage.getItem('firefly-theme') === 'dark' ||
-            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        var entoTheme = localStorage.getItem('ento-theme');
+        if (entoTheme === null) {
+            entoTheme = localStorage.getItem('firefly-theme');
+            if (entoTheme !== null) { localStorage.setItem('ento-theme', entoTheme); localStorage.removeItem('firefly-theme'); }
+        }
+        if (entoTheme === 'dark' ||
+            (!entoTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         }
     </script>
@@ -481,7 +486,7 @@
         function toggleTheme() {
             document.documentElement.classList.toggle('dark');
             const isDark = document.documentElement.classList.contains('dark');
-            localStorage.setItem('firefly-theme', isDark ? 'dark' : 'light');
+            localStorage.setItem('ento-theme', isDark ? 'dark' : 'light');
             updateThemeToggleUI();
         }
         // Initialize toggle UI on load
@@ -492,7 +497,7 @@
             const keys = Object.keys(localStorage);
             let cleared = 0;
             keys.forEach(k => {
-                if (k.startsWith('firefly_') || k.startsWith('fireflyLabelSheet')) {
+                if (k.startsWith('ento_') || k === 'entoLabelSheetV2' || k.startsWith('firefly_') || k.startsWith('fireflyLabelSheet')) {
                     localStorage.removeItem(k);
                     cleared++;
                 }

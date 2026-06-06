@@ -13,8 +13,13 @@
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
         // Apply saved theme immediately to prevent flash
-        if (localStorage.getItem('firefly-theme') === 'dark' ||
-            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        var entoTheme = localStorage.getItem('ento-theme');
+        if (entoTheme === null) {
+            entoTheme = localStorage.getItem('firefly-theme');
+            if (entoTheme !== null) { localStorage.setItem('ento-theme', entoTheme); localStorage.removeItem('firefly-theme'); }
+        }
+        if (entoTheme === 'dark' ||
+            (!entoTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         }
     </script>
@@ -679,7 +684,7 @@
         }
 
         function setPresetFor(rowId, days) {
-            console.log('[Firefly:setPresetFor] rowId:', rowId, 'days:', days);
+            console.log('[Ento:setPresetFor] rowId:', rowId, 'days:', days);
             const end = new Date();
             const start = new Date();
             start.setDate(end.getDate() - days);
@@ -689,7 +694,7 @@
 
         /* ── Dynamic date-range rows ─────────────────────── */
         function addDateRange(presetDays) {
-            console.log('[Firefly:addDateRange] adding range, presetDays:', presetDays || 14);
+            console.log('[Ento:addDateRange] adding range, presetDays:', presetDays || 14);
             const id = rangeCounter++;
             const colorIdx = id % RANGE_COLORS.length;
             const c = RANGE_COLORS[colorIdx];
@@ -742,7 +747,7 @@
         }
 
         function removeRange(id) {
-            console.log('[Firefly:removeRange] removing range id:', id);
+            console.log('[Ento:removeRange] removing range id:', id);
             const row = document.getElementById('range-row-' + id);
             if (row) row.remove();
             // Keep at least one range
@@ -765,7 +770,7 @@
                     colorIdx:  parseInt(row.dataset.colorIdx),
                 });
             }
-            console.log('[Firefly:getDateRanges] collected', ranges.length, 'range(s):', JSON.stringify(ranges.map(r => ({ label: r.label, start: r.startDate, end: r.endDate }))));
+            console.log('[Ento:getDateRanges] collected', ranges.length, 'range(s):', JSON.stringify(ranges.map(r => ({ label: r.label, start: r.startDate, end: r.endDate }))));
             return ranges;
         }
 
@@ -779,19 +784,19 @@
             const valInput = document.getElementById('input-threshold-val');
             const lblInput = document.getElementById('input-threshold-label');
             const val = parseFloat(valInput.value);
-            if (isNaN(val) || val <= 0) { console.warn('[Firefly:addThreshold] invalid value:', valInput.value); return; }
+            if (isNaN(val) || val <= 0) { console.warn('[Ento:addThreshold] invalid value:', valInput.value); return; }
             if (gddThresholds.some(t => t.value === val)) { valInput.value = ''; lblInput.value = ''; return; }
             const lbl = lblInput.value.trim() || (val + ' GDD');
             gddThresholds.push({ value: val, label: lbl });
             gddThresholds.sort((a, b) => a.value - b.value);
-            console.log('[Firefly:addThreshold] added threshold:', val, 'label:', lbl, '| total:', gddThresholds.length);
+            console.log('[Ento:addThreshold] added threshold:', val, 'label:', lbl, '| total:', gddThresholds.length);
             valInput.value = '';
             lblInput.value = '';
             renderThresholdChips();
         }
 
         function removeThreshold(val) {
-            console.log('[Firefly:removeThreshold] removing threshold:', val);
+            console.log('[Ento:removeThreshold] removing threshold:', val);
             const idx = gddThresholds.findIndex(t => t.value === val);
             if (idx !== -1) gddThresholds.splice(idx, 1);
             renderThresholdChips();
@@ -820,7 +825,7 @@
         function addDateMarker() {
             const mm = document.getElementById('input-datemark-month').value;
             const dd = String(document.getElementById('input-datemark-day').value).padStart(2, '0');
-            console.log('[Firefly:addDateMarker] mm:', mm, 'dd:', dd);
+            console.log('[Ento:addDateMarker] mm:', mm, 'dd:', dd);
             const lblInput = document.getElementById('input-datemark-label');
             const md = mm + '-' + dd;
             if (dateMarkers.some(d => d.md === md)) return;
@@ -829,13 +834,13 @@
             const lbl = lblInput.value.trim() || defaultLabel;
             dateMarkers.push({ md, label: lbl });
             dateMarkers.sort((a, b) => a.md.localeCompare(b.md));
-            console.log('[Firefly:addDateMarker] added marker:', md, 'label:', lbl, '| total:', dateMarkers.length);
+            console.log('[Ento:addDateMarker] added marker:', md, 'label:', lbl, '| total:', dateMarkers.length);
             lblInput.value = '';
             renderDateMarkerChips();
         }
 
         function removeDateMarker(md) {
-            console.log('[Firefly:removeDateMarker] removing marker:', md);
+            console.log('[Ento:removeDateMarker] removing marker:', md);
             const idx = dateMarkers.findIndex(d => d.md === md);
             if (idx !== -1) dateMarkers.splice(idx, 1);
             renderDateMarkerChips();
@@ -859,10 +864,20 @@
         renderDateMarkerChips();
 
         /* ── Saved Searches (localStorage) ─────────────── */
-        const SAVED_SEARCHES_KEY = 'firefly_saved_searches';
-        const RESULT_CACHE_KEY = 'firefly_result_cache';
+        const SAVED_SEARCHES_KEY = 'ento_saved_searches';
+        const RESULT_CACHE_KEY = 'ento_result_cache';
         const MAX_SAVED_SEARCHES = 4;
         const MAX_RESULT_CACHE_ENTRIES = 8;
+        // One-time migration from legacy firefly-prefixed keys
+        [['firefly_saved_searches', SAVED_SEARCHES_KEY], ['firefly_result_cache', RESULT_CACHE_KEY]].forEach(([oldKey, newKey]) => {
+            try {
+                if (localStorage.getItem(newKey) === null) {
+                    const legacy = localStorage.getItem(oldKey);
+                    if (legacy !== null) localStorage.setItem(newKey, legacy);
+                }
+                localStorage.removeItem(oldKey);
+            } catch (e) { /* ignore */ }
+        });
 
         function getResultCache() {
             try { return JSON.parse(localStorage.getItem(RESULT_CACHE_KEY)) || {}; } catch { return {}; }
@@ -895,7 +910,7 @@
         }
 
         function collectSearchState() {
-            console.log('[Firefly:collectSearchState] collecting current form state');
+            console.log('[Ento:collectSearchState] collecting current form state');
             const rows = document.getElementById('date-ranges-container').children;
             const dateRanges = [];
             for (const row of rows) {
@@ -926,7 +941,7 @@
         }
 
         function restoreSearchState(state) {
-            console.log('[Firefly:restoreSearchState] restoring state for tab:', state.tab, 'with', (state.dateRanges || []).length, 'ranges');
+            console.log('[Ento:restoreSearchState] restoring state for tab:', state.tab, 'with', (state.dateRanges || []).length, 'ranges');
             // Tab & location
             switchTab(state.tab || 'city');
             document.getElementById('input-city-inline').value = state.city || '';
@@ -1009,7 +1024,7 @@
         }
 
         function promptSaveSearch() {
-            console.log('[Firefly:promptSaveSearch] saving search...');
+            console.log('[Ento:promptSaveSearch] saving search...');
             const searches = getSavedSearches();
             if (searches.length >= MAX_SAVED_SEARCHES) {
                 alert(`You can save up to ${MAX_SAVED_SEARCHES} searches. Please delete one before saving a new one.`);
@@ -1024,15 +1039,15 @@
                 state: collectSearchState(),
             });
             setSavedSearches(searches);
-            console.log('[Firefly:promptSaveSearch] search saved as:', name.trim(), '| total saved:', searches.length);
+            console.log('[Ento:promptSaveSearch] search saved as:', name.trim(), '| total saved:', searches.length);
             renderSavedSearches();
         }
 
         function loadSavedSearch(id) {
-            console.log('[Firefly:loadSavedSearch] loading saved search id:', id);
+            console.log('[Ento:loadSavedSearch] loading saved search id:', id);
             const searches = getSavedSearches();
             const entry = searches.find(s => s.id === id);
-            if (!entry) { console.warn('[Firefly:loadSavedSearch] search not found:', id); return; }
+            if (!entry) { console.warn('[Ento:loadSavedSearch] search not found:', id); return; }
 
             // Visual feedback: highlight the clicked card
             const cards = document.querySelectorAll('#saved-searches-list > div');
@@ -1049,7 +1064,7 @@
         }
 
         function deleteSavedSearch(id) {
-            console.log('[Firefly:deleteSavedSearch] deleting search id:', id);
+            console.log('[Ento:deleteSavedSearch] deleting search id:', id);
             let searches = getSavedSearches();
             searches = searches.filter(s => s.id !== id);
             setSavedSearches(searches);
@@ -1131,7 +1146,7 @@
 
         /* ── Tab switching ───────────────────────────────── */
         function switchTab(tab) {
-            console.log('[Firefly:switchTab] switching to:', tab);
+            console.log('[Ento:switchTab] switching to:', tab);
             currentTab = tab;
             ['city', 'latlon'].forEach(t => {
                 const btn = document.getElementById('tab-' + t);
@@ -1155,7 +1170,7 @@
 
         /* ── Search ────────────────────────────────────── */
         async function doSearch() {
-            console.log('[Firefly:doSearch] === SEARCH START === mode:', currentTab);
+            console.log('[Ento:doSearch] === SEARCH START === mode:', currentTab);
             const body = { mode: currentTab };
 
             if (currentTab === 'city') {
@@ -1187,13 +1202,13 @@
                     if (rangeStartMD > accumStartMD) {
                         const year = startDate.slice(0, 4);
                         startDate = year + '-' + accumStartMD;
-                        console.log('[Firefly:doSearch] extended range "' + r.label + '" startDate from', r.startDate, 'to', startDate, 'for GDD accumulation');
+                        console.log('[Ento:doSearch] extended range "' + r.label + '" startDate from', r.startDate, 'to', startDate, 'for GDD accumulation');
                     }
                 }
                 return { label: r.label, startDate, endDate: r.endDate };
             });
 
-            console.log('[Firefly:doSearch] request body:', JSON.stringify(body));
+            console.log('[Ento:doSearch] request body:', JSON.stringify(body));
 
             const cacheKey = makeCacheKey(body);
             const cache = getResultCache();
@@ -1201,11 +1216,11 @@
 
             // If we have cached results, render them immediately
             if (cached) {
-                console.log('[Firefly:doSearch] LOCAL CACHE HIT — rendering cached results while refreshing');
+                console.log('[Ento:doSearch] LOCAL CACHE HIT — rendering cached results while refreshing');
                 document.getElementById('error-box').classList.add('hidden');
                 renderResults(cached, ranges);
             } else {
-                console.log('[Firefly:doSearch] LOCAL CACHE MISS — fetching from server');
+                console.log('[Ento:doSearch] LOCAL CACHE MISS — fetching from server');
             }
 
             // UI: show loading (subtle if cached), hide errors
@@ -1222,49 +1237,49 @@
             setLoadingMsg(cached ? 'Refreshing data…' : 'Geocoding location…');
 
             try {
-                console.log('[Firefly:doSearch] POSTing to /api/search...');
+                console.log('[Ento:doSearch] POSTing to /api/search...');
                 const resp = await fetch('/api/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body),
                 });
 
-                console.log('[Firefly:doSearch] response status:', resp.status);
+                console.log('[Ento:doSearch] response status:', resp.status);
                 let data;
                 try {
                     data = await resp.json();
                 } catch (parseErr) {
-                    console.error('[Firefly:doSearch] response not valid JSON — status:', resp.status, 'parseError:', parseErr.message);
+                    console.error('[Ento:doSearch] response not valid JSON — status:', resp.status, 'parseError:', parseErr.message);
                     if (!cached) showError(`Server returned an unexpected response (HTTP ${resp.status}). The data provider may be experiencing issues.`);
                     return;
                 }
 
                 if (!resp.ok) {
-                    console.error('[Firefly:doSearch] API error — status:', resp.status, 'error:', data.error, 'service_error:', data.service_error);
+                    console.error('[Ento:doSearch] API error — status:', resp.status, 'error:', data.error, 'service_error:', data.service_error);
                     if (data.service_error && data.service_error.transient) {
                         const outageBox = document.getElementById('service-outage-warning');
                         document.getElementById('service-outage-msg').textContent =
                             data.error || `${data.service_error.service || 'A weather data provider'} is temporarily unavailable.`;
                         outageBox.classList.remove('hidden');
-                        console.warn('[Firefly:doSearch] transient service outage:', data.service_error);
+                        console.warn('[Ento:doSearch] transient service outage:', data.service_error);
                         return;
                     }
                     if (!cached) showError(data.error || 'An unknown error occurred.');
                     return;
                 }
 
-                console.log('[Firefly:doSearch] API success — station:', data.station?.station_id, data.station?.station_name, '| ranges:', data.ranges?.length);
+                console.log('[Ento:doSearch] API success — station:', data.station?.station_id, data.station?.station_name, '| ranges:', data.ranges?.length);
 
                 // Save to cache with timestamp for LRU eviction
                 const updatedCache = getResultCache();
                 data._ts = Date.now();
                 updatedCache[cacheKey] = data;
                 setResultCache(updatedCache);
-                console.log('[Firefly:doSearch] results cached locally');
+                console.log('[Ento:doSearch] results cached locally');
 
                 // Show forecast unavailable warning
                 if (data.forecast_unavailable) {
-                    console.warn('[Firefly:doSearch] forecast unavailable — Open-Meteo Forecast API is not responding. Forecast data will be missing from results.');
+                    console.warn('[Ento:doSearch] forecast unavailable — Open-Meteo Forecast API is not responding. Forecast data will be missing from results.');
                     const outageBox = document.getElementById('service-outage-warning');
                     document.getElementById('service-outage-msg').textContent =
                         'The Open-Meteo Forecast API is currently unavailable. Recent and future forecast data may be missing from your results.';
@@ -1275,27 +1290,27 @@
                 const warnBox = document.getElementById('fallback-warning');
                 const provFallbackBox = document.getElementById('provider-fallback-warning');
                 if (data.is_fallback) {
-                    console.warn('[Firefly:doSearch] country fallback active — using Open-Meteo reanalysis for unsupported country:', data.country_code);
+                    console.warn('[Ento:doSearch] country fallback active — using Open-Meteo reanalysis for unsupported country:', data.country_code);
                     warnBox.classList.remove('hidden');
                 } else {
                     warnBox.classList.add('hidden');
                 }
                 if (data.provider_fallback) {
-                    console.warn('[Firefly:doSearch] provider fallback active — reason:', data.fallback_reason);
+                    console.warn('[Ento:doSearch] provider fallback active — reason:', data.fallback_reason);
                     document.getElementById('provider-fallback-msg').textContent = data.fallback_reason;
                     provFallbackBox.classList.remove('hidden');
                 } else {
                     provFallbackBox.classList.add('hidden');
                 }
-                console.log('[Firefly:doSearch] provider:', data.provider, '| country:', data.country_code, '| is_fallback:', data.is_fallback, '| provider_fallback:', data.provider_fallback, '| forecast_unavailable:', data.forecast_unavailable);
+                console.log('[Ento:doSearch] provider:', data.provider, '| country:', data.country_code, '| is_fallback:', data.is_fallback, '| provider_fallback:', data.provider_fallback, '| forecast_unavailable:', data.forecast_unavailable);
 
                 renderResults(data, ranges);
 
             } catch (err) {
-                console.error('[Firefly:doSearch] network/fetch error:', err.message, err.stack);
+                console.error('[Ento:doSearch] network/fetch error:', err.message, err.stack);
                 if (!cached) showError('Network error — is the server running? ' + err.message);
             } finally {
-                console.log('[Firefly:doSearch] === SEARCH END ===');
+                console.log('[Ento:doSearch] === SEARCH END ===');
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('btn-search').disabled = false;
             }
@@ -1307,7 +1322,7 @@
         }
 
         function showError(msg) {
-            console.error('[Firefly:showError]', msg);
+            console.error('[Ento:showError]', msg);
             const box = document.getElementById('error-box');
             box.textContent = msg;
             box.classList.remove('hidden');
@@ -1315,7 +1330,7 @@
 
         /* ── Render ────────────────────────────────────── */
         function renderResults(data, localRanges) {
-            console.log('[Firefly:renderResults] rendering results — location:', data.location, '| station:', data.station?.station_id, '| ranges:', data.ranges?.length);
+            console.log('[Ento:renderResults] rendering results — location:', data.location, '| station:', data.station?.station_id, '| ranges:', data.ranges?.length);
             const { location, search_lat, search_lon, station, ranges } = data;
 
             // Station info
@@ -1886,13 +1901,13 @@
             resultsDiv.classList.remove('hidden');
             resultsDiv.classList.add('fade-in');
             resultsDiv.style.display = '';
-            console.log('[Firefly:renderResults] rendering complete — charts and tables built');
+            console.log('[Ento:renderResults] rendering complete — charts and tables built');
         }
 
         /* ── Temperature preview range ───────────────────── */
         function applyTempPreview() {
             if (!chart) return;
-            console.log('[Firefly:applyTempPreview] applying temperature chart preview range');
+            console.log('[Ento:applyTempPreview] applying temperature chart preview range');
             const sm = document.getElementById('temp-preview-start-month').value;
             const sd = String(document.getElementById('temp-preview-start-day').value).padStart(2, '0');
             const em = document.getElementById('temp-preview-end-month').value;
@@ -1905,7 +1920,7 @@
 
         function resetTempPreview() {
             if (!chart) return;
-            console.log('[Firefly:resetTempPreview] resetting temperature chart preview range');
+            console.log('[Ento:resetTempPreview] resetting temperature chart preview range');
             delete chart.options.scales.x.min;
             delete chart.options.scales.x.max;
             chart.update();
@@ -1914,7 +1929,7 @@
         /* ── GDD preview range ──────────────────────────── */
         function applyGddPreview() {
             if (!gddChart) return;
-            console.log('[Firefly:applyGddPreview] applying GDD chart preview range');
+            console.log('[Ento:applyGddPreview] applying GDD chart preview range');
             const sm = document.getElementById('gdd-preview-start-month').value;
             const sd = String(document.getElementById('gdd-preview-start-day').value).padStart(2, '0');
             const em = document.getElementById('gdd-preview-end-month').value;
@@ -1929,7 +1944,7 @@
 
         function resetGddPreview() {
             if (!gddChart) return;
-            console.log('[Firefly:resetGddPreview] resetting GDD chart preview range');
+            console.log('[Ento:resetGddPreview] resetting GDD chart preview range');
             delete gddChart.options.scales.x.min;
             delete gddChart.options.scales.x.max;
             gddChart.update();
@@ -1938,7 +1953,7 @@
         /* ---- Precipitation preview range ---- */
         function applyPrecipPreview() {
             if (!precipChart) return;
-            console.log('[Firefly:applyPrecipPreview] applying precipitation chart preview range');
+            console.log('[Ento:applyPrecipPreview] applying precipitation chart preview range');
             const sm = document.getElementById('precip-preview-start-month').value;
             const sd = String(document.getElementById('precip-preview-start-day').value).padStart(2, '0');
             const em = document.getElementById('precip-preview-end-month').value;
@@ -1953,7 +1968,7 @@
 
         function resetPrecipPreview() {
             if (!precipChart) return;
-            console.log('[Firefly:resetPrecipPreview] resetting precipitation chart preview range');
+            console.log('[Ento:resetPrecipPreview] resetting precipitation chart preview range');
             delete precipChart.options.scales.x.min;
             delete precipChart.options.scales.x.max;
             precipChart.update();
@@ -1962,7 +1977,7 @@
         /* ── GDD Calculation ──────────────────────────── */
         function computeGDD(temperatures, baseTemp, accumStartMD, maxTemp) {
             maxTemp = maxTemp != null ? maxTemp : 86;
-            console.log('[Firefly:computeGDD] baseTemp:', baseTemp, 'maxTemp:', maxTemp, 'accumStart:', accumStartMD, 'records:', temperatures.length);
+            console.log('[Ento:computeGDD] baseTemp:', baseTemp, 'maxTemp:', maxTemp, 'accumStart:', accumStartMD, 'records:', temperatures.length);
             // accumStartMD = 'MM-DD' (no year)
             const sorted = [...temperatures].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -1988,7 +2003,7 @@
                         t.TMIN = Math.round((prev.TMIN + (next.TMIN - prev.TMIN) * frac) * 10) / 10;
                         t.TMAX = Math.round((prev.TMAX + (next.TMAX - prev.TMAX) * frac) * 10) / 10;
                         t.is_calculated = true;
-                        console.log('[Firefly:computeGDD] interpolated missing data for', t.date, '→ TMIN:', t.TMIN, 'TMAX:', t.TMAX, '(gap', g + 1, '/' + gapLen + ')');
+                        console.log('[Ento:computeGDD] interpolated missing data for', t.date, '→ TMIN:', t.TMIN, 'TMAX:', t.TMAX, '(gap', g + 1, '/' + gapLen + ')');
                     }
                 }
             }
@@ -2034,7 +2049,7 @@
                     is_calculated: t.is_calculated || false,
                 });
             }
-            console.log('[Firefly:computeGDD] computed', results.length, 'GDD records, final cumulative:', results.length > 0 ? results[results.length - 1].cumulative : 0);
+            console.log('[Ento:computeGDD] computed', results.length, 'GDD records, final cumulative:', results.length > 0 ? results[results.length - 1].cumulative : 0);
             return results;
         }
 
@@ -2042,7 +2057,7 @@
             const baseTemp = parseFloat(document.getElementById('input-gdd-base').value) || 50;
             const maxTemp = parseFloat(document.getElementById('input-gdd-max').value) || 86;
             const accumStartMD = getGddStartMD(); // 'MM-DD'
-            console.log('[Firefly:renderGDD] baseTemp:', baseTemp, 'maxTemp:', maxTemp, 'accumStart:', accumStartMD, 'ranges:', ranges.length);
+            console.log('[Ento:renderGDD] baseTemp:', baseTemp, 'maxTemp:', maxTemp, 'accumStart:', accumStartMD, 'ranges:', ranges.length);
 
             // Format MM-DD for display
             const startLabel = new Date(`2000-${accumStartMD}T00:00:00`)
@@ -2396,10 +2411,10 @@
 
         /* ── Chart Export ─────────────────────────────── */
         function exportChart(chartId, filename) {
-            console.log('[Firefly:exportChart] exporting chart:', chartId, 'as:', filename);
+            console.log('[Ento:exportChart] exporting chart:', chartId, 'as:', filename);
             const chartCanvas = document.getElementById(chartId);
             if (!chartCanvas) {
-                console.error('[Firefly:exportChart] canvas not found:', chartId);
+                console.error('[Ento:exportChart] canvas not found:', chartId);
                 alert('Chart not found');
                 return;
             }
@@ -2448,12 +2463,12 @@
 
         /* ── CSV Table Export ─────────────────────────── */
         function exportTableCSV(containerId, filename) {
-            console.log('[Firefly:exportTableCSV] exporting CSV from:', containerId, 'as:', filename);
+            console.log('[Ento:exportTableCSV] exporting CSV from:', containerId, 'as:', filename);
             const container = document.getElementById(containerId);
-            if (!container) { console.error('[Firefly:exportTableCSV] container not found:', containerId); alert('No data to export.'); return; }
+            if (!container) { console.error('[Ento:exportTableCSV] container not found:', containerId); alert('No data to export.'); return; }
 
             const tables = container.querySelectorAll('table');
-            if (tables.length === 0) { console.warn('[Firefly:exportTableCSV] no tables found in container'); alert('No data to export.'); return; }
+            if (tables.length === 0) { console.warn('[Ento:exportTableCSV] no tables found in container'); alert('No data to export.'); return; }
 
             const csvRows = [];
 
@@ -2489,7 +2504,7 @@
             });
 
             const csvContent = csvRows.join('\n');
-            console.log('[Firefly:exportTableCSV] CSV generated:', csvRows.length, 'rows from', tables.length, 'table(s)');
+            console.log('[Ento:exportTableCSV] CSV generated:', csvRows.length, 'rows from', tables.length, 'table(s)');
             const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -2532,7 +2547,7 @@
         const tempForecastToggle = document.getElementById('include-temp-forecast');
         if (tempForecastToggle) {
             tempForecastToggle.addEventListener('change', () => {
-                console.log('[Firefly:tempForecastToggle] show forecast:', tempForecastToggle.checked);
+                console.log('[Ento:tempForecastToggle] show forecast:', tempForecastToggle.checked);
                 // Toggle forecast dataset visibility directly
                 if (chart) {
                     const showForecast = tempForecastToggle.checked;
@@ -2549,7 +2564,7 @@
         const gddForecastToggle = document.getElementById('include-gdd-forecast');
         if (gddForecastToggle) {
             gddForecastToggle.addEventListener('change', () => {
-                console.log('[Firefly:gddForecastToggle] show forecast:', gddForecastToggle.checked);
+                console.log('[Ento:gddForecastToggle] show forecast:', gddForecastToggle.checked);
                 // Toggle forecast dataset visibility directly
                 if (gddChart) {
                     const showForecast = gddForecastToggle.checked;
@@ -2574,7 +2589,7 @@
 
         /* ── Settings Panel ────────────────────────────── */
         function toggleSettings() {
-            console.log('[Firefly:toggleSettings] toggling settings panel');
+            console.log('[Ento:toggleSettings] toggling settings panel');
             const panel = document.getElementById('settings-panel');
             panel.classList.toggle('open');
         }
@@ -2619,12 +2634,12 @@
             const isDark = document.documentElement.classList.contains('dark');
             if (isDark) {
                 document.documentElement.classList.remove('dark');
-                localStorage.setItem('firefly-theme', 'light');
-                console.log('[Firefly:toggleTheme] switched to light mode');
+                localStorage.setItem('ento-theme', 'light');
+                console.log('[Ento:toggleTheme] switched to light mode');
             } else {
                 document.documentElement.classList.add('dark');
-                localStorage.setItem('firefly-theme', 'dark');
-                console.log('[Firefly:toggleTheme] switched to dark mode');
+                localStorage.setItem('ento-theme', 'dark');
+                console.log('[Ento:toggleTheme] switched to dark mode');
             }
             updateThemeToggleUI();
         }
@@ -2634,11 +2649,11 @@
 
         /* ── Clear Local Cache ────────────────────────── */
         function clearLocalCache(e) {
-            console.log('[Firefly:clearLocalCache] clearing all local storage data');
-            const keys = ['firefly_saved_searches', 'firefly_result_cache'];
+            console.log('[Ento:clearLocalCache] clearing all local storage data');
+            const keys = ['ento_saved_searches', 'ento_result_cache'];
             keys.forEach(key => localStorage.removeItem(key));
             renderSavedSearches();
-            console.log('[Firefly:clearLocalCache] cache cleared successfully');
+            console.log('[Ento:clearLocalCache] cache cleared successfully');
             // Visual feedback
             const btn = (e || event).target.closest('button');
             const originalText = btn.textContent;

@@ -9,11 +9,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
-        if (localStorage.getItem('firefly-theme') === 'dark' ||
-            (!localStorage.getItem('firefly-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        var entoTheme = localStorage.getItem('ento-theme');
+        if (entoTheme === null) {
+            entoTheme = localStorage.getItem('firefly-theme');
+            if (entoTheme !== null) { localStorage.setItem('ento-theme', entoTheme); localStorage.removeItem('firefly-theme'); }
+        }
+        if (entoTheme === 'dark' ||
+            (!entoTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         }
     </script>
+    <script src="/sync/config.js"></script>
+    <script src="/sync/sync-core.js"></script>
+    <script src="/sync/provider-gdrive.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .tab-active { background: white; color: #3e4a64; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
@@ -69,6 +78,17 @@
                         </button>
                         <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
                             <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                            <div id="cloud-backup" class="py-2 border-b border-slate-100 mb-2">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/></svg>
+                                        <span class="text-sm text-slate-700">Google Drive Backup</span>
+                                    </div>
+                                    <button id="drive-btn" onclick="entoDriveToggle(event)" class="px-3 py-1.5 text-xs font-medium text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition">Connect</button>
+                                </div>
+                                <p id="drive-status" class="text-xs text-slate-400 mt-1">Sync your collection database to your own Google Drive.</p>
+                                <button id="drive-sync-now" onclick="entoDriveSyncNow(event)" class="hidden mt-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sync now</button>
+                            </div>
                             <div class="flex items-center justify-between py-2">
                                 <div class="flex items-center gap-2">
                                     <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
@@ -203,7 +223,6 @@
 
     <script>
         /* ── State ── */
-        const STORAGE_KEY = 'fireflyLabelSheet';
         let entries = [];
         let sortField = 'dateStart';
         let sortDir = 'desc';
@@ -249,17 +268,17 @@
         }
         function toggleTheme() {
             document.documentElement.classList.toggle('dark');
-            localStorage.setItem('firefly-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+            localStorage.setItem('ento-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
             updateThemeToggleUI();
         }
         updateThemeToggleUI();
 
         /* ── Clear Local Cache ────────────────────────── */
         function clearLocalCache(e) {
-            console.log('[Firefly:clearLocalCache] clearing all local storage data');
-            const keys = ['firefly_saved_searches', 'firefly_result_cache'];
+            console.log('[Ento:clearLocalCache] clearing all local storage data');
+            const keys = ['ento_saved_searches', 'ento_result_cache'];
             keys.forEach(key => localStorage.removeItem(key));
-            console.log('[Firefly:clearLocalCache] cache cleared successfully');
+            console.log('[Ento:clearLocalCache] cache cleared successfully');
             // Visual feedback
             const btn = (e || event).target.closest('button');
             const originalText = btn.textContent;
@@ -337,21 +356,21 @@
             return '';
         }
 
-        /* ── Load Data ── */
+        /* ── Load Data (via EntoStore) ── */
         function loadEntries() {
             try {
-                const stored = localStorage.getItem(STORAGE_KEY);
-                entries = stored ? JSON.parse(stored) : [];
-                console.log('[CollectionDB] loaded', entries.length, 'entries from localStorage');
-            } catch (e) { console.warn('[CollectionDB] localStorage load failed:', e); entries = []; }
+                entries = EntoStore.load();
+                console.log('[CollectionDB] loaded', entries.length, 'entries from store');
+            } catch (e) { console.warn('[CollectionDB] store load failed:', e); entries = []; }
         }
 
         function saveEntries() {
             try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-                console.log('[CollectionDB] saved', entries.length, 'entries to localStorage');
+                EntoStore.saveActiveList(entries);
+                console.log('[CollectionDB] saved', entries.length, 'entries to store');
+                if (window.EntoSync) EntoSync.scheduleAutoSync();
             }
-            catch (e) { console.warn('[CollectionDB] localStorage save failed:', e); }
+            catch (e) { console.warn('[CollectionDB] store save failed:', e); }
         }
 
         /* ── Sort ── */
@@ -727,6 +746,55 @@
         /* ── Init ── */
         console.log('[CollectionDB] page initialized');
         renderTable();
+
+        /* ── Cloud Backup (Google Drive) ── */
+        (function initCloudBackup() {
+            if (!window.EntoSync || !window.EntoDriveProvider) return;
+            EntoSync.setProvider(EntoDriveProvider);
+            const btn = document.getElementById('drive-btn');
+            const statusEl = document.getElementById('drive-status');
+            const syncBtn = document.getElementById('drive-sync-now');
+            if (!btn) return;
+            const reloadFromStore = () => renderTable();
+            const fmtTime = (iso) => { try { return new Date(iso).toLocaleString(); } catch (e) { return ''; } };
+            function render() {
+                if (!EntoSync.isConfigured()) {
+                    statusEl.textContent = 'Google Drive is not configured on this site.';
+                    btn.disabled = true; btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    syncBtn.classList.add('hidden');
+                    return;
+                }
+                const connected = EntoSync.isConnected();
+                btn.textContent = connected ? 'Disconnect' : 'Connect';
+                syncBtn.classList.toggle('hidden', !connected);
+                if (connected) {
+                    const last = EntoSync.lastSynced();
+                    statusEl.textContent = last ? ('Connected \u2014 last synced ' + fmtTime(last)) : 'Connected to Google Drive.';
+                } else {
+                    statusEl.textContent = 'Sync your collection database to your own Google Drive.';
+                }
+            }
+            EntoStore.subscribe((ev) => {
+                if (!ev) return;
+                if (ev.type === 'sync-start') statusEl.textContent = 'Syncing\u2026';
+                else if (ev.type === 'sync-error') statusEl.textContent = 'Sync error: ' + ev.error;
+                else if (ev.type === 'sync-success') { reloadFromStore(); render(); }
+                else if (ev.type === 'connected' || ev.type === 'disconnected' || ev.type === 'replaced') render();
+            });
+            window.entoDriveToggle = async function (e) {
+                if (e) e.stopPropagation();
+                if (EntoSync.isConnected()) { EntoSync.disconnect(); render(); return; }
+                btn.disabled = true; statusEl.textContent = 'Connecting\u2026';
+                try { await EntoSync.connect(); } catch (err) { statusEl.textContent = 'Connection failed: ' + err.message; }
+                finally { btn.disabled = false; render(); }
+            };
+            window.entoDriveSyncNow = async function (e) {
+                if (e) e.stopPropagation();
+                try { await EntoSync.fullSync(); } catch (err) { /* surfaced via events */ }
+            };
+            render();
+            EntoSync.tryResume().then((ok) => { if (ok) render(); });
+        })();
     </script>
     <script src="/feedback.js"></script>
 </body>
