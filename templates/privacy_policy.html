@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy — EntoTools</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' };
+        var entoTheme = localStorage.getItem('ento-theme');
+        if (entoTheme === null) {
+            entoTheme = localStorage.getItem('firefly-theme');
+            if (entoTheme !== null) { localStorage.setItem('ento-theme', entoTheme); localStorage.removeItem('firefly-theme'); }
+        }
+        if (entoTheme === 'dark' ||
+            (!entoTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .hover-lift { transition: transform .15s ease, box-shadow .15s ease; }
+        .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+        .settings-panel {
+            display: none;
+            opacity: 0;
+            transform: translateY(-4px);
+            transition: opacity .15s ease, transform .15s ease;
+        }
+        .settings-panel.open { display: block; opacity: 1; transform: translateY(0); }
+        /* Dark mode overrides */
+        .dark body, .dark { background-color: #1a2236; color: #e2e8f0; }
+        .dark .bg-white { background-color: #24304a !important; }
+        .dark .bg-slate-50 { background-color: #1a2236 !important; }
+        .dark .text-slate-800 { color: #eef1f6 !important; }
+        .dark .text-slate-700 { color: #cbd5e1 !important; }
+        .dark .text-slate-600 { color: #9ca9c0 !important; }
+        .dark .text-slate-500 { color: #7b8ba8 !important; }
+        .dark .text-slate-400 { color: #64748b !important; }
+        .dark .border-slate-200 { border-color: #334155 !important; }
+        .dark .border-slate-100 { border-color: #2a3348 !important; }
+        .dark .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,.3) !important; }
+        .dark .bg-slate-700 { background-color: #0f172a !important; }
+        .dark .settings-panel { background-color: #24304a !important; border-color: #334155 !important; }
+        .dark .settings-panel h3 { color: #eef1f6 !important; }
+        .dark .settings-panel span { color: #d8dee9 !important; }
+        .dark .settings-panel hr { border-color: #3e4a64; }
+        .dark .settings-panel p { color: #7b8ba8 !important; }
+        .dark #settings-btn { color: #9ca9c0; }
+        .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
+        .toc-link { transition: color .15s ease; }
+        .toc-link:hover { color: #65a30d; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 relative z-40">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-14 sm:h-16">
+                <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
+                <div class="flex items-center gap-1">
+                    <div class="relative">
+                        <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                        </button>
+                        <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
+                            <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
+                                    <span class="text-sm text-slate-700">Dark Mode</span>
+                                </div>
+                                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                    <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                                </button>
+                            </div>
+                            <hr class="my-2 border-slate-100">
+                            <div class="flex items-center justify-between py-2">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                                    <span class="text-sm text-slate-700">Clear Local Cache</span>
+                                </div>
+                                <button onclick="clearLocalCache(event)" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">Clear</button>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">Removes cached search results and saved searches from your browser.</p>
+                        </div>
+                    </div>
+                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                        <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        </svg>
+                        <svg id="close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div id="mobile-menu" class="hidden border-t border-slate-200 bg-white">
+            <div class="px-4 py-3 space-y-1">
+                <a href="/" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Home</a>
+                <a href="/degree-day-calculator" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Degree Day Calculator</a>
+                <a href="/gdd-lookup" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">GDD Lookup</a>
+                <a href="/sample-collection" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Label Data</a>
+                <a href="/collection-database" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Collection Database</a>
+                <a href="/documentation" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Documentation</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="bg-slate-700 text-white shadow-lg">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Privacy Policy</h1>
+            <p class="text-lime-200 text-sm mt-1">How EntoTools handles your data. Last updated: June 6, 2026.</p>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div class="space-y-8">
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">1. Overview</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>EntoTools ("we", "us", the "Service") is a free set of browser-based tools for entomological data, growing degree day (GDD) calculations, and specimen label generation. We are committed to collecting as little personal data as possible.</p>
+                    <p>The Service has <strong>no user accounts</strong> and does not require you to sign up or log in to use any of its core features. The data you enter is stored locally in your own web browser unless you explicitly choose to enable optional cloud backup.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">2. Data You Enter and How It Is Stored</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p><strong>Local storage (default):</strong> Your label collection database, saved searches, cached results, and theme preference are stored in your browser's <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">localStorage</code> on your device. This data never leaves your device unless you enable cloud backup or use a feature that contacts a third-party service (see Sections 3 and 4).</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Collection database:</strong> stored under the key <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">entoLabelSheetV2</code>.</li>
+                        <li><strong>Preferences and cache:</strong> theme setting and cached search results / saved searches.</li>
+                    </ul>
+                    <p>You can delete this data at any time using the <em>Clear Local Cache</em> control in the Settings menu, or by clearing your browser's site data.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">3. Optional Google Drive Backup</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>If you choose to connect Google Drive ("Cloud Backup"), the Service syncs your collection database to <strong>your own Google Drive account</strong> so you can access it across devices. This feature is entirely opt-in and off by default.</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Authorization:</strong> We use Google Identity Services with the limited <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">drive.file</code> scope, which only permits the app to access files it creates in your Drive. We cannot see your other Drive files.</li>
+                        <li><strong>What is stored:</strong> A folder named <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">EntoTools Backups</code> containing a JSON snapshot and a CSV copy of your collection database, stored in your Drive — not on our servers.</li>
+                        <li><strong>Access tokens:</strong> OAuth access tokens are held only in memory for the active browser session and are never persisted by us or sent to our servers.</li>
+                        <li><strong>Revoking access:</strong> Click "Disconnect" in Settings, or revoke access anytime at <a href="https://myaccount.google.com/permissions" class="text-lime-600 underline hover:text-lime-700">your Google Account permissions</a>.</li>
+                    </ul>
+                    <p>Your use of Google Drive is also governed by <a href="https://policies.google.com/privacy" class="text-lime-600 underline hover:text-lime-700">Google's Privacy Policy</a>.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">4. Third-Party Services</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>To provide weather and location features, the Service sends the location and date information you search for (such as coordinates or place names) to the following third parties. We do not send your name, email, or other identifying information to them.</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>NOAA NCEI</strong> — historical US weather data.</li>
+                        <li><strong>Open-Meteo</strong> — historical/forecast weather, elevation, humidity.</li>
+                        <li><strong>Nominatim / OpenStreetMap</strong> — geocoding of place names and coordinates.</li>
+                        <li><strong>Sunrise-Sunset.org</strong> — sunset times.</li>
+                        <li><strong>Google</strong> — Identity Services and Drive API (only if you enable Cloud Backup).</li>
+                        <li><strong>Cloudflare</strong> — hosting, content delivery, and short-term caching of geocode lookups.</li>
+                    </ul>
+                    <p>Each third party processes data under its own privacy policy.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">5. Feedback</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>If you submit feedback through the Service, the message you write is transmitted to us so we can review and improve the tools. Please do not include sensitive personal information in feedback. Provide contact details only if you would like a reply.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">6. Cookies and Tracking</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>The Service does not use advertising cookies or third-party analytics trackers. It uses your browser's <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">localStorage</code> only to remember your data and preferences as described above. Our hosting provider (Cloudflare) may process standard server logs and security cookies necessary to deliver and protect the site.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">7. Children's Privacy</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>The Service is intended for general, educational, and research use and is not directed at children under 13. We do not knowingly collect personal information from children.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">8. Changes to This Policy</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>We may update this Privacy Policy from time to time. Material changes will be reflected by updating the "Last updated" date at the top of this page. Continued use of the Service after changes constitutes acceptance of the revised policy.</p>
+                </div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">9. Contact</h2>
+                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
+                    <p>Questions about this policy can be raised via the project's <a href="https://github.com/o-mettam/EntoTools-Production" class="text-lime-600 underline hover:text-lime-700">GitHub repository</a>.</p>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 py-6 space-y-1">
+        <p>Data sourced from <a href="https://www.ncei.noaa.gov/" class="underline hover:text-slate-600">NOAA NCEI</a>,
+        <a href="https://open-meteo.com/" class="underline hover:text-slate-600">Open-Meteo</a>,
+        and <a href="https://sunrise-sunset.org/" class="underline hover:text-slate-600">Sunrise-Sunset.org</a>.
+        Geocoding by <a href="https://nominatim.openstreetmap.org/" class="underline hover:text-slate-600">Nominatim / OpenStreetMap</a>.
+        <a href="https://github.com/o-mettam/EntoTools-Production" class="underline hover:text-slate-600">GitHub</a>.</p>
+        <p>Developed by Owen Mettam &amp; Alana Eargle</p>
+        <p><a href="/privacy" class="underline hover:text-slate-600">Privacy Policy</a> &middot; <a href="/terms" class="underline hover:text-slate-600">Terms of Use</a></p>
+    </footer>
+
+    <script>
+        /* ── Mobile Menu ── */
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            const hamburger = document.getElementById('hamburger-icon');
+            const close = document.getElementById('close-icon');
+            menu.classList.toggle('hidden');
+            hamburger.classList.toggle('hidden');
+            close.classList.toggle('hidden');
+        }
+
+        /* ── Settings Panel ── */
+        function toggleSettings() {
+            document.getElementById('settings-panel').classList.toggle('open');
+        }
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('settings-panel');
+            const btn = document.getElementById('settings-btn');
+            if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+            const mobileMenu = document.getElementById('mobile-menu');
+            const mobileBtn = document.getElementById('mobile-menu-btn');
+            if (mobileMenu && mobileBtn && !mobileMenu.contains(e.target) && !mobileBtn.contains(e.target)) {
+                mobileMenu.classList.add('hidden');
+                document.getElementById('hamburger-icon').classList.remove('hidden');
+                document.getElementById('close-icon').classList.add('hidden');
+            }
+        });
+
+        /* ── Dark Mode ── */
+        function updateThemeToggleUI() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const toggle = document.getElementById('theme-toggle');
+            const dot = document.getElementById('theme-toggle-dot');
+            if (toggle && dot) {
+                if (isDark) {
+                    toggle.classList.remove('bg-slate-200');
+                    toggle.classList.add('bg-lime-600');
+                    dot.classList.remove('translate-x-1');
+                    dot.classList.add('translate-x-6');
+                } else {
+                    toggle.classList.add('bg-slate-200');
+                    toggle.classList.remove('bg-lime-600');
+                    dot.classList.add('translate-x-1');
+                    dot.classList.remove('translate-x-6');
+                }
+            }
+        }
+        function toggleTheme() {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            localStorage.setItem('ento-theme', isDark ? 'dark' : 'light');
+            updateThemeToggleUI();
+        }
+        updateThemeToggleUI();
+
+        /* ── Clear Cache ── */
+        function clearLocalCache(e) {
+            const keys = Object.keys(localStorage);
+            let cleared = 0;
+            keys.forEach(k => {
+                if (k.startsWith('ento_') || k === 'entoLabelSheetV2' || k.startsWith('firefly_') || k.startsWith('fireflyLabelSheet')) {
+                    localStorage.removeItem(k);
+                    cleared++;
+                }
+            });
+            alert('Cleared ' + cleared + ' cached item(s).');
+        }
+    </script>
+    <script src="/feedback.js"></script>
+</body>
+</html>

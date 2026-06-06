@@ -13,6 +13,8 @@ mkdir -p "$ROOT/public/gdd-lookup"
 mkdir -p "$ROOT/public/sample-collection"
 mkdir -p "$ROOT/public/collection-database"
 mkdir -p "$ROOT/public/documentation"
+mkdir -p "$ROOT/public/privacy"
+mkdir -p "$ROOT/public/terms"
 
 # Homepage → public/index.html (served at /)
 cp "$ROOT/templates/entotools.html" "$ROOT/public/index.html"
@@ -31,6 +33,12 @@ cp "$ROOT/templates/collection_database.html" "$ROOT/public/collection-database/
 
 # Documentation → public/documentation/index.html (served at /documentation)
 cp "$ROOT/templates/documentation.html" "$ROOT/public/documentation/index.html"
+
+# Privacy Policy → public/privacy/index.html (served at /privacy)
+cp "$ROOT/templates/privacy_policy.html" "$ROOT/public/privacy/index.html"
+
+# Terms of Use → public/terms/index.html (served at /terms)
+cp "$ROOT/templates/terms_of_use.html" "$ROOT/public/terms/index.html"
 
 # Error pages
 cp "$ROOT/templates/404.html" "$ROOT/public/404.html"
