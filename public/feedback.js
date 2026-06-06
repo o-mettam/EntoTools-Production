@@ -256,12 +256,16 @@
   const submitBtn = document.getElementById('feedback-submit');
   const statusEl = document.getElementById('feedback-status');
 
+  let autoCloseTimer = null;
+
   function openModal() {
+    if (autoCloseTimer) { clearTimeout(autoCloseTimer); autoCloseTimer = null; }
     overlay.classList.add('open');
     document.getElementById('feedback-title').focus();
   }
 
   function closeModal() {
+    if (autoCloseTimer) { clearTimeout(autoCloseTimer); autoCloseTimer = null; }
     overlay.classList.remove('open');
     statusEl.textContent = '';
     statusEl.className = '';
@@ -333,7 +337,7 @@
         statusEl.textContent = 'Thank you! Your feedback has been submitted.';
       }
       resetForm();
-      setTimeout(closeModal, 15000);
+      autoCloseTimer = setTimeout(closeModal, 15000);
     } catch (err) {
       statusEl.textContent = 'Network error — please check your connection and try again.';
       statusEl.className = 'feedback-status-error';

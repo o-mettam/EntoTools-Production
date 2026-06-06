@@ -22,6 +22,7 @@ const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 // ── Request limits (abuse / DoS protection) ──────────────────────
 const MAX_DATE_RANGES = 10;          // max number of date ranges per request
 const MAX_RANGE_DAYS = 366 * 5;      // max span of a single range (~5 years)
+const MAX_TOTAL_DAYS = 366 * 10;     // max combined span across all ranges (~10 years)
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // ── Country → data-provider mapping ──────────────────────────────
@@ -65,7 +66,7 @@ function haversine(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * 3956 * Math.asin(Math.sqrt(a)); // miles
+  return 2 * 3958.8 * Math.asin(Math.sqrt(a)); // miles
 }
 
 /** Case-insensitive field access for NCEI JSON records. */
@@ -193,17 +194,22 @@ async function nceiFetch(url) {
     try {
       if (attempt > 0) console.log('[Worker:nceiFetch] retry attempt', attempt + 1, '/', NCEI_MAX_RETRIES);
       const resp = await fetch(url.toString(), { headers: { 'User-Agent': USER_AGENT } });
-      if (resp.status === 503) {
-        console.warn('[Worker:nceiFetch] NCEI returned 503 — backing off', 2 ** attempt, 's');
-        await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
-        continue;
+      if (RETRYABLE_STATUS_CODES.has(resp.status)) {
+        if (attempt < NCEI_MAX_RETRIES - 1) {
+          console.warn('[Worker:nceiFetch] NCEI returned', resp.status, '— backing off', 2 ** attempt, 's');
+          await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
+          continue;
+        }
+        console.warn('[Worker:nceiFetch] NCEI returned', resp.status, 'on final attempt — giving up');
       }
       console.log('[Worker:nceiFetch] response status:', resp.status);
       return resp;
     } catch (err) {
       lastErr = err;
       console.error('[Worker:nceiFetch] fetch error on attempt', attempt + 1, ':', err.message);
-      await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
+      if (attempt < NCEI_MAX_RETRIES - 1) {
+        await new Promise((r) => setTimeout(r, 2 ** attempt * 1000));
+      }
     }
   }
   console.error('[Worker:nceiFetch] all retries exhausted');
@@ -506,7 +512,12 @@ async function getForecastOpenMeteo(lat, lon) {
 // ── API handler ───────────────────────────────────────────────────
 
 async function handleSearch(request, env) {
-  const body = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: 'Invalid request body — expected JSON.' }, 400);
+  }
   const mode = body.mode;
   console.log('[Worker:handleSearch] mode:', mode, 'body:', JSON.stringify(body).slice(0, 300));
 
@@ -615,6 +626,7 @@ async function handleSearch(request, env) {
   }
 
   // Validate all date ranges upfront
+  let totalDays = 0;
   for (const dr of dateRanges) {
     const label = dr.label || '';
     const sd = dr.startDate;
@@ -634,6 +646,10 @@ async function handleSearch(request, env) {
     if (spanDays > MAX_RANGE_DAYS) {
       return jsonResponse({ error: `Date range '${label || 'a range'}' is too large (max ${MAX_RANGE_DAYS} days).` }, 400);
     }
+    totalDays += spanDays;
+  }
+  if (totalDays > MAX_TOTAL_DAYS) {
+    return jsonResponse({ error: `Combined date ranges are too large (max ${MAX_TOTAL_DAYS} days total).` }, 400);
   }
 
   // Fetch all date ranges in parallel
@@ -690,10 +706,13 @@ async function handleSearch(request, env) {
         const forecast = forecastDays.filter(f => f.date > lastActualDate && f.date <= ed);
         console.log('[Worker:handleSearch] appending', forecast.length, 'forecast days after', lastActualDate, 'to range "' + label + '"');
 
-        // Replace null-filled placeholders with forecast data
+        // Replace null-filled placeholders within the range with forecast data.
+        // `temps` already spans the full requested range (gap-filled) and
+        // `forecast` is pre-filtered to dates <= ed, so a simple in-place
+        // replacement covers every applicable day.
         const forecastByDate = {};
         for (const f of forecast) forecastByDate[f.date] = f;
-        const combined = temps.map(t => forecastByDate[t.date] || t).concat(forecast.filter(f => !temps.some(t => t.date === f.date)));
+        const combined = temps.map(t => forecastByDate[t.date] || t);
         const tempsWithAccum = calculatePrecipAccumulation(combined);
 
         return { label, startDate: sd, endDate: ed, temperatures: tempsWithAccum };
@@ -749,7 +768,12 @@ const FEEDBACK_TYPE_LABELS = {
 };
 
 async function handleFeedback(request, env) {
-  const body = await request.json();
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: 'Invalid request body — expected JSON.' }, 400);
+  }
   const { type, title, description, email, page, console_logs } = body;
 
   if (!title || !title.trim()) {
@@ -777,8 +801,10 @@ async function handleFeedback(request, env) {
   issueBody += `**Submitted:** ${new Date().toISOString()}\n`;
 
   if (console_logs && console_logs.trim()) {
+    // Neutralize backtick fences so logs can't break out of the code block
+    const safeLogs = console_logs.trim().slice(0, 5000).replace(/`/g, '\u2018');
     issueBody += '\n<details>\n<summary>Browser Console Logs (PII sanitized)</summary>\n\n```\n';
-    issueBody += console_logs.trim().slice(0, 5000);
+    issueBody += safeLogs;
     issueBody += '\n```\n</details>\n';
   }
 
@@ -878,7 +904,7 @@ export default {
       return new Response(null, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
         },
       });

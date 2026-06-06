@@ -7,8 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
         if (localStorage.getItem('firefly-theme') === 'dark' ||
@@ -109,11 +107,6 @@
         <div class="max-w-5xl mx-auto px-4 sm:px-6">
             <div class="flex items-center justify-between h-14 sm:h-16">
                 <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
-                <div class="hidden md:flex items-center gap-1 ml-6">
-                    <a href="/degree-day-calculator" class="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition">Degree Days</a>
-                    <a href="/gdd-lookup" class="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition">GDD Lookup</a>
-                    <a href="/sample-collection" class="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition">Label Data</a>
-                </div>
                 <div class="flex items-center gap-1">
                     <div class="relative">
                         <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
@@ -169,7 +162,6 @@
                 <a href="/sample-collection" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Label Data</a>
                 <a href="/collection-database" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Collection Database</a>
                 <a href="/documentation" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Documentation</a>
-                <a href="/status" class="block px-3 py-2 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition">Status</a>
             </div>
         </div>
     </nav>
@@ -192,7 +184,6 @@
             <div class="inline-flex flex-wrap rounded-lg bg-slate-100 p-1 mb-3 text-sm font-medium items-center gap-1">
                 <button onclick="switchTab('city')"   id="tab-city"   class="px-3 sm:px-4 py-2 rounded-md transition tab-active">City / State / Country</button>
                 <button onclick="switchTab('latlon')" id="tab-latlon" class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">Lat / Long</button>
-                <button onclick="switchTab('map')"    id="tab-map"    class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">Map</button>
             </div>
             <div class="flex flex-wrap gap-2 mb-5">
                 <input id="input-city-inline" type="text" placeholder="City"
@@ -207,12 +198,6 @@
                        class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none hidden" />
             </div>
             <p id="dms-hint" class="text-xs text-slate-500 -mt-4 mb-5 hidden">Accepts decimal degrees (35.4564) or DMS (35° 27' 23" N)</p>
-
-            <!-- Map Picker -->
-            <div id="map-picker-wrap" class="mb-5 hidden">
-                <div id="map-picker" class="w-full h-72 rounded-lg border border-slate-300 z-0"></div>
-                <p id="map-coords" class="text-xs text-slate-500 mt-2">Click anywhere on the map or drag the marker to choose a location.</p>
-            </div>
 
             <!-- Target Date -->
             <div class="mt-5 pt-5 border-t border-slate-100">
@@ -328,10 +313,6 @@
                         <span id="res-station" class="font-medium text-slate-800 ml-1"></span>
                     </div>
                     <div>
-                        <span class="text-slate-500">Coordinates:</span>
-                        <span id="res-coords" class="font-mono text-slate-700 ml-1"></span>
-                    </div>
-                    <div>
                         <span class="text-slate-500">Station ID:</span>
                         <span id="res-station-id" class="font-mono text-slate-700 ml-1"></span>
                     </div>
@@ -339,17 +320,6 @@
                         <span class="text-slate-500">Distance:</span>
                         <span id="res-distance" class="font-medium text-slate-800 ml-1"></span>
                     </div>
-                    <div>
-                        <span class="text-slate-500">Station Coords:</span>
-                        <span id="res-station-coords" class="font-mono text-slate-700 ml-1"></span>
-                    </div>
-                </div>
-                <div id="station-map-wrap" class="mt-4 hidden">
-                    <div id="station-map" class="w-full h-64 rounded-lg border border-slate-300 z-0"></div>
-                    <p class="text-xs text-slate-500 mt-2">
-                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-500 align-middle"></span> Weather station
-                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-400 align-middle ml-3"></span> Searched location
-                    </p>
                 </div>
             </section>
 
@@ -425,12 +395,6 @@
     <script>
         /* ── State ── */
         let currentTab = 'city';
-        let mapPicker = null;
-        let mapMarker = null;
-        let mapLat = null;
-        let mapLon = null;
-        let stationMap = null;
-        let stationLayer = null;
 
         /* ── Mobile Menu ── */
         function toggleMobileMenu() {
@@ -529,7 +493,7 @@
         /* ── Tab switching ── */
         function switchTab(tab) {
             currentTab = tab;
-            ['city', 'latlon', 'map'].forEach(t => {
+            ['city', 'latlon'].forEach(t => {
                 const btn = document.getElementById('tab-' + t);
                 if (t === tab) {
                     btn.classList.add('tab-active');
@@ -545,96 +509,6 @@
             document.getElementById('dms-hint').classList.toggle('hidden', tab !== 'latlon');
             document.getElementById('input-lat-inline').classList.toggle('hidden', tab !== 'latlon');
             document.getElementById('input-lon-inline').classList.toggle('hidden', tab !== 'latlon');
-            document.getElementById('map-picker-wrap').classList.toggle('hidden', tab !== 'map');
-            if (tab === 'map') initMapPicker();
-        }
-
-        /* ── Map location picker ── */
-        function initMapPicker() {
-            if (mapPicker) {
-                setTimeout(() => mapPicker.invalidateSize(), 50);
-                return;
-            }
-            const start = [39.5, -98.35]; // Centre of contiguous US
-            mapPicker = L.map('map-picker').setView(start, 4);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(mapPicker);
-            mapMarker = L.marker(start, { draggable: true }).addTo(mapPicker);
-            mapMarker.on('dragend', () => {
-                const p = mapMarker.getLatLng();
-                setMapCoords(p.lat, p.lng);
-            });
-            mapPicker.on('click', (e) => {
-                mapMarker.setLatLng(e.latlng);
-                setMapCoords(e.latlng.lat, e.latlng.lng);
-            });
-            setTimeout(() => mapPicker.invalidateSize(), 50);
-        }
-
-        function setMapCoords(lat, lon) {
-            mapLat = Math.round(lat * 1e6) / 1e6;
-            mapLon = Math.round(lon * 1e6) / 1e6;
-            document.getElementById('map-coords').textContent = `Selected: ${mapLat}, ${mapLon}`;
-        }
-
-        /* ── Station location map (read-only) ── */
-        function renderStationMap(station, searchLat, searchLon) {
-            const wrap = document.getElementById('station-map-wrap');
-            const sLat = station && station.station_lat;
-            const sLon = station && station.station_lon;
-            if (sLat == null || sLon == null || isNaN(sLat) || isNaN(sLon)) {
-                wrap.classList.add('hidden');
-                return;
-            }
-            wrap.classList.remove('hidden');
-
-            if (!stationMap) {
-                stationMap = L.map('station-map');
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19,
-                    attribution: '&copy; OpenStreetMap contributors'
-                }).addTo(stationMap);
-            }
-            if (stationLayer) {
-                stationLayer.remove();
-            }
-            stationLayer = L.layerGroup().addTo(stationMap);
-
-            const stationIcon = L.divIcon({
-                className: '',
-                html: '<span style="display:block;width:16px;height:16px;border-radius:50%;background:#3b82f6;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);"></span>',
-                iconSize: [16, 16],
-                iconAnchor: [8, 8],
-            });
-            const stationPt = [sLat, sLon];
-            L.marker(stationPt, { icon: stationIcon })
-                .bindPopup(`<strong>${station.station_name || 'Weather station'}</strong><br>${sLat.toFixed(4)}, ${sLon.toFixed(4)}`)
-                .addTo(stationLayer);
-
-            const bounds = [stationPt];
-            if (searchLat != null && searchLon != null && !isNaN(searchLat) && !isNaN(searchLon)) {
-                const searchIcon = L.divIcon({
-                    className: '',
-                    html: '<span style="display:block;width:14px;height:14px;border-radius:50%;background:#94a3b8;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);"></span>',
-                    iconSize: [14, 14],
-                    iconAnchor: [7, 7],
-                });
-                const searchPt = [searchLat, searchLon];
-                L.marker(searchPt, { icon: searchIcon })
-                    .bindPopup(`<strong>Searched location</strong><br>${searchLat.toFixed(4)}, ${searchLon.toFixed(4)}`)
-                    .addTo(stationLayer);
-                L.polyline([searchPt, stationPt], { color: '#94a3b8', weight: 2, dashArray: '4 4' }).addTo(stationLayer);
-                bounds.push(searchPt);
-            }
-
-            if (bounds.length > 1) {
-                stationMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
-            } else {
-                stationMap.setView(stationPt, 10);
-            }
-            setTimeout(() => stationMap.invalidateSize(), 50);
         }
 
         /* ── Helpers ── */
@@ -789,11 +663,6 @@
                     body.city    = document.getElementById('input-city-inline').value;
                     body.state   = document.getElementById('input-state-inline').value;
                     body.country = document.getElementById('input-country-inline').value;
-                } else if (currentTab === 'map') {
-                    if (mapLat === null || mapLon === null) throw new Error('Please select a location on the map.');
-                    body.mode = 'latlon';
-                    body.lat = mapLat;
-                    body.lon = mapLon;
                 } else {
                     const rawLat = document.getElementById('input-lat-inline').value;
                     const rawLon = document.getElementById('input-lon-inline').value;
@@ -856,13 +725,8 @@
                 // Populate station info
                 document.getElementById('res-location').textContent = data.location || '—';
                 document.getElementById('res-station').textContent = data.station.station_name || '—';
-                document.getElementById('res-coords').textContent = (data.search_lat != null && data.search_lon != null) ? `${data.search_lat.toFixed(4)}, ${data.search_lon.toFixed(4)}` : '—';
                 document.getElementById('res-station-id').textContent = data.station.station_id || '—';
                 document.getElementById('res-distance').textContent = data.station.distance_miles + ' mi';
-                document.getElementById('res-station-coords').textContent = (data.station.station_lat != null && data.station.station_lon != null) ? `${data.station.station_lat.toFixed(4)}, ${data.station.station_lon.toFixed(4)}` : '—';
-
-                // Station location map
-                renderStationMap(data.station, data.search_lat, data.search_lon);
 
                 // Populate GDD result
                 console.log('[GDDLookup] target entry:', targetEntry);
