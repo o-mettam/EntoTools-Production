@@ -21,8 +21,9 @@
     </script>
     <script src="/sync/config.js?v=2"></script>
     <script src="/sync/sync-core.js?v=2"></script>
-    <script src="/sync/provider-gdrive.js?v=2"></script>
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Google Drive sync hidden in production (re-enable by uncommenting the two lines below) -->
+    <!-- <script src="/sync/provider-gdrive.js?v=2"></script> -->
+    <!-- <script src="https://accounts.google.com/gsi/client" async defer></script> -->
     <style>
         body { font-family: 'Inter', sans-serif; }
         .tab-active { background: white; color: #3e4a64; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
@@ -78,7 +79,7 @@
                         </button>
                         <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
                             <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
-                            <div id="cloud-backup" class="py-2 border-b border-slate-100 mb-2">
+                            <div id="cloud-backup" class="hidden py-2 border-b border-slate-100 mb-2">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-2">
                                         <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/></svg>

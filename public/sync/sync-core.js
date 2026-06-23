@@ -177,13 +177,28 @@
     notify({ type: 'replaced', revision: env.revision });
   }
 
-  // Per-entry last-write-wins merge (tombstones win when newest).
+  // Per-entry last-write-wins merge (newest updatedAt wins).
+  //
+  // NOTE: this remains a last-write-wins strategy — two devices that edit the
+  // same entry at genuinely different times will keep only the later edit. The
+  // tie-break below only guarantees that, given identical timestamps, every
+  // device converges on the SAME winner (no split-brain). Conflict-free merging
+  // of concurrent edits would require a CRDT/vector-clock redesign.
   function mergeEnvelopes(localEnv, remoteEnv) {
     const byId = new Map();
     const consider = (e) => {
       if (!e || !e.id) return;
       const cur = byId.get(e.id);
-      if (!cur || ts(e.updatedAt) > ts(cur.updatedAt)) byId.set(e.id, e);
+      if (!cur) { byId.set(e.id, e); return; }
+      const te = ts(e.updatedAt), tc = ts(cur.updatedAt);
+      if (te > tc) { byId.set(e.id, e); return; }
+      if (te === tc) {
+        // Deterministic tie-break so all devices converge identically:
+        // 1) a surviving edit beats a concurrent deletion;
+        // 2) otherwise pick a stable winner by content comparison.
+        if (cur.deleted && !e.deleted) { byId.set(e.id, e); return; }
+        if (cur.deleted === e.deleted && contentHash(e) > contentHash(cur)) byId.set(e.id, e);
+      }
     };
     ((localEnv && localEnv.entries) || []).forEach(consider);
     ((remoteEnv && remoteEnv.entries) || []).forEach(consider);

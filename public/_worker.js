@@ -25,6 +25,18 @@ const MAX_RANGE_DAYS = 366 * 5;      // max span of a single range (~5 years)
 const MAX_TOTAL_DAYS = 366 * 10;     // max combined span across all ranges (~10 years)
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+// ── CORS / abuse protection ──────────────────────────────────────
+// Browser submissions to state-changing endpoints (feedback) must come from
+// one of these origins. Non-browser clients (no Origin header) are still
+// subject to per-IP rate limiting below.
+const ALLOWED_ORIGINS = new Set([
+  'https://entotools.com',
+  'https://www.entotools.com',
+  'http://localhost:8788',   // wrangler pages dev
+]);
+const FEEDBACK_RATE_LIMIT = 5;              // max submissions per window per IP
+const FEEDBACK_RATE_WINDOW_SECONDS = 3600; // 1 hour
+
 // ── Country → data-provider mapping ──────────────────────────────
 // Each key is a 2-letter ISO country code (lowercase).
 // Value is the provider key used in DATA_PROVIDERS below.
@@ -46,12 +58,13 @@ let _stationsCache = null;
 
 // ── Utility helpers ────────────────────────────────────────────────
 
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
+      ...extraHeaders,
     },
   });
 }
@@ -236,13 +249,19 @@ async function findNearestStation(lat, lon, env, maxCandidates = 50) {
   console.log('[Worker:findNearestStation] lat:', lat, 'lon:', lon, 'maxCandidates:', maxCandidates);
   const stations = await getStations(env);
 
-  // Pre-filter by bounding box (~2° ≈ 140 mi)
-  const latMargin = 2.0;
-  const lonMargin = 2.0 / Math.max(Math.cos(toRad(lat)), 0.1);
-  let nearby = stations.filter(
-    (s) => Math.abs(s.lat - lat) <= latMargin && Math.abs(s.lon - lon) <= lonMargin,
-  );
-  if (nearby.length < maxCandidates) nearby = stations;
+  // Pre-filter by bounding box, expanding progressively (2°→4°→8°→16°) so we
+  // avoid an O(n) scan of the full station set unless absolutely necessary.
+  const cosLat = Math.max(Math.cos(toRad(lat)), 0.1);
+  let nearby = [];
+  for (let margin = 2.0; margin <= 16.0; margin *= 2) {
+    const latMargin = margin;
+    const lonMargin = margin / cosLat;
+    nearby = stations.filter(
+      (s) => Math.abs(s.lat - lat) <= latMargin && Math.abs(s.lon - lon) <= lonMargin,
+    );
+    if (nearby.length >= maxCandidates) break;
+  }
+  if (nearby.length === 0) nearby = stations; // last resort: very remote location
 
   // Rank by distance
   const ranked = nearby
@@ -556,7 +575,8 @@ async function handleSearch(request, env) {
       return jsonResponse({ error: 'Invalid search mode.' }, 400);
     }
   } catch (err) {
-    return jsonResponse({ error: `Geocoding failed: ${err.message}` }, 500);
+    console.error('[Worker:handleSearch] geocoding failed:', err.message);
+    return jsonResponse({ error: 'Could not resolve that location. Please try again.' }, 500);
   }
 
   let provider = getProviderForCountry(countryCode);
@@ -725,13 +745,12 @@ async function handleSearch(request, env) {
     const serviceName = serviceErrors.length ? serviceErrors[0].service : 'the weather data provider';
     const userMessage = isTransient
       ? `${serviceName} is currently experiencing an outage and is not responding. Please try again in a few minutes.`
-      : `Failed to retrieve weather data: ${err.message}`;
+      : 'Failed to retrieve weather data. Please try again later.';
     return jsonResponse({
       error: userMessage,
       service_error: {
         transient: isTransient,
         service: serviceName,
-        details: err.message,
       },
     }, 503);
   }
@@ -767,26 +786,60 @@ const FEEDBACK_TYPE_LABELS = {
   other: 'feedback',
 };
 
+// Per-IP rate limit backed by KV (GEOCODE_CACHE). Returns true if the caller
+// has exceeded the allowed number of submissions in the current window.
+async function feedbackRateLimited(env, ip) {
+  if (!ip || !env.GEOCODE_CACHE) return false; // can't identify caller — don't hard-block
+  const key = `fb-rl:${ip}`;
+  let count = 0;
+  try { count = parseInt(await env.GEOCODE_CACHE.get(key), 10) || 0; }
+  catch (e) { return false; }
+  if (count >= FEEDBACK_RATE_LIMIT) return true;
+  try { await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: FEEDBACK_RATE_WINDOW_SECONDS }); }
+  catch (e) { /* fail open on KV write error */ }
+  return false;
+}
+
 async function handleFeedback(request, env) {
+  // Scope CORS to known origins for this state-changing endpoint.
+  const origin = request.headers.get('Origin');
+  const cors = ALLOWED_ORIGINS.has(origin)
+    ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' }
+    : { 'Access-Control-Allow-Origin': 'null' };
+  const reply = (data, status = 200) => jsonResponse(data, status, cors);
+
+  // Block cross-site browser submissions from non-allowlisted origins.
+  if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    console.warn('[Worker:handleFeedback] rejected disallowed origin:', origin);
+    return reply({ error: 'Forbidden.' }, 403);
+  }
+
+  // Per-IP rate limiting to prevent GitHub issue spam.
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  if (await feedbackRateLimited(env, ip)) {
+    console.warn('[Worker:handleFeedback] rate limit exceeded for IP:', ip);
+    return reply({ error: 'Too many feedback submissions. Please try again later.' }, 429);
+  }
+
   let body;
   try {
     body = await request.json();
   } catch (e) {
-    return jsonResponse({ error: 'Invalid request body — expected JSON.' }, 400);
+    return reply({ error: 'Invalid request body — expected JSON.' }, 400);
   }
   const { type, title, description, email, page, console_logs } = body;
 
   if (!title || !title.trim()) {
-    return jsonResponse({ error: 'A title is required.' }, 400);
+    return reply({ error: 'A title is required.' }, 400);
   }
   if (!description || !description.trim()) {
-    return jsonResponse({ error: 'A description is required.' }, 400);
+    return reply({ error: 'A description is required.' }, 400);
   }
 
   const token = env.GITHUB_TOKEN;
   if (!token) {
     console.error('[Worker:handleFeedback] GITHUB_TOKEN secret is not configured');
-    return jsonResponse({ error: 'Feedback submission is not configured on this server.' }, 500);
+    return reply({ error: 'Feedback submission is not configured on this server.' }, 500);
   }
 
   const feedbackType = type || 'other';
@@ -833,13 +886,13 @@ async function handleFeedback(request, env) {
   if (!ghResp.ok) {
     const errText = await ghResp.text();
     console.error('[Worker:handleFeedback] GitHub API error:', ghResp.status, errText);
-    return jsonResponse({ error: `Failed to submit feedback (GitHub ${ghResp.status}). Please try again later.` }, 502);
+    return reply({ error: 'Failed to submit feedback. Please try again later.' }, 502);
   }
 
   const issue = await ghResp.json();
   console.log('[Worker:handleFeedback] issue created:', issue.html_url);
 
-  return jsonResponse({ success: true, issue_url: issue.html_url });
+  return reply({ success: true, issue_url: issue.html_url });
 }
 
 // ── Status / Health Checks ────────────────────────────────────────
@@ -915,7 +968,8 @@ export default {
       try {
         return await handleSearch(request, env);
       } catch (err) {
-        return jsonResponse({ error: `Server error: ${err.message}` }, 500);
+        console.error('[Worker:handleSearch] unexpected error:', err.message, err.stack);
+        return jsonResponse({ error: 'An unexpected server error occurred. Please try again.' }, 500);
       }
     }
 
@@ -924,7 +978,7 @@ export default {
         return await handleFeedback(request, env);
       } catch (err) {
         console.error('[Worker:handleFeedback] unexpected error:', err.message, err.stack);
-        return jsonResponse({ error: `Server error: ${err.message}` }, 500);
+        return jsonResponse({ error: 'An unexpected server error occurred. Please try again.' }, 500);
       }
     }
 
