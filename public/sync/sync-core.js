@@ -270,7 +270,11 @@
     ];
   }
 
-  function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+  // Guard against CSV formula injection: prefix cells starting with =, +, -, @,
+  // or a control char with a single quote so spreadsheet apps (Excel/Sheets)
+  // treat them as text rather than executable formulas.
+  function csvSafe(v) { const s = String(v == null ? '' : v); return /^[=+\-@\t\r]/.test(s) ? "'" + s : s; }
+  function csvCell(v) { return '"' + csvSafe(v).replace(/"/g, '""') + '"'; }
   function csvLine(vals) { return vals.map(csvCell).join(','); }
 
   // Build a CSV string from active entries (or full entry list, tombstones skipped).

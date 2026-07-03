@@ -136,6 +136,12 @@
     return resp;
   }
 
+  // Escape a value for safe interpolation into a Drive `q` query string.
+  // Drive uses single-quoted string literals; backslashes and single quotes
+  // must be escaped. Prevents query breakage/injection if a value ever contains
+  // special characters.
+  function driveQ(v) { return String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
   async function findFile(q) {
     const url = DRIVE_FILES + '?q=' + encodeURIComponent(q) +
       '&fields=' + encodeURIComponent('files(id,name,modifiedTime,headRevisionId)') +
@@ -152,7 +158,7 @@
       if (resp.ok) { const f = await resp.json(); if (!f.trashed) return conn.folderId; }
     }
     const existing = await findFile(
-      "mimeType='application/vnd.google-apps.folder' and name='" + FOLDER_NAME + "' and trashed=false");
+      "mimeType='application/vnd.google-apps.folder' and name='" + driveQ(FOLDER_NAME) + "' and trashed=false");
     if (existing) { conn.folderId = existing.id; saveConn(conn); return conn.folderId; }
 
     const resp = await driveFetch(DRIVE_FILES + '?fields=id', {
@@ -174,7 +180,7 @@
       if (resp.ok) { const f = await resp.json(); if (!f.trashed) return conn[idKey]; }
     }
     const existing = await findFile(
-      "name='" + name + "' and '" + folderId + "' in parents and trashed=false");
+      "name='" + driveQ(name) + "' and '" + driveQ(folderId) + "' in parents and trashed=false");
     if (existing) { conn[idKey] = existing.id; saveConn(conn); return conn[idKey]; }
 
     // Create empty file with an appProperties role tag for reliable re-discovery.

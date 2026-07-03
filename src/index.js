@@ -36,6 +36,8 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 const FEEDBACK_RATE_LIMIT = 5;              // max submissions per window per IP
 const FEEDBACK_RATE_WINDOW_SECONDS = 3600; // 1 hour
+const SEARCH_RATE_LIMIT = 60;              // max searches per window per IP
+const SEARCH_RATE_WINDOW_SECONDS = 3600;   // 1 hour
 
 // ── Country → data-provider mapping ──────────────────────────────
 // Each key is a 2-letter ISO country code (lowercase).
@@ -787,17 +789,52 @@ const FEEDBACK_TYPE_LABELS = {
 };
 
 // Per-IP rate limit backed by KV (GEOCODE_CACHE). Returns true if the caller
-// has exceeded the allowed number of submissions in the current window.
-async function feedbackRateLimited(env, ip) {
+// has exceeded the allowed number of requests in the current window.
+async function rateLimited(env, ip, prefix, limit, windowSeconds) {
   if (!ip || !env.GEOCODE_CACHE) return false; // can't identify caller — don't hard-block
-  const key = `fb-rl:${ip}`;
+  const key = `${prefix}:${ip}`;
   let count = 0;
   try { count = parseInt(await env.GEOCODE_CACHE.get(key), 10) || 0; }
   catch (e) { return false; }
-  if (count >= FEEDBACK_RATE_LIMIT) return true;
-  try { await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: FEEDBACK_RATE_WINDOW_SECONDS }); }
+  if (count >= limit) return true;
+  try { await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: windowSeconds }); }
   catch (e) { /* fail open on KV write error */ }
   return false;
+}
+
+function feedbackRateLimited(env, ip) {
+  return rateLimited(env, ip, 'fb-rl', FEEDBACK_RATE_LIMIT, FEEDBACK_RATE_WINDOW_SECONDS);
+}
+
+function searchRateLimited(env, ip) {
+  return rateLimited(env, ip, 'search-rl', SEARCH_RATE_LIMIT, SEARCH_RATE_WINDOW_SECONDS);
+}
+
+// Server-side PII redaction. The client sanitizes before sending, but this
+// endpoint writes to a PUBLIC GitHub issue, so we never trust the client and
+// re-run redaction here on anything derived from user input.
+const PII_PATTERNS = [
+  [/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '[email redacted]'],
+  [/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '[ip redacted]'],
+  [/\b([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g, '[ip redacted]'],
+  [/-?\d{1,3}\.\d{4,}/g, '[coord redacted]'],
+  [/(Bearer\s+|token[=:]\s*)[\w\-._~+/]+=*/gi, '$1[token redacted]'],
+  [/\b[A-Za-z0-9_\-]{32,}\b/g, '[key redacted]'],
+];
+
+function redactPii(str) {
+  let out = String(str);
+  for (const [regex, replacement] of PII_PATTERNS) out = out.replace(regex, replacement);
+  return out;
+}
+
+// Neutralize Markdown/HTML so user-supplied text can't inject links, images,
+// or raw HTML into the public issue. Renders as plain text in GitHub.
+function sanitizeIssueText(str, maxLen = 4000) {
+  return String(str)
+    .slice(0, maxLen)
+    .replace(/[<>]/g, (c) => (c === '<' ? '\u2039' : '\u203A')) // ‹ › — strip raw HTML tags
+    .replace(/[`*_~#\[\]()|!]/g, '\\$&');                        // escape Markdown control chars
 }
 
 async function handleFeedback(request, env) {
@@ -808,9 +845,11 @@ async function handleFeedback(request, env) {
     : { 'Access-Control-Allow-Origin': 'null' };
   const reply = (data, status = 200) => jsonResponse(data, status, cors);
 
-  // Block cross-site browser submissions from non-allowlisted origins.
-  if (origin && !ALLOWED_ORIGINS.has(origin)) {
-    console.warn('[Worker:handleFeedback] rejected disallowed origin:', origin);
+  // Require an allowlisted Origin. Browser submissions from the app always send
+  // one; scripted clients that omit or spoof it are rejected here (the token
+  // must not be usable outside the first-party site).
+  if (!ALLOWED_ORIGINS.has(origin)) {
+    console.warn('[Worker:handleFeedback] rejected disallowed/missing origin:', origin);
     return reply({ error: 'Forbidden.' }, 403);
   }
 
@@ -845,24 +884,26 @@ async function handleFeedback(request, env) {
   const feedbackType = type || 'other';
   const label = FEEDBACK_TYPE_LABELS[feedbackType] || 'feedback';
 
-  // Build issue body
-  let issueBody = description.trim();
+  // Build issue body. All user-supplied fields are sanitized server-side to
+  // prevent Markdown/HTML injection and PII leakage into the public issue.
+  let issueBody = sanitizeIssueText(description.trim());
   issueBody += '\n\n---\n';
-  issueBody += `**Type:** ${feedbackType}\n`;
-  if (page) issueBody += `**Page:** ${page}\n`;
-  if (email && email.trim()) issueBody += `**Contact:** ${email.trim()}\n`;
+  issueBody += `**Type:** ${sanitizeIssueText(feedbackType, 40)}\n`;
+  if (page) issueBody += `**Page:** ${sanitizeIssueText(page, 200)}\n`;
+  if (email && email.trim()) issueBody += `**Contact:** ${sanitizeIssueText(email.trim(), 200)}\n`;
   issueBody += `**Submitted:** ${new Date().toISOString()}\n`;
 
   if (console_logs && console_logs.trim()) {
-    // Neutralize backtick fences so logs can't break out of the code block
-    const safeLogs = console_logs.trim().slice(0, 5000).replace(/`/g, '\u2018');
+    // Re-run PII redaction server-side, then neutralize backtick fences so logs
+    // can't break out of the code block.
+    const safeLogs = redactPii(console_logs.trim().slice(0, 5000)).replace(/`/g, '\u2018');
     issueBody += '\n<details>\n<summary>Browser Console Logs (PII sanitized)</summary>\n\n```\n';
     issueBody += safeLogs;
     issueBody += '\n```\n</details>\n';
   }
 
   const issuePayload = {
-    title: `[Feedback] ${title.trim()}`,
+    title: `[Feedback] ${sanitizeIssueText(title.trim(), 200)}`,
     body: issueBody,
     labels: [label, 'Needs Triage'],
   };
@@ -965,6 +1006,13 @@ export default {
 
     // API routes
     if (url.pathname === '/api/search' && request.method === 'POST') {
+      // Per-IP rate limiting to protect upstream providers (Nominatim/NCEI/
+      // Open-Meteo) from abuse through this open, unauthenticated endpoint.
+      const ip = request.headers.get('CF-Connecting-IP') || '';
+      if (await searchRateLimited(env, ip)) {
+        console.warn('[Worker:handleSearch] rate limit exceeded for IP:', ip);
+        return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429);
+      }
       try {
         return await handleSearch(request, env);
       } catch (err) {

@@ -694,18 +694,10 @@
         }
 
         /* ── Dynamic date-range rows ─────────────────────── */
-        function addDateRange(presetDays) {
-            console.log('[Ento:addDateRange] adding range, presetDays:', presetDays || 14);
-            const id = rangeCounter++;
-            const colorIdx = id % RANGE_COLORS.length;
-            const c = RANGE_COLORS[colorIdx];
-            const container = document.getElementById('date-ranges-container');
-
-            const row = document.createElement('div');
-            row.id = 'range-row-' + id;
-            row.dataset.colorIdx = colorIdx;
-            row.className = 'flex flex-wrap items-end gap-3 p-3 rounded-lg border-2 border-slate-300 bg-slate-50';
-            row.innerHTML = `
+        // Shared markup for a single date-range row (used by both addDateRange
+        // and restoreSearchState so the two never drift apart).
+        function rangeRowHtml(id) {
+            return `
                 <div>
                     <label class="block text-xs text-slate-700 mb-1">Label</label>
                     <input id="label-${id}" type="text" placeholder="Range ${id + 1}"
@@ -721,6 +713,13 @@
                     <input id="end-${id}" type="date"
                            class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
                 </div>
+                <label for="today-${id}"
+                       class="inline-flex items-center gap-1.5 pb-2 text-xs text-slate-700 select-none cursor-pointer"
+                       title="Always use today's date as the End Date — including when this search is saved and re-loaded later.">
+                    <input id="today-${id}" type="checkbox" onchange="toggleUseToday(${id})"
+                           class="rounded border-slate-300 text-lime-600 focus:ring-lime-500" />
+                    End&nbsp;=&nbsp;today
+                </label>
                 <div class="inline-flex gap-1 text-xs">
                     <button onclick="setPresetFor(${id},7)"   class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">7d</button>
                     <button onclick="setPresetFor(${id},14)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">14d</button>
@@ -735,6 +734,36 @@
                     </svg>
                 </button>
             `;
+        }
+
+        // When "End = today" is checked, pin the End Date to today's date and
+        // lock the input; unchecking re-enables manual editing.
+        function toggleUseToday(id) {
+            const cb = document.getElementById('today-' + id);
+            const end = document.getElementById('end-' + id);
+            if (!cb || !end) return;
+            if (cb.checked) {
+                end.value = toISO(new Date());
+                end.disabled = true;
+                end.classList.add('opacity-50', 'cursor-not-allowed', 'bg-slate-100');
+            } else {
+                end.disabled = false;
+                end.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-slate-100');
+            }
+        }
+
+        function addDateRange(presetDays) {
+            console.log('[Ento:addDateRange] adding range, presetDays:', presetDays || 14);
+            const id = rangeCounter++;
+            const colorIdx = id % RANGE_COLORS.length;
+            const c = RANGE_COLORS[colorIdx];
+            const container = document.getElementById('date-ranges-container');
+
+            const row = document.createElement('div');
+            row.id = 'range-row-' + id;
+            row.dataset.colorIdx = colorIdx;
+            row.className = 'flex flex-wrap items-end gap-3 p-3 rounded-lg border-2 border-slate-300 bg-slate-50';
+            row.innerHTML = rangeRowHtml(id);
             container.appendChild(row);
 
             // Default: Jan 1 of current year → today (unless a preset is explicitly given)
@@ -764,10 +793,15 @@
                 const id = row.id.replace('range-row-', '');
                 const labelEl = document.getElementById('label-' + id);
                 const label = (labelEl && labelEl.value.trim()) || ('Range ' + (ranges.length + 1));
+                // When "End = today" is checked, compute the End Date at search
+                // time so it's always current (issue #17) — even if the tab has
+                // been open across midnight or the search was loaded from a save.
+                const useToday = document.getElementById('today-' + id)?.checked || false;
+                const endDate = useToday ? toISO(new Date()) : document.getElementById('end-' + id).value;
                 ranges.push({
                     label,
                     startDate: document.getElementById('start-' + id).value,
-                    endDate:   document.getElementById('end-' + id).value,
+                    endDate,
                     colorIdx:  parseInt(row.dataset.colorIdx),
                 });
             }
@@ -921,6 +955,7 @@
                     label: (labelEl && labelEl.value.trim()) || '',
                     startDate: document.getElementById('start-' + id).value,
                     endDate: document.getElementById('end-' + id).value,
+                    useToday: document.getElementById('today-' + id)?.checked || false,
                 });
             }
             return {
@@ -963,40 +998,15 @@
                     row.id = 'range-row-' + id;
                     row.dataset.colorIdx = colorIdx;
                     row.className = 'flex flex-wrap items-end gap-3 p-3 rounded-lg border-2 border-slate-300 bg-slate-50';
-                    row.innerHTML = `
-                        <div>
-                            <label class="block text-xs text-slate-700 mb-1">Label</label>
-                            <input id="label-${id}" type="text" placeholder="Range ${id + 1}"
-                                   class="w-28 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-slate-700 mb-1">Start Date</label>
-                            <input id="start-${id}" type="date"
-                                   class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
-                        </div>
-                        <div>
-                            <label class="block text-xs text-slate-700 mb-1">End Date</label>
-                            <input id="end-${id}" type="date"
-                                   class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-slate-500 focus:border-slate-500 outline-none" />
-                        </div>
-                        <div class="inline-flex gap-1 text-xs">
-                            <button onclick="setPresetFor(${id},7)"   class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">7d</button>
-                            <button onclick="setPresetFor(${id},14)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">14d</button>
-                            <button onclick="setPresetFor(${id},30)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">30d</button>
-                            <button onclick="setPresetFor(${id},90)"  class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">90d</button>
-                            <button onclick="setPresetFor(${id},365)" class="px-2 py-2 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-700 transition">1yr</button>
-                        </div>
-                        <button onclick="removeRange(${id})" title="Remove"
-                                class="ml-auto p-2 rounded-md text-slate-400 hover:text-red-500 hover:bg-white transition">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                            </svg>
-                        </button>
-                    `;
+                    row.innerHTML = rangeRowHtml(id);
                     container.appendChild(row);
                     document.getElementById('label-' + id).value = dr.label || '';
                     document.getElementById('start-' + id).value = dr.startDate || '';
                     document.getElementById('end-' + id).value = dr.endDate || '';
+                    // Restore the "End = today" flag; when set, re-pin the End Date
+                    // to today so re-loaded searches stay current (issue #17).
+                    const todayCb = document.getElementById('today-' + id);
+                    if (todayCb) { todayCb.checked = !!dr.useToday; toggleUseToday(id); }
                 });
             } else {
                 addDateRange(14);

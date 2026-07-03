@@ -556,6 +556,10 @@
 
         /* ── Helpers ── */
         function esc(s) { const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
+        // Guard against CSV formula injection: prefix cells starting with =, +,
+        // -, @, or a control char with a single quote so spreadsheet apps treat
+        // them as text rather than executable formulas.
+        function csvSafe(v) { const s = String(v ?? ''); return /^[=+\-@\t\r]/.test(s) ? "'" + s : s; }
         function getGddStartMD() {
             return document.getElementById('input-gdd-month').value + '-' + String(document.getElementById('input-gdd-day').value).padStart(2, '0');
         }
@@ -962,7 +966,7 @@
                 'Collection Method','Notes'
             ];
             const values = getCsvRow(d);
-            const csvRow = vals => vals.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+            const csvRow = vals => vals.map(v => `"${csvSafe(v).replace(/"/g, '""')}"`).join(',');
             const csv = csvRow(headers) + '\n' + csvRow(values) + '\n';
             const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
@@ -1001,7 +1005,7 @@
                 'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
                 'Collection Method','Notes'
             ];
-            const csvRow = vals => vals.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+            const csvRow = vals => vals.map(v => `"${csvSafe(v).replace(/"/g, '""')}"`).join(',');
             let csv = csvRow(headers) + '\n';
             labelSheet.forEach(item => {
                 if (item.data) csv += csvRow(getCsvRow(item.data)) + '\n';
