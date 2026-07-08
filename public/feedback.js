@@ -9,16 +9,22 @@
   // ── Console Log Capture ──────────────────────────────────────────
   const MAX_LOG_ENTRIES = 50;
   const capturedLogs = [];
-  const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
 
+  // KEEP IN SYNC with PII_PATTERNS in src/index.js (same rules, array form).
   const PII_PATTERNS = [
     // Email addresses
     { regex: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, replacement: '[email redacted]' },
     // IPv4 addresses
     { regex: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, replacement: '[ip redacted]' },
-    // IPv6 addresses (simplified)
+    // IPv6 — full form
     { regex: /\b([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g, replacement: '[ip redacted]' },
-    // Lat/lon coordinate pairs (e.g. 40.7128, -74.0060)
+    // IPv6 — "::"-compressed form (e.g. 2001:db8::1, fe80::)
+    { regex: /\b([0-9a-fA-F]{1,4}:){1,7}:([0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){0,6}\b)?/g, replacement: '[ip redacted]' },
+    // Labelled coordinates at ANY precision (lat: 40.71, "lon":-74, lng=12.5)
+    { regex: /\b(lat|latitude|lon|lng|longitude)(["']?\s*[:=]\s*["']?)-?\d{1,3}(\.\d+)?/gi, replacement: '$1$2[coord redacted]' },
+    // Comma-separated coordinate pairs with 2+ decimals (40.71, -74.05)
+    { regex: /-?\d{1,3}\.\d{2,}\s*,\s*-?\d{1,3}\.\d{2,}/g, replacement: '[coord redacted]' },
+    // Standalone high-precision decimals (4+ places — likely coordinates)
     { regex: /-?\d{1,3}\.\d{4,}/g, replacement: '[coord redacted]' },
     // Bearer/auth tokens
     { regex: /(Bearer\s+|token[=:]\s*)[\w\-._~+/]+=*/gi, replacement: '$1[token redacted]' },
@@ -178,6 +184,13 @@
       min-height: 5rem;
       resize: vertical;
     }
+    #feedback-logs-note {
+      font-size: .7rem;
+      line-height: 1.4;
+      color: #54637f;
+      margin: 0 0 .75rem;
+    }
+    html.dark #feedback-logs-note { color: #9ca9c0; }
     .feedback-actions {
       display: flex;
       gap: .5rem;
@@ -238,8 +251,7 @@
         <input id="feedback-title" type="text" placeholder="Brief summary of your feedback" maxlength="100" />
         <label for="feedback-desc">Description</label>
         <textarea id="feedback-desc" placeholder="Please describe in detail…" maxlength="2000"></textarea>
-        <label for="feedback-email">Email</label>
-        <input id="feedback-email" type="email" placeholder="your@email.com" required />
+        <p id="feedback-logs-note">Feedback is posted as a public issue on GitHub. Bug reports automatically include your recent browser console logs — emails, IP addresses, coordinates, and tokens are removed before anything is posted.</p>
         <div class="feedback-actions">
           <button class="feedback-btn feedback-btn-cancel" id="feedback-cancel">Cancel</button>
           <button class="feedback-btn feedback-btn-submit" id="feedback-submit">Submit</button>
@@ -276,7 +288,6 @@
     document.getElementById('feedback-type').value = 'bug';
     document.getElementById('feedback-title').value = '';
     document.getElementById('feedback-desc').value = '';
-    document.getElementById('feedback-email').value = '';
   }
 
   fab.addEventListener('click', openModal);
@@ -292,7 +303,6 @@
     const type = document.getElementById('feedback-type').value;
     const title = document.getElementById('feedback-title').value.trim();
     const description = document.getElementById('feedback-desc').value.trim();
-    const email = document.getElementById('feedback-email').value.trim();
 
     if (!title) {
       statusEl.textContent = 'Please enter a title.';
@@ -301,16 +311,6 @@
     }
     if (!description) {
       statusEl.textContent = 'Please enter a description.';
-      statusEl.className = 'feedback-status-error';
-      return;
-    }
-    if (!email) {
-      statusEl.textContent = 'Please enter your email address.';
-      statusEl.className = 'feedback-status-error';
-      return;
-    }
-    if (!EMAIL_REGEX.test(email)) {
-      statusEl.textContent = 'Please enter a valid email address.';
       statusEl.className = 'feedback-status-error';
       return;
     }
@@ -327,7 +327,6 @@
           type,
           title,
           description,
-          email,
           page: window.location.pathname,
           console_logs: type === 'bug' ? getFormattedLogs() : undefined,
         }),

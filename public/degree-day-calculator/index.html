@@ -1219,7 +1219,9 @@
                 return { label: r.label, startDate, endDate: r.endDate };
             });
 
-            console.log('[Ento:doSearch] request body:', JSON.stringify(body));
+            // Don't log the body itself — it carries the user's searched location, and
+            // console logs are attached to public bug reports (feedback.js).
+            console.log('[Ento:doSearch] request: mode:', body.mode, '| dateRanges:', (body.dateRanges || []).length);
 
             const cacheKey = makeCacheKey(body);
             const cache = getResultCache();
@@ -1279,7 +1281,7 @@
                     return;
                 }
 
-                console.log('[Ento:doSearch] API success — station:', data.station?.station_id, data.station?.station_name, '| ranges:', data.ranges?.length);
+                console.log('[Ento:doSearch] API success — station:', data.station?.station_id, '| ranges:', data.ranges?.length);
 
                 // Save to cache with timestamp for LRU eviction
                 const updatedCache = getResultCache();
@@ -1341,7 +1343,7 @@
 
         /* ── Render ────────────────────────────────────── */
         function renderResults(data, localRanges) {
-            console.log('[Ento:renderResults] rendering results — location:', data.location, '| station:', data.station?.station_id, '| ranges:', data.ranges?.length);
+            console.log('[Ento:renderResults] rendering results — station:', data.station?.station_id, '| ranges:', data.ranges?.length);
             const { location, search_lat, search_lon, station, ranges } = data;
 
             // Station info
