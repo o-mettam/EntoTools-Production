@@ -9,6 +9,7 @@
   // ── Console Log Capture ──────────────────────────────────────────
   const MAX_LOG_ENTRIES = 50;
   const capturedLogs = [];
+  const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
 
   const PII_PATTERNS = [
     // Email addresses
@@ -237,8 +238,8 @@
         <input id="feedback-title" type="text" placeholder="Brief summary of your feedback" maxlength="100" />
         <label for="feedback-desc">Description</label>
         <textarea id="feedback-desc" placeholder="Please describe in detail…" maxlength="2000"></textarea>
-        <label for="feedback-email">Email (optional)</label>
-        <input id="feedback-email" type="email" placeholder="your@email.com — only if you'd like a response" />
+        <label for="feedback-email">Email</label>
+        <input id="feedback-email" type="email" placeholder="your@email.com" required />
         <div class="feedback-actions">
           <button class="feedback-btn feedback-btn-cancel" id="feedback-cancel">Cancel</button>
           <button class="feedback-btn feedback-btn-submit" id="feedback-submit">Submit</button>
@@ -303,6 +304,16 @@
       statusEl.className = 'feedback-status-error';
       return;
     }
+    if (!email) {
+      statusEl.textContent = 'Please enter your email address.';
+      statusEl.className = 'feedback-status-error';
+      return;
+    }
+    if (!EMAIL_REGEX.test(email)) {
+      statusEl.textContent = 'Please enter a valid email address.';
+      statusEl.className = 'feedback-status-error';
+      return;
+    }
 
     submitBtn.disabled = true;
     statusEl.textContent = 'Submitting…';
@@ -316,7 +327,7 @@
           type,
           title,
           description,
-          email: email || undefined,
+          email,
           page: window.location.pathname,
           console_logs: type === 'bug' ? getFormattedLogs() : undefined,
         }),

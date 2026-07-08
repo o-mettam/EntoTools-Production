@@ -788,6 +788,8 @@ const FEEDBACK_TYPE_LABELS = {
   other: 'feedback',
 };
 
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+
 // Per-IP rate limit backed by KV (GEOCODE_CACHE). Returns true if the caller
 // has exceeded the allowed number of requests in the current window.
 async function rateLimited(env, ip, prefix, limit, windowSeconds) {
@@ -874,6 +876,12 @@ async function handleFeedback(request, env) {
   if (!description || !description.trim()) {
     return reply({ error: 'A description is required.' }, 400);
   }
+  if (!email || !email.trim()) {
+    return reply({ error: 'An email address is required.' }, 400);
+  }
+  if (!EMAIL_REGEX.test(email.trim())) {
+    return reply({ error: 'Please enter a valid email address.' }, 400);
+  }
 
   const token = env.GITHUB_TOKEN;
   if (!token) {
@@ -890,7 +898,7 @@ async function handleFeedback(request, env) {
   issueBody += '\n\n---\n';
   issueBody += `**Type:** ${sanitizeIssueText(feedbackType, 40)}\n`;
   if (page) issueBody += `**Page:** ${sanitizeIssueText(page, 200)}\n`;
-  if (email && email.trim()) issueBody += `**Contact:** ${sanitizeIssueText(email.trim(), 200)}\n`;
+  issueBody += `**Contact:** ${sanitizeIssueText(email.trim(), 200)}\n`;
   issueBody += `**Submitted:** ${new Date().toISOString()}\n`;
 
   if (console_logs && console_logs.trim()) {
