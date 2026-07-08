@@ -540,7 +540,9 @@ async function handleSearch(request, env) {
     return jsonResponse({ error: 'Invalid request body — expected JSON.' }, 400);
   }
   const mode = body.mode;
-  console.log('[Worker:handleSearch] mode:', mode, 'body:', JSON.stringify(body).slice(0, 300));
+  // Log only the request shape, not its contents — the body carries the
+  // user's searched location (city/state or coordinates).
+  console.log('[Worker:handleSearch] mode:', mode, '| dateRanges:', Array.isArray(body.dateRanges) ? body.dateRanges.length : (body.startDate ? 1 : 0));
 
   // Step 1 — Resolve location + country_code
   let lat = null;
@@ -788,7 +790,14 @@ const FEEDBACK_TYPE_LABELS = {
   other: 'feedback',
 };
 
-const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+// Mask an IP before logging (privacy): keep enough to spot patterns in the
+// logs, drop enough that a single user can't be identified from them.
+// IPv4 → first three octets (1.2.3.x); IPv6 → first two hextets (a:b::…).
+function maskIp(ip) {
+  if (!ip) return '(unknown)';
+  if (ip.includes(':')) return ip.split(':').slice(0, 2).join(':') + '::…';
+  return ip.split('.').slice(0, 3).join('.') + '.x';
+}
 
 // Per-IP rate limit backed by KV (GEOCODE_CACHE). Returns true if the caller
 // has exceeded the allowed number of requests in the current window.
@@ -815,12 +824,25 @@ function searchRateLimited(env, ip) {
 // Server-side PII redaction. The client sanitizes before sending, but this
 // endpoint writes to a PUBLIC GitHub issue, so we never trust the client and
 // re-run redaction here on anything derived from user input.
+// KEEP IN SYNC with PII_PATTERNS in public/feedback.js (same rules, object form).
 const PII_PATTERNS = [
+  // Email addresses
   [/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '[email redacted]'],
+  // IPv4 addresses
   [/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, '[ip redacted]'],
+  // IPv6 — full form
   [/\b([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g, '[ip redacted]'],
+  // IPv6 — "::"-compressed form (e.g. 2001:db8::1, fe80::)
+  [/\b([0-9a-fA-F]{1,4}:){1,7}:([0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){0,6}\b)?/g, '[ip redacted]'],
+  // Labelled coordinates at ANY precision (lat: 40.71, "lon":-74, lng=12.5)
+  [/\b(lat|latitude|lon|lng|longitude)(["']?\s*[:=]\s*["']?)-?\d{1,3}(\.\d+)?/gi, '$1$2[coord redacted]'],
+  // Comma-separated coordinate pairs with 2+ decimals (40.71, -74.05)
+  [/-?\d{1,3}\.\d{2,}\s*,\s*-?\d{1,3}\.\d{2,}/g, '[coord redacted]'],
+  // Standalone high-precision decimals (4+ places — likely coordinates)
   [/-?\d{1,3}\.\d{4,}/g, '[coord redacted]'],
+  // Bearer/auth tokens
   [/(Bearer\s+|token[=:]\s*)[\w\-._~+/]+=*/gi, '$1[token redacted]'],
+  // Generic long hex/base64 strings (API keys, tokens)
   [/\b[A-Za-z0-9_\-]{32,}\b/g, '[key redacted]'],
 ];
 
@@ -858,7 +880,7 @@ async function handleFeedback(request, env) {
   // Per-IP rate limiting to prevent GitHub issue spam.
   const ip = request.headers.get('CF-Connecting-IP') || '';
   if (await feedbackRateLimited(env, ip)) {
-    console.warn('[Worker:handleFeedback] rate limit exceeded for IP:', ip);
+    console.warn('[Worker:handleFeedback] rate limit exceeded for IP:', maskIp(ip));
     return reply({ error: 'Too many feedback submissions. Please try again later.' }, 429);
   }
 
@@ -868,19 +890,13 @@ async function handleFeedback(request, env) {
   } catch (e) {
     return reply({ error: 'Invalid request body — expected JSON.' }, 400);
   }
-  const { type, title, description, email, page, console_logs } = body;
+  const { type, title, description, page, console_logs } = body;
 
   if (!title || !title.trim()) {
     return reply({ error: 'A title is required.' }, 400);
   }
   if (!description || !description.trim()) {
     return reply({ error: 'A description is required.' }, 400);
-  }
-  if (!email || !email.trim()) {
-    return reply({ error: 'An email address is required.' }, 400);
-  }
-  if (!EMAIL_REGEX.test(email.trim())) {
-    return reply({ error: 'Please enter a valid email address.' }, 400);
   }
 
   const token = env.GITHUB_TOKEN;
@@ -892,13 +908,14 @@ async function handleFeedback(request, env) {
   const feedbackType = type || 'other';
   const label = FEEDBACK_TYPE_LABELS[feedbackType] || 'feedback';
 
-  // Build issue body. All user-supplied fields are sanitized server-side to
-  // prevent Markdown/HTML injection and PII leakage into the public issue.
-  let issueBody = sanitizeIssueText(description.trim());
+  // Build issue body. All user-supplied fields are PII-redacted AND
+  // Markdown/HTML-sanitized server-side — this issue is PUBLIC, so emails,
+  // IPs, coordinates, and token-like strings pasted into any field must
+  // never reach it.
+  let issueBody = sanitizeIssueText(redactPii(description.trim()));
   issueBody += '\n\n---\n';
   issueBody += `**Type:** ${sanitizeIssueText(feedbackType, 40)}\n`;
-  if (page) issueBody += `**Page:** ${sanitizeIssueText(page, 200)}\n`;
-  issueBody += `**Contact:** ${sanitizeIssueText(email.trim(), 200)}\n`;
+  if (page) issueBody += `**Page:** ${sanitizeIssueText(redactPii(page), 200)}\n`;
   issueBody += `**Submitted:** ${new Date().toISOString()}\n`;
 
   if (console_logs && console_logs.trim()) {
@@ -911,7 +928,7 @@ async function handleFeedback(request, env) {
   }
 
   const issuePayload = {
-    title: `[Feedback] ${sanitizeIssueText(title.trim(), 200)}`,
+    title: `[Feedback] ${sanitizeIssueText(redactPii(title.trim()), 200)}`,
     body: issueBody,
     labels: [label, 'Needs Triage'],
   };
@@ -1018,7 +1035,7 @@ export default {
       // Open-Meteo) from abuse through this open, unauthenticated endpoint.
       const ip = request.headers.get('CF-Connecting-IP') || '';
       if (await searchRateLimited(env, ip)) {
-        console.warn('[Worker:handleSearch] rate limit exceeded for IP:', ip);
+        console.warn('[Worker:handleSearch] rate limit exceeded for IP:', maskIp(ip));
         return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429);
       }
       try {

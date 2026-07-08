@@ -766,20 +766,22 @@
                     body.lon = parsedLon;
                 }
                 body.dateRanges = [{ label: 'Collection', startDate: fetchStart, endDate: dateEnd }];
-                console.log('[LabelData] request:', JSON.stringify(body));
+                // Don't log the body itself — it carries the collection location, and
+                // console logs are attached to public bug reports (feedback.js).
+                console.log('[LabelData] request: mode:', body.mode, '| dateRanges:', body.dateRanges.length);
 
                 // Fire all API calls in parallel
                 document.getElementById('loading-text').textContent = 'Fetching weather & location data\u2026';
                 const searchPromise = fetch('/api/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
                 const searchData = await searchPromise;
-                console.log('[LabelData] API response:', searchData);
+                console.log('[LabelData] API response: provider:', searchData.provider, '| ranges:', searchData.ranges?.length, '| error:', searchData.error || 'none');
                 if (searchData.error) throw new Error(searchData.error);
 
                 const lat = searchData.search_lat;
                 const lon = searchData.search_lon;
 
                 // Parallel supplemental fetches
-                console.log('[LabelData] fetching supplemental data for', lat, lon);
+                console.log('[LabelData] fetching supplemental data (geocode, elevation, sunset, hourly conditions)');
                 const [geoInfo, elevation, sunset, hourlyConditions] = await Promise.all([
                     reverseGeocode(lat, lon),
                     getElevation(lat, lon),
@@ -788,7 +790,7 @@
                 ]);
                 const humidity = hourlyConditions.humidity;
                 const tempAtTime = hourlyConditions.tempAtTime;
-                console.log('[LabelData] supplemental data:', { geoInfo, elevation, sunset, humidity, tempAtTime });
+                console.log('[LabelData] supplemental data: geocode:', geoInfo.display ? 'ok' : 'empty', '| elevation:', elevation != null ? 'ok' : 'null', '| sunset:', sunset != null ? 'ok' : 'null', '| humidity:', humidity && humidity.atTime != null ? 'ok' : 'null', '| tempAtTime:', tempAtTime != null ? 'ok' : 'null');
 
                 // Compute GDD
                 const temps = searchData.ranges[0].temperatures;
@@ -837,7 +839,8 @@
                     maxTemp: maxTemp, userNotes, collectionMethod,
                 };
 
-                console.log('[LabelData] collectionData assembled:', collectionData);
+                // Log shape only — collectionData contains the collector's name and site location.
+                console.log('[LabelData] collectionData assembled (' + Object.keys(collectionData).length + ' fields)');
 
                 // Show fallback warnings if applicable
                 if (searchData.is_fallback) {

@@ -685,7 +685,9 @@
                     endDate: targetDate,
                 }];
 
-                console.log('[GDDLookup] request:', JSON.stringify(body));
+                // Don't log the body itself — it carries the user's searched location, and
+                // console logs are attached to public bug reports (feedback.js).
+                console.log('[GDDLookup] request: mode:', body.mode, '| dateRanges:', body.dateRanges.length);
 
                 const resp = await fetch('/api/search', {
                     method: 'POST',
@@ -700,7 +702,7 @@
                     console.error('[GDDLookup] response not valid JSON — status:', resp.status, 'parseError:', parseErr.message);
                     throw new Error(`Server returned an unexpected response (HTTP ${resp.status}). The data provider may be experiencing issues.`);
                 }
-                console.log('[GDDLookup] response:', data);
+                console.log('[GDDLookup] response: provider:', data.provider, '| ranges:', data.ranges?.length, '| error:', data.error || 'none');
 
                 if (!resp.ok || data.error) {
                     console.error('[GDDLookup] API error — status:', resp.status, 'error:', data.error, 'service_error:', data.service_error);
