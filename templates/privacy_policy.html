@@ -5,54 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Privacy Policy — EntoTools</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = { darkMode: 'class' };
-        var entoTheme = localStorage.getItem('ento-theme');
-        if (entoTheme === null) {
-            entoTheme = localStorage.getItem('firefly-theme');
-            if (entoTheme !== null) { localStorage.setItem('ento-theme', entoTheme); localStorage.removeItem('firefly-theme'); }
-        }
-        if (entoTheme === 'dark' ||
-            (!entoTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        }
-    </script>
+    <!-- Shared theme: brand palette, dark-mode handling and common styles -->
+    <script src="/theme.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        .hover-lift { transition: transform .15s ease, box-shadow .15s ease; }
-        .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
-        .settings-panel {
-            display: none;
-            opacity: 0;
-            transform: translateY(-4px);
-            transition: opacity .15s ease, transform .15s ease;
-        }
-        .settings-panel.open { display: block; opacity: 1; transform: translateY(0); }
-        /* Dark mode overrides */
-        .dark body, .dark { background-color: #1a2236; color: #e2e8f0; }
-        .dark .bg-white { background-color: #24304a !important; }
-        .dark .bg-slate-50 { background-color: #1a2236 !important; }
-        .dark .text-slate-800 { color: #eef1f6 !important; }
-        .dark .text-slate-700 { color: #cbd5e1 !important; }
-        .dark .text-slate-600 { color: #9ca9c0 !important; }
-        .dark .text-slate-500 { color: #7b8ba8 !important; }
-        .dark .text-slate-400 { color: #64748b !important; }
-        .dark .border-slate-200 { border-color: #334155 !important; }
-        .dark .border-slate-100 { border-color: #2a3348 !important; }
-        .dark .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,.3) !important; }
-        .dark .bg-slate-700 { background-color: #0f172a !important; }
-        .dark .settings-panel { background-color: #24304a !important; border-color: #334155 !important; }
-        .dark .settings-panel h3 { color: #eef1f6 !important; }
-        .dark .settings-panel span { color: #d8dee9 !important; }
-        .dark .settings-panel hr { border-color: #3e4a64; }
-        .dark .settings-panel p { color: #7b8ba8 !important; }
-        .dark #settings-btn { color: #9ca9c0; }
-        .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
-        .toc-link { transition: color .15s ease; }
-        .toc-link:hover { color: #65a30d; }
-    </style>
+    <link rel="stylesheet" href="/theme.css">
 </head>
 <body class="bg-slate-50 min-h-screen">
 
@@ -255,31 +212,7 @@
         });
 
         /* ── Dark Mode ── */
-        function updateThemeToggleUI() {
-            const isDark = document.documentElement.classList.contains('dark');
-            const toggle = document.getElementById('theme-toggle');
-            const dot = document.getElementById('theme-toggle-dot');
-            if (toggle && dot) {
-                if (isDark) {
-                    toggle.classList.remove('bg-slate-200');
-                    toggle.classList.add('bg-lime-600');
-                    dot.classList.remove('translate-x-1');
-                    dot.classList.add('translate-x-6');
-                } else {
-                    toggle.classList.add('bg-slate-200');
-                    toggle.classList.remove('bg-lime-600');
-                    dot.classList.add('translate-x-1');
-                    dot.classList.remove('translate-x-6');
-                }
-            }
-        }
-        function toggleTheme() {
-            document.documentElement.classList.toggle('dark');
-            const isDark = document.documentElement.classList.contains('dark');
-            localStorage.setItem('ento-theme', isDark ? 'dark' : 'light');
-            updateThemeToggleUI();
-        }
-        updateThemeToggleUI();
+        // toggleTheme() and updateThemeToggleUI() come from /theme.js.
 
         /* ── Clear Cache ── */
         function clearLocalCache(e) {

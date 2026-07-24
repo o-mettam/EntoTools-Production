@@ -7,66 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = { darkMode: 'class', theme: { extend: { colors: { lime: { 50:'#f5fadf',100:'#ecf5bd',200:'#dbec8e',300:'#d0e672',400:'#c4e055',500:'#b8d846',600:'#abd037',700:'#8aaa25',800:'#6d881a',900:'#4d6112',950:'#3a4a0d' }, slate: { 50:'#eef1f6',100:'#d8dee9',200:'#bdc6d8',300:'#9ca9c0',400:'#7b8ba8',500:'#687794',600:'#54637f',700:'#3e4a64',800:'#2a3348',900:'#1a2030',950:'#111828' } } } } };
-        var entoTheme = localStorage.getItem('ento-theme');
-        if (entoTheme === null) {
-            entoTheme = localStorage.getItem('firefly-theme');
-            if (entoTheme !== null) { localStorage.setItem('ento-theme', entoTheme); localStorage.removeItem('firefly-theme'); }
-        }
-        if (entoTheme === 'dark' ||
-            (!entoTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        }
-    </script>
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        .fade-in { animation: fadeIn .4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        .hover-lift { transition: transform .2s ease, box-shadow .2s ease; }
-        .hover-lift:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,.15); }
-
-        /* Dark mode overrides */
-        .dark body, html.dark body { background-color: #1a2030; color: #d8dee9; }
-        .dark nav { background-color: #2a3348; border-color: #3e4a64; }
-        .dark nav a { color: #9ca9c0; }
-        .dark nav a:hover { color: #eef1f6; }
-        .dark nav a.text-lime-600 { color: #c4e055; }
-        .dark header { background-color: #2a3348; }
-        .dark section, .dark .bg-white { background-color: #2a3348 !important; border-color: #3e4a64 !important; }
-        .dark .bg-slate-50 { background-color: #1a2030 !important; }
-        .dark .border-slate-200 { border-color: #3e4a64 !important; }
-        .dark .text-slate-800, .dark .text-slate-900 { color: #eef1f6 !important; }
-        .dark .text-slate-600 { color: #9ca9c0 !important; }
-        .dark .text-slate-400 { color: #7b8ba8 !important; }
-        .dark .text-lime-600 { color: #c4e055 !important; }
-        .dark .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,.3) !important; }
-        .dark footer a { color: #9ca9c0; }
-        .dark footer a:hover { color: #eef1f6; }
-
-        /* Settings panel */
-        .settings-panel {
-            transform: translateY(-8px);
-            opacity: 0;
-            pointer-events: none;
-            transition: transform .2s ease, opacity .2s ease;
-        }
-        .settings-panel.open {
-            transform: translateY(0);
-            opacity: 1;
-            pointer-events: auto;
-        }
-        .dark .settings-panel {
-            background-color: #2a3348 !important;
-            border-color: #3e4a64 !important;
-        }
-        .dark .settings-panel h3 { color: #eef1f6; }
-        .dark .settings-panel span { color: #d8dee9 !important; }
-        .dark .settings-panel hr { border-color: #3e4a64; }
-        .dark .settings-panel p { color: #7b8ba8 !important; }
-        .dark #settings-btn { color: #9ca9c0; }
-        .dark #settings-btn:hover { color: #eef1f6; background-color: #3e4a64; }
-    </style>
+    <!-- Shared theme: brand palette, dark-mode handling and common styles -->
+    <script src="/theme.js"></script>
+    <link rel="stylesheet" href="/theme.css">
 </head>
 <body class="bg-slate-50 min-h-screen">
 
@@ -240,36 +183,7 @@
         });
 
         /* ── Dark Mode ── */
-        function updateThemeToggleUI() {
-            const isDark = document.documentElement.classList.contains('dark');
-            const toggle = document.getElementById('theme-toggle');
-            const dot = document.getElementById('theme-toggle-dot');
-            if (toggle && dot) {
-                if (isDark) {
-                    toggle.classList.remove('bg-slate-200');
-                    toggle.classList.add('bg-lime-600');
-                    dot.classList.remove('translate-x-1');
-                    dot.classList.add('translate-x-6');
-                } else {
-                    toggle.classList.remove('bg-lime-600');
-                    toggle.classList.add('bg-slate-200');
-                    dot.classList.remove('translate-x-6');
-                    dot.classList.add('translate-x-1');
-                }
-            }
-        }
-        function toggleTheme() {
-            const isDark = document.documentElement.classList.contains('dark');
-            if (isDark) {
-                document.documentElement.classList.remove('dark');
-                localStorage.setItem('ento-theme', 'light');
-            } else {
-                document.documentElement.classList.add('dark');
-                localStorage.setItem('ento-theme', 'dark');
-            }
-            updateThemeToggleUI();
-        }
-        updateThemeToggleUI();
+        // toggleTheme() and updateThemeToggleUI() come from /theme.js.
 
         /* ── Clear Local Cache ── */
         function clearLocalCache(e) {
