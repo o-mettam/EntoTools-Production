@@ -47,9 +47,20 @@
     return { schemaVersion: SCHEMA_VERSION, deviceId: getDeviceId(), revision: 0, updatedAt: nowIso(), entries: [] };
   }
 
+  // Stable, key-order-independent serialization of an entry's content. Entries
+  // rebuilt from CSV or a remote snapshot can carry the same fields in a
+  // different order; a plain JSON.stringify would then report a false change.
+  function stableStringify(v) {
+    if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+    if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+    return '{' + Object.keys(v).sort()
+      .map((k) => JSON.stringify(k) + ':' + stableStringify(v[k]))
+      .join(',') + '}';
+  }
+
   function contentHash(entry) {
     const { id, createdAt, updatedAt, deleted, ...rest } = entry;
-    try { return JSON.stringify(rest); } catch (e) { return String(Math.random()); }
+    try { return stableStringify(rest); } catch (e) { return String(Math.random()); }
   }
 
   function normalizeEntry(e) {
@@ -71,26 +82,36 @@
   }
 
   // One-time migration from legacy plain-array keys (firefly*/ento*) to V2 envelope.
+  // A legacy key is only removed once its records are safely written into the V2
+  // envelope. An unparseable or empty legacy value is left untouched so the next
+  // (older) key still gets a chance to supply the data.
   function migrateLegacy() {
     for (const k of LEGACY_DATA_KEYS) {
       let raw = null;
       try { raw = localStorage.getItem(k); } catch (e) { continue; }
       if (!raw) continue;
-      try {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr) && arr.length >= 0) {
-          const env = emptyEnvelope();
-          env.entries = arr.map(normalizeEntry);
-          env.revision = 1;
-          env.updatedAt = nowIso();
-          writeEnvelope(env);
-          console.log('[EntoStore] migrated', arr.length, 'entries from legacy key "' + k + '"');
-        }
-      } catch (e) {
-        console.warn('[EntoStore] legacy migration failed for "' + k + '":', e);
+      let arr = null;
+      try { arr = JSON.parse(raw); }
+      catch (e) {
+        console.warn('[EntoStore] legacy migration skipped for "' + k + '" (unparseable, left in place):', e);
+        continue;
       }
+      if (!Array.isArray(arr) || arr.length === 0) {
+        console.log('[EntoStore] legacy key "' + k + '" holds no records — skipping');
+        continue;
+      }
+      const env = emptyEnvelope();
+      env.entries = arr.map(normalizeEntry);
+      env.revision = 1;
+      env.updatedAt = nowIso();
+      writeEnvelope(env);
+      if (!readRaw()) {
+        console.warn('[EntoStore] legacy migration could not be persisted for "' + k + '" — leaving it in place');
+        continue;
+      }
+      console.log('[EntoStore] migrated', arr.length, 'entries from legacy key "' + k + '"');
       try { localStorage.removeItem(k); } catch (e) { /* ignore */ }
-      if (readRaw()) break; // stop after the first legacy source that produced an envelope
+      break; // stop after the first legacy source that produced an envelope
     }
   }
 

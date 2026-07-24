@@ -563,13 +563,17 @@
                 ]) + '\n';
             });
 
+            // The anchor must be in the document and the object URL must outlive
+            // the click, or some browsers cancel the download.
             const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = `collection_database_${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 0);
         }
 
         /* ── CSV Import ── */
@@ -585,25 +589,36 @@
             'Collection Method','Notes'
         ];
 
-        function parseCSVLine(line) {
-            const result = [];
-            let current = '';
+        // Whole-document CSV parser. Quoted fields may contain commas, escaped
+        // quotes ("") and literal newlines — the last of these is why the file
+        // cannot be split into lines before parsing: exported Notes are multi-line.
+        function parseCSV(text) {
+            const src = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+            const rows = [];
+            let row = [];
+            let field = '';
             let inQuotes = false;
-            for (let i = 0; i < line.length; i++) {
-                const ch = line[i];
+            const pushField = () => { row.push(field.trim()); field = ''; };
+            const pushRow = () => {
+                pushField();
+                if (row.some(c => c !== '')) rows.push(row);
+                row = [];
+            };
+            for (let i = 0; i < src.length; i++) {
+                const ch = src[i];
                 if (inQuotes) {
                     if (ch === '"') {
-                        if (i + 1 < line.length && line[i + 1] === '"') { current += '"'; i++; }
+                        if (src[i + 1] === '"') { field += '"'; i++; }
                         else inQuotes = false;
-                    } else current += ch;
-                } else {
-                    if (ch === '"') inQuotes = true;
-                    else if (ch === ',') { result.push(current.trim()); current = ''; }
-                    else current += ch;
-                }
+                    } else field += ch;
+                } else if (ch === '"') inQuotes = true;
+                else if (ch === ',') pushField();
+                else if (ch === '\r') { if (src[i + 1] === '\n') i++; pushRow(); }
+                else if (ch === '\n') pushRow();
+                else field += ch;
             }
-            result.push(current.trim());
-            return result;
+            if (field !== '' || row.length) pushRow();
+            return rows;
         }
 
         function csvRowToData(headerMap, vals) {
@@ -613,10 +628,12 @@
             const coordsEstimated = g('Coordinates Estimated').toLowerCase();
             const gddRaw = g('mGDD');
             let gddStart = 0, gddEnd = 0, isRange = false;
-            if (gddRaw.includes('-') || gddRaw.includes('–')) {
-                const parts = gddRaw.split(/\s*[-–]\s*/);
-                gddStart = parseFloat(parts[0]) || 0;
-                gddEnd = parseFloat(parts[1]) || 0;
+            // A range looks like "120 - 340"; a single negative value ("-5") must
+            // not be mistaken for one.
+            const gddRange = gddRaw.match(/^\s*(-?\d+(?:\.\d+)?)\s*[-–]\s*(-?\d+(?:\.\d+)?)\s*$/);
+            if (gddRange) {
+                gddStart = parseFloat(gddRange[1]) || 0;
+                gddEnd = parseFloat(gddRange[2]) || 0;
                 isRange = true;
             } else {
                 gddStart = parseFloat(gddRaw) || 0;
@@ -694,12 +711,11 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    const text = e.target.result;
-                    const lines = text.split(/\r?\n/).filter(l => l.trim());
-                    if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row.');
+                    const rows = parseCSV(e.target.result);
+                    if (rows.length < 2) throw new Error('CSV must have a header row and at least one data row.');
 
                     // Map header names to column indices
-                    const headerCells = parseCSVLine(lines[0]);
+                    const headerCells = rows[0];
                     const headerMap = {};
                     headerCells.forEach((h, i) => { headerMap[h.trim()] = i; });
 
@@ -710,8 +726,8 @@
                     loadEntries();
                     let imported = 0;
 
-                    for (let r = 1; r < lines.length; r++) {
-                        const vals = parseCSVLine(lines[r]);
+                    for (let r = 1; r < rows.length; r++) {
+                        const vals = rows[r];
                         if (vals.length < 3) continue; // skip empty/malformed rows
 
                         const data = csvRowToData(headerMap, vals);
@@ -760,12 +776,22 @@
 
         /* ── Cloud Backup (Google Drive) ── */
         (function initCloudBackup() {
-            if (!window.EntoSync || !window.EntoDriveProvider) return;
-            EntoSync.setProvider(EntoDriveProvider);
             const btn = document.getElementById('drive-btn');
             const statusEl = document.getElementById('drive-status');
             const syncBtn = document.getElementById('drive-sync-now');
             if (!btn) return;
+            // No provider loaded (Drive sync is disabled in production): make the
+            // control inert rather than leaving it wired to an undefined handler.
+            if (!window.EntoSync || !window.EntoDriveProvider) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                if (statusEl) statusEl.textContent = 'Cloud backup is not enabled on this site.';
+                if (syncBtn) syncBtn.classList.add('hidden');
+                window.entoDriveToggle = function (e) { if (e) e.stopPropagation(); };
+                window.entoDriveSyncNow = window.entoDriveToggle;
+                return;
+            }
+            EntoSync.setProvider(EntoDriveProvider);
             const reloadFromStore = () => renderTable();
             const fmtTime = (iso) => { try { return new Date(iso).toLocaleString(); } catch (e) { return ''; } };
             function render() {

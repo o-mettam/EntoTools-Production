@@ -563,6 +563,14 @@
         function getGddStartMD() {
             return document.getElementById('input-gdd-month').value + '-' + String(document.getElementById('input-gdd-day').value).padStart(2, '0');
         }
+        // Date math on 'YYYY-MM-DD' strings, performed in UTC so a result never
+        // shifts by a day depending on the viewer's timezone.
+        function shiftDays(iso, days) {
+            const d = new Date(iso + 'T00:00:00Z');
+            if (isNaN(d.getTime())) return iso;
+            d.setUTCDate(d.getUTCDate() + days);
+            return d.toISOString().slice(0, 10);
+        }
         const ROMAN_MONTHS = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
         function fmtDate(d) {
             const dt = new Date(d + 'T00:00:00');
@@ -664,16 +672,32 @@
             } catch (e) { console.warn('[SampleCollection] elevation fetch failed:', e); return null; }
         }
 
-        /* ── Get sunset time ── */
-        async function getSunset(lat, lon, date) {
+        /* ── Get sunset time (as a UTC instant; formatted later in the
+           collection site's timezone rather than the viewer's) ── */
+        async function getSunsetIso(lat, lon, date) {
             try {
                 const resp = await fetch(`https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&date=${date}&formatted=0`);
                 const data = await resp.json();
                 if (data.status === 'OK' && data.results && data.results.sunset) {
-                    return new Date(data.results.sunset).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+                    return data.results.sunset;
                 }
                 return null;
             } catch (e) { console.warn('[SampleCollection] sunset fetch failed:', e); return null; }
+        }
+
+        // Render a UTC instant in the collection location's timezone. Falls back
+        // to the viewer's timezone only when the location's zone is unknown.
+        function fmtSunset(iso, timeZone) {
+            if (!iso) return null;
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return null;
+            const opts = { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' };
+            if (timeZone) opts.timeZone = timeZone;
+            try { return d.toLocaleTimeString('en-US', opts); }
+            catch (e) {
+                delete opts.timeZone;
+                return d.toLocaleTimeString('en-US', opts);
+            }
         }
 
         /* ── Get humidity & temperature at collection time from Open-Meteo archive ── */
@@ -681,7 +705,7 @@
             try {
                 const resp = await fetch(`https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${date}&end_date=${date}&hourly=relative_humidity_2m,temperature_2m&temperature_unit=fahrenheit&timezone=auto`);
                 const data = await resp.json();
-                const result = { humidity: { atTime: null, avg: null }, tempAtTime: null };
+                const result = { humidity: { atTime: null, avg: null }, tempAtTime: null, timezone: data.timezone || null };
                 if (data.hourly) {
                     // Humidity
                     if (data.hourly.relative_humidity_2m) {
@@ -702,7 +726,7 @@
                     }
                 }
                 return result;
-            } catch (e) { console.warn('[SampleCollection] hourly conditions fetch failed:', e); return { humidity: { atTime: null, avg: null }, tempAtTime: null }; }
+            } catch (e) { console.warn('[SampleCollection] hourly conditions fetch failed:', e); return { humidity: { atTime: null, avg: null }, tempAtTime: null, timezone: null }; }
         }
 
         /* ── Main Generate ── */
@@ -749,9 +773,7 @@
                 let fetchStart = yearStart + '-' + accumStartMD;
                 if (dateStart < fetchStart) fetchStart = yearStart + '-01-01';
                 // Also go back 30 days from dateStart for rainfall
-                const d30 = new Date(dateStart + 'T00:00:00');
-                d30.setDate(d30.getDate() - 30);
-                const rainfallStart = d30.toISOString().slice(0, 10);
+                const rainfallStart = shiftDays(dateStart, -30);
                 if (rainfallStart < fetchStart) fetchStart = rainfallStart;
 
                 const body = { mode: currentTab };
@@ -782,14 +804,15 @@
 
                 // Parallel supplemental fetches
                 console.log('[LabelData] fetching supplemental data (geocode, elevation, sunset, hourly conditions)');
-                const [geoInfo, elevation, sunset, hourlyConditions] = await Promise.all([
+                const [geoInfo, elevation, sunsetIso, hourlyConditions] = await Promise.all([
                     reverseGeocode(lat, lon),
                     getElevation(lat, lon),
-                    getSunset(lat, lon, dateStart),
+                    getSunsetIso(lat, lon, dateStart),
                     getHourlyConditions(lat, lon, dateStart, timeStart),
                 ]);
                 const humidity = hourlyConditions.humidity;
                 const tempAtTime = hourlyConditions.tempAtTime;
+                const sunset = fmtSunset(sunsetIso, hourlyConditions.timezone);
                 console.log('[LabelData] supplemental data: geocode:', geoInfo.display ? 'ok' : 'empty', '| elevation:', elevation != null ? 'ok' : 'null', '| sunset:', sunset != null ? 'ok' : 'null', '| humidity:', humidity && humidity.atTime != null ? 'ok' : 'null', '| tempAtTime:', tempAtTime != null ? 'ok' : 'null');
 
                 // Compute GDD
@@ -801,9 +824,7 @@
                 const gddEnd = isRange ? gddResults.find(g => g.date === dateEnd) : gddStart;
 
                 // Rainfall calculations
-                const d7 = new Date(dateStart + 'T00:00:00');
-                d7.setDate(d7.getDate() - 7);
-                const weekAgo = d7.toISOString().slice(0, 10);
+                const weekAgo = shiftDays(dateStart, -7);
                 let rainfallMonth = 0, rainfallWeek = 0;
                 for (const t of temps) {
                     if (t.PRCP != null && t.date >= rainfallStart && t.date <= dateStart) rainfallMonth += t.PRCP;
@@ -926,7 +947,7 @@
             notesHtml += row('mGDD', d.isRange ? d.gddStart + ' – ' + d.gddEnd : String(d.gddStart));
             notesHtml += row('Elevation', d.elevation != null ? d.elevation + ' m' : '—');
             notesHtml += row('Weather Station', esc(d.stationName) + ' (' + esc(d.stationId) + ')');
-            if (d.numSpecimens) notesHtml += row('Specimens Collected', d.numSpecimens);
+            if (d.numSpecimens) notesHtml += row('Specimens Collected', esc(d.numSpecimens));
             if (d.collectionMethod) notesHtml += row('Collection Method', esc(d.collectionMethod));
             const notesContent = d.userNotes ? esc(d.userNotes).replace(/\n/g, '<br>') : '&nbsp;';
             notesHtml += `<tr><td style="padding:8px 8px 4px 0;font-weight:600;white-space:nowrap;vertical-align:top;color:#475569;">Notes</td><td style="padding:8px 0;"><div style="min-height:60px;border:1px solid #cbd5e1;border-radius:6px;padding:6px;">${notesContent}</div></td></tr>`;
@@ -939,6 +960,11 @@
             const content = document.getElementById(elementId);
             if (!content) return;
             const win = window.open('', '_blank', 'width=600,height=400');
+            if (!win) {
+                console.warn('[LabelData] print window blocked by the browser');
+                alert('Your browser blocked the print window. Please allow pop-ups for this site and try again.');
+                return;
+            }
             win.document.write(`<!DOCTYPE html><html><head><style>
                 body { font-family: 'Inter', Arial, sans-serif; padding: 10px; color: #1e293b; font-size: 9px; line-height: 1.3; }
                 .label-box { border: 1.5px solid #1e293b; padding: 0.3rem 0.4rem; display: inline-block; max-width: 2.5in; }
@@ -971,13 +997,23 @@
             const values = getCsvRow(d);
             const csvRow = vals => vals.map(v => `"${csvSafe(v).replace(/"/g, '""')}"`).join(',');
             const csv = csvRow(headers) + '\n' + csvRow(values) + '\n';
-            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            downloadBlob(
+                new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }),
+                `collection_${d.dateStart}${d.siteName ? '_' + d.siteName.replace(/\s+/g, '_') : ''}.csv`,
+            );
+        }
+
+        // The anchor must be in the document and the object URL must outlive the
+        // click, or some browsers cancel the download.
+        function downloadBlob(blob, filename) {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `collection_${d.dateStart}${d.siteName ? '_' + d.siteName.replace(/\s+/g, '_') : ''}.csv`;
+            a.download = filename;
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 0);
         }
 
         function getCsvRow(d) {
@@ -1013,13 +1049,10 @@
             labelSheet.forEach(item => {
                 if (item.data) csv += csvRow(getCsvRow(item.data)) + '\n';
             });
-            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `collection_all_${new Date().toISOString().slice(0,10)}.csv`;
-            a.click();
-            URL.revokeObjectURL(url);
+            downloadBlob(
+                new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }),
+                `collection_all_${new Date().toISOString().slice(0,10)}.csv`,
+            );
         }
 
         /* ── Print Sheet ── */
@@ -1073,6 +1106,11 @@
             if (labelSheet.length === 0) { console.warn('[LabelData] printSheet called but sheet is empty'); return; }
             console.log('[LabelData] printing sheet with', labelSheet.length, 'label(s)');
             const win = window.open('', '_blank', 'width=800,height=600');
+            if (!win) {
+                console.warn('[LabelData] print window blocked by the browser');
+                alert('Your browser blocked the print window. Please allow pop-ups for this site and try again.');
+                return;
+            }
             let labelsHtml = '';
             labelSheet.forEach(item => {
                 labelsHtml += `<div class="label-box">${item.label1}</div>`;
@@ -1103,12 +1141,22 @@
 
         /* ── Cloud Backup (Google Drive) ── */
         (function initCloudBackup() {
-            if (!window.EntoSync || !window.EntoDriveProvider) return;
-            EntoSync.setProvider(EntoDriveProvider);
             const btn = document.getElementById('drive-btn');
             const statusEl = document.getElementById('drive-status');
             const syncBtn = document.getElementById('drive-sync-now');
             if (!btn) return;
+            // No provider loaded (Drive sync is disabled in production): make the
+            // control inert rather than leaving it wired to an undefined handler.
+            if (!window.EntoSync || !window.EntoDriveProvider) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                if (statusEl) statusEl.textContent = 'Cloud backup is not enabled on this site.';
+                if (syncBtn) syncBtn.classList.add('hidden');
+                window.entoDriveToggle = function (e) { if (e) e.stopPropagation(); };
+                window.entoDriveSyncNow = window.entoDriveToggle;
+                return;
+            }
+            EntoSync.setProvider(EntoDriveProvider);
             const reloadFromStore = () => loadSheet();
             const fmtTime = (iso) => { try { return new Date(iso).toLocaleString(); } catch (e) { return ''; } };
             function render() {
@@ -1150,12 +1198,15 @@
             EntoSync.tryResume().then((ok) => { if (ok) render(); });
         })();
 
-        // Enter key triggers generate
+        // Enter key triggers generate — but only from the collection form, never
+        // from the feedback modal or the settings panel.
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                const active = document.activeElement;
-                if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) { e.preventDefault(); doGenerate(); }
-            }
+            if (e.key !== 'Enter' || e.shiftKey) return;
+            const active = document.activeElement;
+            if (!active || (active.tagName !== 'INPUT' && active.tagName !== 'SELECT')) return;
+            if (active.closest('#feedback-overlay') || active.closest('#settings-panel')) return;
+            e.preventDefault();
+            doGenerate();
         });
     </script>
     <script src="/feedback.js"></script>

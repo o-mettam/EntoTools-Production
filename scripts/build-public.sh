@@ -2,6 +2,12 @@
 # build-public.sh
 # Copies HTML templates into public/ for Cloudflare Workers static assets.
 # Run: npm run build-public (or bash scripts/build-public.sh)
+#
+# Every page served from public/ has a source in templates/. Assets that are NOT
+# generated here and are edited directly in public/ are:
+#   public/feedback.js   — feedback widget
+#   public/sync/*.js     — local store, merge engine, Drive provider, OAuth config
+#   public/stations.json  — generated station index
 
 set -euo pipefail
 
@@ -15,6 +21,7 @@ mkdir -p "$ROOT/public/collection-database"
 mkdir -p "$ROOT/public/documentation"
 mkdir -p "$ROOT/public/privacy"
 mkdir -p "$ROOT/public/terms"
+mkdir -p "$ROOT/public/status"
 
 # Homepage → public/index.html (served at /)
 cp "$ROOT/templates/entotools.html" "$ROOT/public/index.html"
@@ -39,6 +46,9 @@ cp "$ROOT/templates/privacy_policy.html" "$ROOT/public/privacy/index.html"
 
 # Terms of Use → public/terms/index.html (served at /terms)
 cp "$ROOT/templates/terms_of_use.html" "$ROOT/public/terms/index.html"
+
+# Service Status → public/status/index.html (served at /status)
+cp "$ROOT/templates/status.html" "$ROOT/public/status/index.html"
 
 # Error pages
 cp "$ROOT/templates/404.html" "$ROOT/public/404.html"

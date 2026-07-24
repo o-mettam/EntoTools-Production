@@ -127,9 +127,11 @@
     opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + token });
     const resp = await fetch(url, opts);
     if (resp.status === 401) {
-      // token rejected — force one interactive-free refresh and retry once
+      // Token rejected — refresh once and retry. ensureToken() keeps the
+      // "no auth UI without a user gesture" guarantee: on a background sync it
+      // throws TOKEN_UNAVAILABLE, which EntoSync reports as a deferred sync.
       clearToken();
-      const t2 = await requestToken('');
+      const t2 = await ensureToken();
       opts.headers.Authorization = 'Bearer ' + t2;
       return fetch(url, opts);
     }
@@ -226,10 +228,12 @@
       try {
         await waitForGis(8000);
         await requestToken('consent');
+        // Only record the connection once the Drive folder is confirmed, so a
+        // failed setup doesn't leave the UI claiming to be connected.
         const conn = loadConn();
+        await ensureFolder(conn);
         conn.connected = true;
         saveConn(conn);
-        await ensureFolder(conn);
         return true;
       } finally {
         allowInteractive = false;

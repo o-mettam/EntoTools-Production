@@ -847,15 +847,15 @@
             }
         }
 
-        // Allow Enter key to trigger lookup
+        // Allow Enter key to trigger lookup — but only from the lookup form,
+        // never from the feedback modal or the settings panel.
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                const active = document.activeElement;
-                if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) {
-                    e.preventDefault();
-                    doLookup();
-                }
-            }
+            if (e.key !== 'Enter' || e.shiftKey) return;
+            const active = document.activeElement;
+            if (!active || (active.tagName !== 'INPUT' && active.tagName !== 'SELECT')) return;
+            if (active.closest('#feedback-overlay') || active.closest('#settings-panel')) return;
+            e.preventDefault();
+            doLookup();
         });
     </script>
     <script src="/feedback.js"></script>

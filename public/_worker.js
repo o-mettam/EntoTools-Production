@@ -38,6 +38,8 @@ const FEEDBACK_RATE_LIMIT = 5;              // max submissions per window per IP
 const FEEDBACK_RATE_WINDOW_SECONDS = 3600; // 1 hour
 const SEARCH_RATE_LIMIT = 60;              // max searches per window per IP
 const SEARCH_RATE_WINDOW_SECONDS = 3600;   // 1 hour
+const STATUS_RATE_LIMIT = 120;             // max status probes per window per IP
+const STATUS_RATE_WINDOW_SECONDS = 3600;   // 1 hour
 
 // ── Country → data-provider mapping ──────────────────────────────
 // Each key is a 2-letter ISO country code (lowercase).
@@ -369,6 +371,9 @@ async function getWeatherData(stationId, startDate, endDate) {
   const all = [];
   const cur = new Date(startDate + 'T00:00:00Z');
   const end = new Date(endDate + 'T00:00:00Z');
+  if (isNaN(cur.getTime()) || isNaN(end.getTime())) {
+    throw new Error(`Unparseable date range: ${startDate} to ${endDate}`);
+  }
   while (cur <= end) {
     const d = cur.toISOString().slice(0, 10);
     all.push(byDate[d] || { date: d, TMIN: null, TMAX: null, PRCP: null });
@@ -473,6 +478,9 @@ async function getWeatherDataOpenMeteo(lat, lon, startDate, endDate) {
   const filled = [];
   const cur = new Date(startDate + 'T00:00:00Z');
   const end = new Date(endDate + 'T00:00:00Z');
+  if (isNaN(cur.getTime()) || isNaN(end.getTime())) {
+    throw new Error(`Unparseable date range: ${startDate} to ${endDate}`);
+  }
   while (cur <= end) {
     const d = cur.toISOString().slice(0, 10);
     filled.push(byDate[d] || { date: d, TMIN: null, TMAX: null, PRCP: null });
@@ -543,6 +551,46 @@ async function handleSearch(request, env) {
   // Log only the request shape, not its contents — the body carries the
   // user's searched location (city/state or coordinates).
   console.log('[Worker:handleSearch] mode:', mode, '| dateRanges:', Array.isArray(body.dateRanges) ? body.dateRanges.length : (body.startDate ? 1 : 0));
+
+  // Step 0 — Validate the requested date ranges BEFORE touching any upstream
+  // service, so malformed or oversized requests never cost a geocode, a station
+  // lookup or a forecast fetch.
+  let dateRanges = body.dateRanges;
+  if (!dateRanges || !dateRanges.length) {
+    dateRanges = [{ startDate: body.startDate, endDate: body.endDate, label: 'Range 1' }];
+  }
+  if (!Array.isArray(dateRanges)) {
+    return jsonResponse({ error: 'Invalid date ranges.' }, 400);
+  }
+  if (dateRanges.length > MAX_DATE_RANGES) {
+    return jsonResponse({ error: `Too many date ranges (max ${MAX_DATE_RANGES}).` }, 400);
+  }
+
+  let totalDays = 0;
+  for (const dr of dateRanges) {
+    const label = dr.label || '';
+    const sd = dr.startDate;
+    const ed = dr.endDate;
+    if (!sd || !ed) {
+      return jsonResponse({ error: `Missing start or end date for '${label || 'a range'}'.` }, 400);
+    }
+    const sdDate = new Date(sd);
+    const edDate = new Date(ed);
+    if (isNaN(sdDate.getTime()) || isNaN(edDate.getTime())) {
+      return jsonResponse({ error: `Invalid date format for '${label || 'a range'}'.` }, 400);
+    }
+    if (edDate < sdDate) {
+      return jsonResponse({ error: `End date is before start date for '${label || 'a range'}'.` }, 400);
+    }
+    const spanDays = Math.floor((edDate.getTime() - sdDate.getTime()) / MS_PER_DAY) + 1;
+    if (spanDays > MAX_RANGE_DAYS) {
+      return jsonResponse({ error: `Date range '${label || 'a range'}' is too large (max ${MAX_RANGE_DAYS} days).` }, 400);
+    }
+    totalDays += spanDays;
+  }
+  if (totalDays > MAX_TOTAL_DAYS) {
+    return jsonResponse({ error: `Combined date ranges are too large (max ${MAX_TOTAL_DAYS} days total).` }, 400);
+  }
 
   // Step 1 — Resolve location + country_code
   let lat = null;
@@ -624,18 +672,7 @@ async function handleSearch(request, env) {
 
   console.log('[Worker:handleSearch] resolved station:', station.station_id, station.station_name, '| provider:', provider, '| providerFallback:', providerFallback);
 
-  // Step 3 — Fetch data per date range
-  let dateRanges = body.dateRanges;
-  if (!dateRanges || !dateRanges.length) {
-    dateRanges = [{ startDate: body.startDate, endDate: body.endDate, label: 'Range 1' }];
-  }
-  if (!Array.isArray(dateRanges)) {
-    return jsonResponse({ error: 'Invalid date ranges.' }, 400);
-  }
-  if (dateRanges.length > MAX_DATE_RANGES) {
-    return jsonResponse({ error: `Too many date ranges (max ${MAX_DATE_RANGES}).` }, 400);
-  }
-
+  // Step 3 — Fetch data per date range (already validated in step 0)
   console.log('[Worker:handleSearch] using', provider, '| station:', station.station_id, '— fetching', dateRanges.length, 'date range(s)');
 
   // Fetch Open-Meteo forecast once (used for all ranges, regardless of provider)
@@ -647,33 +684,6 @@ async function handleSearch(request, env) {
   } catch (e) {
     console.warn('[Worker:handleSearch] forecast fetch failed — forecast will be skipped:', e.message);
     forecastUnavailable = true;
-  }
-
-  // Validate all date ranges upfront
-  let totalDays = 0;
-  for (const dr of dateRanges) {
-    const label = dr.label || '';
-    const sd = dr.startDate;
-    const ed = dr.endDate;
-    if (!sd || !ed) {
-      return jsonResponse({ error: `Missing start or end date for '${label || 'a range'}'.` }, 400);
-    }
-    const sdDate = new Date(sd);
-    const edDate = new Date(ed);
-    if (isNaN(sdDate.getTime()) || isNaN(edDate.getTime())) {
-      return jsonResponse({ error: `Invalid date format for '${label || 'a range'}'.` }, 400);
-    }
-    if (edDate < sdDate) {
-      return jsonResponse({ error: `End date is before start date for '${label || 'a range'}'.` }, 400);
-    }
-    const spanDays = Math.floor((edDate.getTime() - sdDate.getTime()) / MS_PER_DAY) + 1;
-    if (spanDays > MAX_RANGE_DAYS) {
-      return jsonResponse({ error: `Date range '${label || 'a range'}' is too large (max ${MAX_RANGE_DAYS} days).` }, 400);
-    }
-    totalDays += spanDays;
-  }
-  if (totalDays > MAX_TOTAL_DAYS) {
-    return jsonResponse({ error: `Combined date ranges are too large (max ${MAX_TOTAL_DAYS} days total).` }, 400);
   }
 
   // Fetch all date ranges in parallel
@@ -718,17 +728,20 @@ async function handleSearch(request, env) {
           }
         }
 
-        // Append forecast days that fall after the last actual data point
-        // Find the last date that has real temperature data (not null-filled placeholders)
-        let lastActualDate = ed;
+        // Append forecast days that fall after the last actual data point.
+        // Find the last date that has real temperature data (not null-filled
+        // placeholders). If the range contains no observations at all (e.g. a
+        // wholly future range), every day in it is eligible for forecast data.
+        let lastActualDate = null;
         for (let i = temps.length - 1; i >= 0; i--) {
           if (temps[i].TMIN != null && temps[i].TMAX != null) {
             lastActualDate = temps[i].date;
             break;
           }
         }
-        const forecast = forecastDays.filter(f => f.date > lastActualDate && f.date <= ed);
-        console.log('[Worker:handleSearch] appending', forecast.length, 'forecast days after', lastActualDate, 'to range "' + label + '"');
+        const forecast = forecastDays.filter(f =>
+          f.date <= ed && (lastActualDate === null ? f.date >= sd : f.date > lastActualDate));
+        console.log('[Worker:handleSearch] appending', forecast.length, 'forecast days after', lastActualDate || '(no observations)', 'to range "' + label + '"');
 
         // Replace null-filled placeholders within the range with forecast data.
         // `temps` already spans the full requested range (gap-filled) and
@@ -801,9 +814,13 @@ function maskIp(ip) {
 
 // Per-IP rate limit backed by KV (GEOCODE_CACHE). Returns true if the caller
 // has exceeded the allowed number of requests in the current window.
+// The read-modify-write is not atomic, so concurrent requests from one IP can
+// undercount; the window is bucketed by wall-clock so a caller can never be
+// locked out for longer than one window.
 async function rateLimited(env, ip, prefix, limit, windowSeconds) {
   if (!ip || !env.GEOCODE_CACHE) return false; // can't identify caller — don't hard-block
-  const key = `${prefix}:${ip}`;
+  const bucket = Math.floor(Date.now() / 1000 / windowSeconds);
+  const key = `${prefix}:${bucket}:${ip}`;
   let count = 0;
   try { count = parseInt(await env.GEOCODE_CACHE.get(key), 10) || 0; }
   catch (e) { return false; }
@@ -819,6 +836,10 @@ function feedbackRateLimited(env, ip) {
 
 function searchRateLimited(env, ip) {
   return rateLimited(env, ip, 'search-rl', SEARCH_RATE_LIMIT, SEARCH_RATE_WINDOW_SECONDS);
+}
+
+function statusRateLimited(env, ip) {
+  return rateLimited(env, ip, 'status-rl', STATUS_RATE_LIMIT, STATUS_RATE_WINDOW_SECONDS);
 }
 
 // Server-side PII redaction. The client sanitizes before sending, but this
@@ -990,14 +1011,13 @@ async function handleStatusCheck(url) {
   }
 
   const start = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.timeout);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), config.timeout);
     const resp = await fetch(config.url, {
       headers: { 'User-Agent': USER_AGENT },
       signal: controller.signal,
     });
-    clearTimeout(timer);
     const latency = Date.now() - start;
 
     if (!resp.ok) {
@@ -1008,6 +1028,8 @@ async function handleStatusCheck(url) {
     const latency = Date.now() - start;
     const msg = err.name === 'AbortError' ? 'Timeout' : err.message;
     return jsonResponse({ ok: false, error: msg, latency });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -1060,6 +1082,13 @@ export default {
     }
 
     if (url.pathname === '/api/status/check' && request.method === 'GET') {
+      // This endpoint fans out to third-party services, so it needs its own
+      // per-IP budget even though the target URLs are allowlisted.
+      const ip = request.headers.get('CF-Connecting-IP') || '';
+      if (await statusRateLimited(env, ip)) {
+        console.warn('[Worker:handleStatusCheck] rate limit exceeded for IP:', maskIp(ip));
+        return jsonResponse({ ok: false, error: 'Too many requests. Please try again later.' }, 429);
+      }
       try {
         return await handleStatusCheck(url);
       } catch (err) {

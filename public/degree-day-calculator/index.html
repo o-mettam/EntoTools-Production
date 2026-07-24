@@ -918,16 +918,26 @@
             try { return JSON.parse(localStorage.getItem(RESULT_CACHE_KEY)) || {}; } catch { return {}; }
         }
 
+        // Caching is best-effort: large multi-year results can exceed the
+        // localStorage quota, and that must never prevent the freshly fetched
+        // results from rendering. On a quota error we drop the oldest entries and
+        // retry once, then give up silently.
         function setResultCache(cache) {
-            // Evict oldest entries if over the limit
-            const keys = Object.keys(cache);
-            if (keys.length > MAX_RESULT_CACHE_ENTRIES) {
-                // Each entry has a _ts timestamp; sort ascending and remove oldest
-                const sorted = keys.sort((a, b) => (cache[a]._ts || 0) - (cache[b]._ts || 0));
-                const toRemove = sorted.slice(0, keys.length - MAX_RESULT_CACHE_ENTRIES);
-                toRemove.forEach(k => delete cache[k]);
+            const evictOldest = (n) => {
+                const keys = Object.keys(cache)
+                    .sort((a, b) => (cache[a]._ts || 0) - (cache[b]._ts || 0));
+                keys.slice(0, n).forEach(k => delete cache[k]);
+            };
+            const over = Object.keys(cache).length - MAX_RESULT_CACHE_ENTRIES;
+            if (over > 0) evictOldest(over);
+            try {
+                localStorage.setItem(RESULT_CACHE_KEY, JSON.stringify(cache));
+            } catch (e) {
+                console.warn('[Ento:setResultCache] could not cache results, trimming and retrying:', e.name);
+                evictOldest(Math.max(1, Object.keys(cache).length - 1));
+                try { localStorage.setItem(RESULT_CACHE_KEY, JSON.stringify(cache)); }
+                catch (e2) { console.warn('[Ento:setResultCache] result caching disabled for this search:', e2.name); }
             }
-            localStorage.setItem(RESULT_CACHE_KEY, JSON.stringify(cache));
         }
 
         function makeCacheKey(body) {
@@ -1370,7 +1380,11 @@
                 years.forEach(yr => {
                     const rangeLabel = r.label || ('Range ' + (i + 1));
                     const label = years.length > 1 ? `${rangeLabel} (${yr})` : rangeLabel;
-                    tempYearGroups.push({ year: yr, temps: byYear[yr], rangeIdx: i, label });
+                    // Chart series always carry the year so the legend filter can
+                    // match it, and always carry the range name so two ranges in
+                    // the same year stay distinguishable.
+                    const seriesLabel = label.includes(yr) ? label : `${label} (${yr})`;
+                    tempYearGroups.push({ year: yr, temps: byYear[yr], rangeIdx: i, label, seriesLabel });
                 });
             });
             tempYearGroups.forEach((yg, i) => { yg.colorIdx = i % SERIES_COLORS.length; yg.seriesIdx = i; });
@@ -1428,7 +1442,7 @@
 
                 // Actual data (solid lines)
                 datasets.push({
-                    label: `${yg.year} Max (°F)`,
+                    label: `${yg.seriesLabel} Max (°F)`,
                     data: maxActualData,
                     borderColor: maxColor.hex,
                     backgroundColor: 'transparent',
@@ -1440,7 +1454,7 @@
                     borderDash: [], // Solid line
                 });
                 datasets.push({
-                    label: `${yg.year} Min (°F)`,
+                    label: `${yg.seriesLabel} Min (°F)`,
                     data: minActualData,
                     borderColor: minColor.hex,
                     backgroundColor: minColor.bg + '0.08)',
@@ -1452,35 +1466,36 @@
                     borderDash: [], // Solid line for actual data
                 });
 
-                // Forecast data (dashed lines) - only if forecast is enabled
-                if (document.getElementById('include-temp-forecast').checked) {
-                    datasets.push({
-                        label: 'Max (°F) Forecast',
-                        data: maxForecastData,
-                        borderColor: maxColor.hex,
-                        backgroundColor: 'transparent',
-                        fill: false,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointBackgroundColor: maxColor.hex,
-                        spanGaps: false,
-                        borderDash: [8, 4], // Dashed line for forecast
-                        hidden: false, // Show in legend
-                    });
-                    datasets.push({
-                        label: 'Min (°F) Forecast',
-                        data: minForecastData,
-                        borderColor: minColor.hex,
-                        backgroundColor: 'transparent',
-                        fill: false,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointBackgroundColor: minColor.hex,
-                        spanGaps: false,
-                        borderDash: [8, 4], // Dashed line for forecast
-                        hidden: false, // Show in legend
-                    });
-                }
+                // Forecast data (dashed lines). Always built so the "show
+                // forecast" checkbox can toggle visibility without re-running the
+                // search; the checkbox only controls the initial hidden state.
+                const showTempForecast = document.getElementById('include-temp-forecast').checked;
+                datasets.push({
+                    label: `${yg.seriesLabel} Max (°F) Forecast`,
+                    data: maxForecastData,
+                    borderColor: maxColor.hex,
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: maxColor.hex,
+                    spanGaps: false,
+                    borderDash: [8, 4], // Dashed line for forecast
+                    hidden: !showTempForecast,
+                });
+                datasets.push({
+                    label: `${yg.seriesLabel} Min (°F) Forecast`,
+                    data: minForecastData,
+                    borderColor: minColor.hex,
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: minColor.hex,
+                    spanGaps: false,
+                    borderDash: [8, 4], // Dashed line for forecast
+                    hidden: !showTempForecast,
+                });
             });
 
             // Add average lines if multiple datasets
@@ -1866,6 +1881,10 @@
 
                     let rows = '';
                     let totalPrecip = 0;
+                    // Accumulate observations only, matching the accumulation line
+                    // on the chart above (the server-side PRCP_ACCUM also folds in
+                    // forecast days, which made the two disagree).
+                    let accum = 0;
                     yg.temps.forEach((t, j) => {
                         const isFc = t.is_forecast;
                         const cls = isFc ? 'bg-amber-50/60' : (j % 2 === 0 ? 'bg-white' : 'bg-slate-50/60');
@@ -1874,12 +1893,11 @@
                         });
                         const fcBadge = isFc ? ' <span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800">Forecast</span>' : '';
                         const precip = t.PRCP || 0;
-                        totalPrecip += precip;
-                        const accum = t.PRCP_ACCUM || 0;
+                        if (!isFc) { totalPrecip += precip; accum += precip; }
                         rows += `<tr class="${cls}">
                             <td class="px-6 py-3 text-slate-700">${dateStr}${fcBadge}</td>
                             <td class="px-6 py-3 text-right font-medium" style="color:${sc.hex}">${precip > 0 ? precip.toFixed(2) + '"' : '0.00"'}</td>
-                            <td class="px-6 py-3 text-right font-semibold" style="color:${sc.hex}">${accum.toFixed(2) + '"'}</td>
+                            <td class="px-6 py-3 text-right font-semibold" style="color:${sc.hex}">${isFc ? '—' : accum.toFixed(2) + '"'}</td>
                         </tr>`;
                     });
 
@@ -2096,7 +2114,10 @@
                 years.forEach(yr => {
                     const rangeLabel = ranges[i].label || ('Range ' + (i + 1));
                     const label = years.length > 1 ? `${rangeLabel} (${yr})` : rangeLabel;
-                    yearGroups.push({ year: yr, gdd: byYear[yr], rangeIdx: i, label });
+                    // Series labels always carry both the range name and the year
+                    // so ranges within one year remain distinguishable.
+                    const seriesLabel = label.includes(yr) ? label : `${label} (${yr})`;
+                    yearGroups.push({ year: yr, gdd: byYear[yr], rangeIdx: i, label, seriesLabel });
                 });
             });
 
@@ -2159,7 +2180,7 @@
 
                 // Actual data (solid lines/bars)
                 datasets.push({
-                    label: `${yg.year} Cumulative GDD`,
+                    label: `${yg.seriesLabel} Cumulative GDD`,
                     data: cumulativeActualData,
                     borderColor: sc.hex,
                     backgroundColor: 'transparent',
@@ -2182,32 +2203,35 @@
                     order: 2,
                 });
 
-                // Forecast data (dashed lines/bars) - only if forecast is enabled
-                if (document.getElementById('include-gdd-forecast').checked) {
-                    datasets.push({
-                        label: 'Cumulative GDD Forecast',
-                        data: cumulativeForecastData,
-                        borderColor: sc.hex,
-                        backgroundColor: 'transparent',
-                        fill: false,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointBackgroundColor: sc.hex,
-                        yAxisID: 'y',
-                        order: 0, // Behind other lines
-                        borderDash: [8, 4], // Dashed line for forecast
-                    });
-                    datasets.push({
-                        label: 'Daily GDD Forecast',
-                        data: dailyForecastData,
-                        type: 'bar',
-                        backgroundColor: sc.bg + '0.2)',
-                        borderColor: sc.bg + '0.2)',
-                        borderWidth: 0,
-                        yAxisID: 'y1',
-                        order: 3, // On top of other bars
-                    });
-                }
+                // Forecast data (dashed lines/bars). Always built so the "show
+                // forecast" checkbox can toggle visibility without re-running the
+                // search; the checkbox only sets the initial hidden state.
+                const showGddForecast = document.getElementById('include-gdd-forecast').checked;
+                datasets.push({
+                    label: `${yg.seriesLabel} Cumulative GDD Forecast`,
+                    data: cumulativeForecastData,
+                    borderColor: sc.hex,
+                    backgroundColor: 'transparent',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    pointBackgroundColor: sc.hex,
+                    yAxisID: 'y',
+                    order: 0, // Behind other lines
+                    borderDash: [8, 4], // Dashed line for forecast
+                    hidden: !showGddForecast,
+                });
+                datasets.push({
+                    label: 'Daily GDD Forecast',
+                    data: dailyForecastData,
+                    type: 'bar',
+                    backgroundColor: sc.bg + '0.2)',
+                    borderColor: sc.bg + '0.2)',
+                    borderWidth: 0,
+                    yAxisID: 'y1',
+                    order: 3, // On top of other bars
+                    hidden: !showGddForecast,
+                });
             });
 
             // Add average lines if multiple datasets
