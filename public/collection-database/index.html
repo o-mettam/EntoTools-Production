@@ -413,7 +413,9 @@
 
         /* ── Detail Panel ── */
         function buildDetail(d) {
-            const row = (label, val) => val && val !== '—' ? `<div class="flex gap-2"><span class="font-semibold text-slate-600 whitespace-nowrap">${label}:</span><span class="text-slate-800">${val}</span></div>` : '';
+            // val is always HTML-escaped here so raw record fields (including
+            // imported CSV values like Sunset / Accum Start) can never inject markup.
+            const row = (label, val) => val && val !== '—' ? `<div class="flex gap-2"><span class="font-semibold text-slate-600 whitespace-nowrap">${label}:</span><span class="text-slate-800">${esc(val)}</span></div>` : '';
 
             const coordEst = d.inputMode !== 'latlon' ? 'Yes (estimated)' : 'No';
             const humVal = d.humidity ? (d.humidity.atTime || d.humidity.avg || '—') + '%' : '—';
@@ -424,18 +426,18 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2 text-sm">
                     <div class="sm:col-span-2 lg:col-span-3 mb-1"><h4 class="font-bold text-slate-800 text-base">${esc(d.specimenId || 'Untitled')}${d.identification ? ' — <em>' + esc(d.identification) + '</em>' : ''}</h4></div>
 
-                    ${row('Site Name', esc(d.siteName || ''))}
-                    ${row('Location', esc(d.location || ''))}
+                    ${row('Site Name', d.siteName || '')}
+                    ${row('Location', d.location || '')}
                     ${row('Coordinates', d.lat != null && d.lon != null ? d.lat + ', ' + d.lon : '')}
                     ${row('Coords Estimated', coordEst)}
                     ${row('Elevation', d.elevation != null ? d.elevation + ' m' : '')}
                     ${row('Date', dateVal)}
                     ${row('Time', fmtTimeRange(d))}
                     ${row('Sunset', d.sunset || '')}
-                    ${row('Collector', esc(d.collector || ''))}
-                    ${row('Determiner', esc(d.identifier || ''))}
+                    ${row('Collector', d.collector || '')}
+                    ${row('Determiner', d.identifier || '')}
                     ${row('Specimens', d.numSpecimens || '')}
-                    ${row('Collection Method', esc(d.collectionMethod || ''))}
+                    ${row('Collection Method', d.collectionMethod || '')}
                     ${row('High Temp', d.highTemp != null ? d.highTemp + '\u00b0F' : '')}
                     ${row('Low Temp', d.lowTemp != null ? d.lowTemp + '\u00b0F' : '')}
                     ${row('Avg Temp', d.avgTemp != null ? d.avgTemp + '\u00b0F' : '')}
@@ -444,7 +446,7 @@
                     ${row('Humidity', humVal)}
                     ${row('Rainfall (7d)', d.rainfallWeek != null ? d.rainfallWeek + ' in' : '')}
                     ${row('Rainfall (30d)', d.rainfallMonth != null ? d.rainfallMonth + ' in' : '')}
-                    ${row('Weather Station', d.stationName ? esc(d.stationName) + ' (' + esc(d.stationId) + ')' : '')}
+                    ${row('Weather Station', d.stationName ? d.stationName + ' (' + d.stationId + ')' : '')}
                     ${row('Station Distance', d.stationDist != null ? d.stationDist + ' mi' : '')}
                     ${row('GDD Base Temp', d.baseTemp != null ? d.baseTemp + '\u00b0F' : '')}
                     ${row('GDD Max Temp', d.maxTemp != null ? d.maxTemp + '\u00b0F' : '')}
@@ -466,52 +468,17 @@
         }
 
         /* ── Export CSV ── */
+        // Column layout + formula-injection guard live in EntoCsv
+        // (public/sync/sync-core.js) so export/import here and the Drive backup
+        // all share one source of truth.
         function exportAllCSV() {
             loadEntries();
             if (entries.length === 0) { console.warn('[CollectionDB] export called but no entries'); return; }
             console.log('[CollectionDB] exporting', entries.length, 'entries to CSV');
 
-            const headers = [
-                'Specimen ID','Specimen Identification','Number of Specimens',
-                'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
-                'Date Start','Date End','Sunset','Time of Collection',
-                'Collector','Determiner',
-                'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
-                'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
-                'Weather Station','Station ID','Station Distance (mi)','Data Provider',
-                'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
-                'Collection Method','Notes'
-            ];
-
-            // Guard against CSV formula injection: cells beginning with =, +, -,
-            // @, or a control char are prefixed with a single quote so spreadsheet
-            // apps treat them as text rather than executable formulas.
-            const csvSafe = v => {
-                const s = String(v ?? '');
-                return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
-            };
-            const csvRow = vals => vals.map(v => `"${csvSafe(v).replace(/"/g, '""')}"`).join(',');
-            let csv = csvRow(headers) + '\n';
-
-            entries.forEach(entry => {
-                const d = entry.data;
-                if (!d) return;
-                csv += csvRow([
-                    d.specimenId, d.identification, d.numSpecimens,
-                    d.siteName, d.location, d.country || d.countryCode || '', d.lat, d.lon, d.inputMode !== 'latlon' ? 'Yes' : 'No', d.elevation,
-                    d.dateStart, d.dateEnd, d.sunset || '', fmtTimeRange(d),
-                    d.collector, d.identifier,
-                    d.highTemp, d.lowTemp, d.avgTemp, d.tempAtTime ?? '', d.isRange ? d.gddStart + ' - ' + d.gddEnd : d.gddStart,
-                    d.humidity && (d.humidity.atTime || d.humidity.avg) || '', d.rainfallWeek, d.rainfallMonth,
-                    d.stationName, d.stationId, d.stationDist, d.provider || '',
-                    d.baseTemp, d.maxTemp, d.accumStartMD,
-                    d.collectionMethod || '', d.userNotes || ''
-                ]) + '\n';
-            });
-
             // The anchor must be in the document and the object URL must outlive
             // the click, or some browsers cancel the download.
-            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob([EntoCsv.buildCsv(entries)], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -522,18 +489,9 @@
             setTimeout(() => URL.revokeObjectURL(url), 0);
         }
 
-        /* ── CSV Import ── */
-        const CSV_HEADERS = [
-            'Specimen ID','Specimen Identification','Number of Specimens',
-            'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
-            'Date Start','Date End','Sunset','Time of Collection',
-            'Collector','Determiner',
-            'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
-            'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
-            'Weather Station','Station ID','Station Distance (mi)','Data Provider',
-            'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
-            'Collection Method','Notes'
-        ];
+        /* ── CSV Import ──
+           The canonical column layout lives in EntoCsv.headers (sync-core.js);
+           import maps by header name, so it stays compatible with exports. */
 
         // Whole-document CSV parser. Quoted fields may contain commas, escaped
         // quotes ("") and literal newlines — the last of these is why the file

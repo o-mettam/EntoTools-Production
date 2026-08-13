@@ -109,7 +109,8 @@ function addDays(date, days) {
 
 async function nominatimGet(params, env) {
   const cacheKey = JSON.stringify(Object.entries(params).sort());
-  console.log('[Worker:nominatimGet] params:', JSON.stringify(params));
+  // Never log the params themselves — they carry the user's searched location.
+  console.log('[Worker:nominatimGet] lookup (' + Object.keys(params).length + ' params)');
 
   // Check KV cache
   const cached = await env.GEOCODE_CACHE.get(cacheKey, { type: 'json' });
@@ -146,7 +147,8 @@ async function nominatimGet(params, env) {
 }
 
 async function geocodeCityState(city, state, country, env) {
-  console.log('[Worker:geocodeCityState] city:', city, 'state:', state, 'country:', country);
+  // Don't log city/state — that's the user's searched location.
+  console.log('[Worker:geocodeCityState] geocoding city/state input');
   const params = { city, state, format: 'json', limit: '1', addressdetails: '1' };
   if (country) params.country = country;
   const data = await nominatimGet(
@@ -161,15 +163,17 @@ async function geocodeCityState(city, state, country, env) {
       label: data[0].display_name || '',
       country_code: cc ? cc.toLowerCase() : null,
     };
-    console.log('[Worker:geocodeCityState] resolved to:', result.lat, result.lon, 'country:', result.country_code, '—', result.label);
+    // Log only the resolved country — never the coordinates or display label.
+    console.log('[Worker:geocodeCityState] resolved (country:', result.country_code, ')');
     return result;
   }
-  console.warn('[Worker:geocodeCityState] no results for:', city, state);
+  console.warn('[Worker:geocodeCityState] no results for the requested city/state');
   return null;
 }
 
 async function reverseGeocode(lat, lon, env) {
-  console.log('[Worker:reverseGeocode] lat:', lat, 'lon:', lon);
+  // Don't log the coordinates — they are the user's searched location.
+  console.log('[Worker:reverseGeocode] reverse-geocoding coordinates');
   const cacheKey = JSON.stringify(['reverse', lat, lon]);
   const cached = await env.GEOCODE_CACHE.get(cacheKey, { type: 'json' });
   if (cached) {
@@ -250,7 +254,7 @@ async function getStations(env) {
 }
 
 async function findNearestStation(lat, lon, env, maxCandidates = 50) {
-  console.log('[Worker:findNearestStation] lat:', lat, 'lon:', lon, 'maxCandidates:', maxCandidates);
+  console.log('[Worker:findNearestStation] searching (maxCandidates:', maxCandidates, ')');
   const stations = await getStations(env);
 
   // Pre-filter by bounding box, expanding progressively (2°→4°→8°→16°) so we
@@ -331,7 +335,7 @@ async function findNearestStation(lat, lon, env, maxCandidates = 50) {
     }
   }
 
-  console.warn('[Worker:findNearestStation] no station with data found near', lat, lon);
+  console.warn('[Worker:findNearestStation] no station with data found near the requested location');
   return null;
 }
 
@@ -436,7 +440,7 @@ function mmToInches(mm) {
 }
 
 async function getWeatherDataOpenMeteo(lat, lon, startDate, endDate) {
-  console.log('[Worker:getWeatherDataOpenMeteo] lat:', lat, 'lon:', lon, 'range:', startDate, 'to', endDate);
+  console.log('[Worker:getWeatherDataOpenMeteo] fetching archive for range:', startDate, 'to', endDate);
   const url = new URL(OPEN_METEO_ARCHIVE_URL);
   url.searchParams.set('latitude', lat);
   url.searchParams.set('longitude', lon);
@@ -494,7 +498,7 @@ async function getWeatherDataOpenMeteo(lat, lon, startDate, endDate) {
 // ── Open-Meteo Forecast API ───────────────────────────────────────
 
 async function getForecastOpenMeteo(lat, lon) {
-  console.log('[Worker:getForecastOpenMeteo] lat:', lat, 'lon:', lon);
+  console.log('[Worker:getForecastOpenMeteo] fetching forecast');
   const url = new URL(OPEN_METEO_FORECAST_URL);
   url.searchParams.set('latitude', lat);
   url.searchParams.set('longitude', lon);
@@ -635,7 +639,8 @@ async function handleSearch(request, env) {
   const isFallback = !!countryCode && !COUNTRY_PROVIDER_MAP[countryCode.toLowerCase()];
   let providerFallback = false;   // true if the primary provider failed and we fell back to Open-Meteo
   let fallbackReason = '';        // human-readable reason for the fallback
-  console.log('[Worker:handleSearch] geocoded to lat:', lat, 'lon:', lon, 'country:', countryCode, 'provider:', provider, 'fallback:', isFallback, 'label:', locationLabel);
+  // Log only non-identifying routing info — never the coordinates or label.
+  console.log('[Worker:handleSearch] geocoded — country:', countryCode, 'provider:', provider, 'fallback:', isFallback);
 
   // Step 2 — Resolve data source (station for NCEI, grid point for Open-Meteo)
   let station;
@@ -670,10 +675,13 @@ async function handleSearch(request, env) {
     station = makeOpenMeteoStation();
   }
 
-  console.log('[Worker:handleSearch] resolved station:', station.station_id, station.station_name, '| provider:', provider, '| providerFallback:', providerFallback);
+  // For grid providers the station_id embeds the user's coordinates, so only
+  // log a concrete station id for NCEI (public weather-station identifiers).
+  const loggedStationId = provider === 'ncei' ? station.station_id : '(grid point)';
+  console.log('[Worker:handleSearch] resolved station:', loggedStationId, station.station_name, '| provider:', provider, '| providerFallback:', providerFallback);
 
   // Step 3 — Fetch data per date range (already validated in step 0)
-  console.log('[Worker:handleSearch] using', provider, '| station:', station.station_id, '— fetching', dateRanges.length, 'date range(s)');
+  console.log('[Worker:handleSearch] using', provider, '| station:', loggedStationId, '— fetching', dateRanges.length, 'date range(s)');
 
   // Fetch Open-Meteo forecast once (used for all ranges, regardless of provider)
   let forecastDays = [];

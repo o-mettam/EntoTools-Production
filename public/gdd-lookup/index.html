@@ -10,6 +10,8 @@
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
     <script src="/theme.js"></script>
     <link rel="stylesheet" href="/theme.css">
+    <!-- Shared mGDD calculation + HTML-escape helpers (single source of truth) -->
+    <script src="/ento-gdd.js"></script>
     <style>
         /* Page-specific rules — everything shared lives in /theme.css */
         .result-card { transition: box-shadow .2s ease; }
@@ -406,87 +408,7 @@
             return mm + '-' + dd;
         }
 
-        function esc(str) {
-            const el = document.createElement('span');
-            el.textContent = str;
-            return el.innerHTML;
-        }
-
-        /* ── GDD Calculation (reused from Degree Day Calculator) ── */
-        function computeGDD(temperatures, baseTemp, accumStartMD, maxTemp) {
-            maxTemp = maxTemp != null ? maxTemp : 86;
-            const sorted = [...temperatures].sort((a, b) => a.date.localeCompare(b.date));
-
-            // Pre-pass: interpolate missing data across multi-day gaps
-            // For each gap of missing days, find the nearest known day before
-            // and after and linearly interpolate all days in between.
-            {
-                let i = 0;
-                while (i < sorted.length) {
-                    if (sorted[i].TMIN !== null && sorted[i].TMAX !== null) { i++; continue; }
-                    const gapStart = i;
-                    const prev = gapStart > 0 ? sorted[gapStart - 1] : null;
-                    while (i < sorted.length && (sorted[i].TMIN === null || sorted[i].TMAX === null)) { i++; }
-                    const next = i < sorted.length ? sorted[i] : null;
-                    if (prev && next && prev.TMIN !== null && prev.TMAX !== null && next.TMIN !== null && next.TMAX !== null) {
-                        const gapLen = i - gapStart;
-                        for (let g = 0; g < gapLen; g++) {
-                            const t = sorted[gapStart + g];
-                            const frac = (g + 1) / (gapLen + 1);
-                            t.TMIN = Math.round((prev.TMIN + (next.TMIN - prev.TMIN) * frac) * 10) / 10;
-                            t.TMAX = Math.round((prev.TMAX + (next.TMAX - prev.TMAX) * frac) * 10) / 10;
-                            t.is_calculated = true;
-                            console.log('[GDDLookup:computeGDD] interpolated missing data for', t.date, '→ TMIN:', t.TMIN, 'TMAX:', t.TMAX, '(gap', g + 1, '/' + gapLen + ')');
-                        }
-                    }
-                }
-            }
-
-            let cumulative = 0;
-            let prevYear = null;
-            const results = [];
-
-            for (const t of sorted) {
-                const dateYear = t.date.slice(0, 4);
-                const dateMD = t.date.slice(5); // 'MM-DD'
-
-                // Reset cumulative on Jan 1 or when crossing into a new year
-                if (prevYear !== null && dateYear !== prevYear) {
-                    cumulative = 0;
-                }
-                prevYear = dateYear;
-
-                // Only accumulate on or after accumulation start month-day
-                const isActive = dateMD >= accumStartMD;
-
-                let daily = 0;
-                if (isActive && t.TMIN !== null && t.TMAX !== null) {
-                    const cappedMax = Math.min(t.TMAX, maxTemp);
-                    const cappedMin = Math.max(t.TMIN, baseTemp);
-                    const avg = (cappedMax + cappedMin) / 2;
-                    daily = Math.max(0, avg - baseTemp);
-                }
-
-                if (isActive) {
-                    cumulative += daily;
-                } else {
-                    cumulative = 0;
-                }
-
-                results.push({
-                    date: t.date,
-                    md: dateMD,
-                    avg: (t.TMIN !== null && t.TMAX !== null) ? Math.round(((t.TMAX + t.TMIN) / 2) * 10) / 10 : null,
-                    daily: Math.round(daily * 10) / 10,
-                    cumulative: Math.round(cumulative * 10) / 10,
-                    TMIN: t.TMIN,
-                    TMAX: t.TMAX,
-                    is_forecast: t.is_forecast || false,
-                    is_calculated: t.is_calculated || false,
-                });
-            }
-            return results;
-        }
+        /* ── esc() and computeGDD() provided by /ento-gdd.js ─── */
 
         /* ── Default date → today ── */
         (function setDefaultDate() {

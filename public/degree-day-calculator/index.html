@@ -13,6 +13,8 @@
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
     <script src="/theme.js"></script>
     <link rel="stylesheet" href="/theme.css">
+    <!-- Shared mGDD calculation + HTML-escape helpers (single source of truth) -->
+    <script src="/ento-gdd.js"></script>
     <style>
         /* Page-specific dark overrides — everything shared lives in /theme.css */
         .dark .bg-slate-50\/60, .dark .bg-slate-50\/50 { background-color: rgba(62,74,100,.6) !important; }
@@ -584,12 +586,7 @@
             { hex: '#5c8fc4', bg: 'rgba(92,143,196,' },
         ];
 
-        /* ── HTML escape helper ─────────────────────── */
-        function esc(str) {
-            const el = document.createElement('span');
-            el.textContent = str;
-            return el.innerHTML;
-        }
+        /* ── HTML escape helper: esc() provided by /ento-gdd.js ─── */
 
         /* ── Date helpers ────────────────────────────── */
         function toISO(d) {
@@ -1764,7 +1761,7 @@
                     card.innerHTML = `
                         <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
                             <span class="w-3 h-3 rounded-full" style="background:${maxC.hex}"></span>
-                            <h3 class="text-base font-semibold text-slate-800">${yg.label}</h3>
+                            <h3 class="text-base font-semibold text-slate-800">${esc(yg.label)}</h3>
                             <span class="text-xs text-slate-400 ml-auto">${yg.temps.length} days</span>
                         </div>
                         <div class="overflow-x-auto">
@@ -1818,7 +1815,7 @@
                     card.innerHTML = `
                         <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
                             <span class="w-3 h-3 rounded-full" style="background:${sc.hex}"></span>
-                            <h3 class="text-base font-semibold text-slate-800">Precipitation - ${yg.label}</h3>
+                            <h3 class="text-base font-semibold text-slate-800">Precipitation - ${esc(yg.label)}</h3>
                             <span class="text-xs text-slate-400 ml-auto">${yg.temps.length} days</span>
                             <span class="ml-auto text-sm font-bold" style="color:${sc.hex}">Total: ${totalPrecip.toFixed(2) + '"'}</span>
                         </div>
@@ -1919,84 +1916,7 @@
             precipChart.update();
         }
 
-        /* ── GDD Calculation ──────────────────────────── */
-        function computeGDD(temperatures, baseTemp, accumStartMD, maxTemp) {
-            maxTemp = maxTemp != null ? maxTemp : 86;
-            console.log('[Ento:computeGDD] baseTemp:', baseTemp, 'maxTemp:', maxTemp, 'accumStart:', accumStartMD, 'records:', temperatures.length);
-            // accumStartMD = 'MM-DD' (no year)
-            const sorted = [...temperatures].sort((a, b) => a.date.localeCompare(b.date));
-
-            // Pre-pass: interpolate missing data across multi-day gaps
-            // For each gap of missing days, find the nearest known day before
-            // and after and linearly interpolate all days in between.
-            let i = 0;
-            while (i < sorted.length) {
-                if (sorted[i].TMIN !== null && sorted[i].TMAX !== null) { i++; continue; }
-                // Find start of gap
-                const gapStart = i;
-                // Find the previous known day
-                const prev = gapStart > 0 ? sorted[gapStart - 1] : null;
-                // Advance past all consecutive missing days
-                while (i < sorted.length && (sorted[i].TMIN === null || sorted[i].TMAX === null)) { i++; }
-                // Find the next known day (i now points to it, or past the end)
-                const next = i < sorted.length ? sorted[i] : null;
-                if (prev && next && prev.TMIN !== null && prev.TMAX !== null && next.TMIN !== null && next.TMAX !== null) {
-                    const gapLen = i - gapStart;
-                    for (let g = 0; g < gapLen; g++) {
-                        const t = sorted[gapStart + g];
-                        const frac = (g + 1) / (gapLen + 1);
-                        t.TMIN = Math.round((prev.TMIN + (next.TMIN - prev.TMIN) * frac) * 10) / 10;
-                        t.TMAX = Math.round((prev.TMAX + (next.TMAX - prev.TMAX) * frac) * 10) / 10;
-                        t.is_calculated = true;
-                        console.log('[Ento:computeGDD] interpolated missing data for', t.date, '→ TMIN:', t.TMIN, 'TMAX:', t.TMAX, '(gap', g + 1, '/' + gapLen + ')');
-                    }
-                }
-            }
-
-            let cumulative = 0;
-            let prevYear = null;
-            const results = [];
-
-            for (const t of sorted) {
-                const dateYear = t.date.slice(0, 4);
-                const dateMD = t.date.slice(5); // 'MM-DD'
-
-                // Reset cumulative on Jan 1 or when crossing into a new year
-                if (prevYear !== null && dateYear !== prevYear) {
-                    cumulative = 0;
-                }
-                prevYear = dateYear;
-
-                // Only accumulate on or after accumulation start month-day
-                const isActive = dateMD >= accumStartMD;
-
-                let daily = 0;
-                if (isActive && t.TMIN !== null && t.TMAX !== null) {
-                    const cappedMax = Math.min(t.TMAX, maxTemp);
-                    const cappedMin = Math.max(t.TMIN, baseTemp);
-                    const avg = (cappedMax + cappedMin) / 2;
-                    daily = Math.max(0, avg - baseTemp);
-                }
-
-                if (isActive) {
-                    cumulative += daily;
-                } else {
-                    cumulative = 0;
-                }
-
-                results.push({
-                    date: t.date,
-                    md: dateMD,
-                    avg: (t.TMIN !== null && t.TMAX !== null) ? Math.round(((t.TMAX + t.TMIN) / 2) * 10) / 10 : null,
-                    daily: Math.round(daily * 10) / 10,
-                    cumulative: Math.round(cumulative * 10) / 10,
-                    is_forecast: t.is_forecast || false,
-                    is_calculated: t.is_calculated || false,
-                });
-            }
-            console.log('[Ento:computeGDD] computed', results.length, 'GDD records, final cumulative:', results.length > 0 ? results[results.length - 1].cumulative : 0);
-            return results;
-        }
+        /* ── GDD Calculation: computeGDD() provided by /ento-gdd.js ─── */
 
         function renderGDD(ranges, localRanges) {
             const baseTemp = parseFloat(document.getElementById('input-gdd-base').value) || 50;
@@ -2338,7 +2258,7 @@
                 card.innerHTML = `
                     <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
                         <span class="w-3 h-3 rounded-full" style="background:${rc.hex}"></span>
-                        <h3 class="text-base font-semibold text-slate-800">GDD — ${yg.label}</h3>
+                        <h3 class="text-base font-semibold text-slate-800">GDD — ${esc(yg.label)}</h3>
                         <span class="text-xs text-slate-400 ml-2">Base ${baseTemp}°F</span>
                         <span class="ml-auto text-sm font-bold" style="color:${rc.hex}">Total: ${lastCum}</span>
                     </div>

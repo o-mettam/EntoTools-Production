@@ -10,6 +10,8 @@
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
     <script src="/theme.js"></script>
     <link rel="stylesheet" href="/theme.css">
+    <!-- Shared mGDD calculation + HTML-escape helpers (single source of truth) -->
+    <script src="/ento-gdd.js"></script>
     <script src="/sync/config.js?v=2"></script>
     <script src="/sync/sync-core.js?v=2"></script>
     <!-- Google Drive sync hidden in production (re-enable by uncommenting the two lines below) -->
@@ -497,11 +499,8 @@
         })();
 
         /* ── Helpers ── */
-        function esc(s) { const el = document.createElement('span'); el.textContent = s; return el.innerHTML; }
-        // Guard against CSV formula injection: prefix cells starting with =, +,
-        // -, @, or a control char with a single quote so spreadsheet apps treat
-        // them as text rather than executable formulas.
-        function csvSafe(v) { const s = String(v ?? ''); return /^[=+\-@\t\r]/.test(s) ? "'" + s : s; }
+        /* esc() provided by /ento-gdd.js; CSV column layout + formula-injection
+           guard live in EntoCsv (public/sync/sync-core.js). */
         function getGddStartMD() {
             return document.getElementById('input-gdd-month').value + '-' + String(document.getElementById('input-gdd-day').value).padStart(2, '0');
         }
@@ -541,52 +540,7 @@
         function abbrCountry(c) { return COUNTRY_ABBR[c] || c; }
 
         /* ── GDD Calculation (reused from Degree Day Calculator) ── */
-        function computeGDD(temperatures, baseTemp, accumStartMD, maxTemp) {
-            maxTemp = maxTemp != null ? maxTemp : 86;
-            const sorted = [...temperatures].sort((a, b) => a.date.localeCompare(b.date));
-
-            // Pre-pass: interpolate missing data across multi-day gaps
-            {
-                let i = 0;
-                while (i < sorted.length) {
-                    if (sorted[i].TMIN !== null && sorted[i].TMAX !== null) { i++; continue; }
-                    const gapStart = i;
-                    const prev = gapStart > 0 ? sorted[gapStart - 1] : null;
-                    while (i < sorted.length && (sorted[i].TMIN === null || sorted[i].TMAX === null)) { i++; }
-                    const next = i < sorted.length ? sorted[i] : null;
-                    if (prev && next && prev.TMIN !== null && prev.TMAX !== null && next.TMIN !== null && next.TMAX !== null) {
-                        const gapLen = i - gapStart;
-                        for (let g = 0; g < gapLen; g++) {
-                            const t = sorted[gapStart + g];
-                            const frac = (g + 1) / (gapLen + 1);
-                            t.TMIN = Math.round((prev.TMIN + (next.TMIN - prev.TMIN) * frac) * 10) / 10;
-                            t.TMAX = Math.round((prev.TMAX + (next.TMAX - prev.TMAX) * frac) * 10) / 10;
-                            t.is_calculated = true;
-                            console.log('[LabelData:computeGDD] interpolated missing data for', t.date, '→ TMIN:', t.TMIN, 'TMAX:', t.TMAX, '(gap', g + 1, '/' + gapLen + ')');
-                        }
-                    }
-                }
-            }
-
-            let cumulative = 0, prevYear = null;
-            const results = [];
-            for (const t of sorted) {
-                const dateYear = t.date.slice(0, 4), dateMD = t.date.slice(5);
-                if (prevYear !== null && dateYear !== prevYear) cumulative = 0;
-                prevYear = dateYear;
-                const isActive = dateMD >= accumStartMD;
-                let daily = 0;
-                if (isActive && t.TMIN !== null && t.TMAX !== null) { const cappedMax = Math.min(t.TMAX, maxTemp); const cappedMin = Math.max(t.TMIN, baseTemp); daily = Math.max(0, (cappedMax + cappedMin) / 2 - baseTemp); }
-                cumulative = isActive ? cumulative + daily : 0;
-                results.push({
-                    date: t.date, md: dateMD,
-                    avg: (t.TMIN !== null && t.TMAX !== null) ? Math.round(((t.TMAX + t.TMIN) / 2) * 10) / 10 : null,
-                    daily: Math.round(daily * 10) / 10, cumulative: Math.round(cumulative * 10) / 10,
-                    TMIN: t.TMIN, TMAX: t.TMAX, PRCP: t.PRCP, is_forecast: t.is_forecast || false,
-                });
-            }
-            return results;
-        }
+        /* computeGDD() provided by /ento-gdd.js */
 
         /* ── Reverse geocode to get City, State, Country ── */
         async function reverseGeocode(lat, lon) {
@@ -740,6 +694,9 @@
                 const searchData = await searchPromise;
                 console.log('[LabelData] API response: provider:', searchData.provider, '| ranges:', searchData.ranges?.length, '| error:', searchData.error || 'none');
                 if (searchData.error) throw new Error(searchData.error);
+                if (!searchData.ranges?.[0]?.temperatures?.length || !searchData.station) {
+                    throw new Error('Weather service returned no data for this location. Please try again.');
+                }
 
                 const lat = searchData.search_lat;
                 const lon = searchData.search_lon;
@@ -775,10 +732,10 @@
                 rainfallMonth = Math.round(rainfallMonth * 100) / 100;
                 rainfallWeek = Math.round(rainfallWeek * 100) / 100;
 
-                // High/Low on collection date(s)
-                const dayData = temps.find(t => t.date === dateStart);
-                const highTemp = dayData ? dayData.TMAX : null;
-                const lowTemp = dayData ? dayData.TMIN : null;
+                // High/Low on collection date. Read from the GDD result (not the
+                // raw temps) so gap-interpolated values are reflected here too.
+                const highTemp = gddStart ? gddStart.TMAX : null;
+                const lowTemp = gddStart ? gddStart.TMIN : null;
 
                 // Store all data for CSV/labels
                 collectionData = {
@@ -788,9 +745,9 @@
                     location: geoInfo.display, city: geoInfo.city, state: geoInfo.state, country: geoInfo.country,
                     countryCode: searchData.country_code || '', provider: searchData.provider || '',
                     lat, lon, elevation,
-                    stationName: searchData.station.station_name,
-                    stationId: searchData.station.station_id,
-                    stationDist: searchData.station.distance_miles,
+                    stationName: searchData.station?.station_name || '',
+                    stationId: searchData.station?.station_id || '',
+                    stationDist: searchData.station?.distance_miles ?? null,
                     gddStart: gddStart ? gddStart.cumulative : 0,
                     gddEnd: gddEnd ? gddEnd.cumulative : 0,
                     dailyGddStart: gddStart ? gddStart.daily : 0,
@@ -922,25 +879,14 @@
         }
 
         /* ── CSV Download ── */
+        // Column layout + escaping live in EntoCsv (public/sync/sync-core.js) so
+        // this page, the Collection Database and the Drive backup never diverge.
         function downloadCSV() {
             console.log('[LabelData] downloading single CSV');
             const d = collectionData;
-            const headers = [
-                'Specimen ID','Specimen Identification','Number of Specimens',
-                'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
-                'Date Start','Date End','Sunset','Time of Collection',
-                'Collector','Determiner',
-                'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
-                'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
-                'Weather Station','Station ID','Station Distance (mi)','Data Provider',
-                'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
-                'Collection Method','Notes'
-            ];
-            const values = getCsvRow(d);
-            const csvRow = vals => vals.map(v => `"${csvSafe(v).replace(/"/g, '""')}"`).join(',');
-            const csv = csvRow(headers) + '\n' + csvRow(values) + '\n';
+            const csv = EntoCsv.buildCsv([{ data: d }]);
             downloadBlob(
-                new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }),
+                new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
                 `collection_${d.dateStart}${d.siteName ? '_' + d.siteName.replace(/\s+/g, '_') : ''}.csv`,
             );
         }
@@ -958,41 +904,12 @@
             setTimeout(() => URL.revokeObjectURL(url), 0);
         }
 
-        function getCsvRow(d) {
-            return [
-                d.specimenId, d.identification, d.numSpecimens,
-                d.siteName, d.location, d.country || d.countryCode || '', d.lat, d.lon, d.inputMode !== 'latlon' ? 'Yes' : 'No', d.elevation,
-                d.dateStart, d.dateEnd, d.sunset || '', fmtTimeRange(d),
-                d.collector, d.identifier,
-                d.highTemp, d.lowTemp, d.avgTemp, d.tempAtTime ?? '', d.isRange ? d.gddStart + ' - ' + d.gddEnd : d.gddStart,
-                d.humidity && (d.humidity.atTime || d.humidity.avg) || '', d.rainfallWeek, d.rainfallMonth,
-                d.stationName, d.stationId, d.stationDist, d.provider || '',
-                d.baseTemp, d.maxTemp, d.accumStartMD,
-                d.collectionMethod || '', d.userNotes || ''
-            ];
-        }
-
         function downloadAllCSV() {
             if (labelSheet.length === 0) { console.warn('[LabelData] downloadAllCSV called but sheet is empty'); return; }
             console.log('[LabelData] downloading CSV for', labelSheet.length, 'collection(s)');
-            const headers = [
-                'Specimen ID','Specimen Identification','Number of Specimens',
-                'Site Name','Location','Country','Latitude','Longitude','Coordinates Estimated','Elevation (m)',
-                'Date Start','Date End','Sunset','Time of Collection',
-                'Collector','Determiner',
-                'High Temp (F)','Low Temp (F)','Avg Temp (F)','Temp at Collection (F)','mGDD',
-                'Humidity (%)','Rainfall Last 7 Days (in)','Rainfall Last 30 Days (in)',
-                'Weather Station','Station ID','Station Distance (mi)','Data Provider',
-                'mGDD Base Temp (F)','mGDD Max Temp (F)','mGDD Accum Start Date',
-                'Collection Method','Notes'
-            ];
-            const csvRow = vals => vals.map(v => `"${csvSafe(v).replace(/"/g, '""')}"`).join(',');
-            let csv = csvRow(headers) + '\n';
-            labelSheet.forEach(item => {
-                if (item.data) csv += csvRow(getCsvRow(item.data)) + '\n';
-            });
+            const csv = EntoCsv.buildCsv(labelSheet);
             downloadBlob(
-                new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }),
+                new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
                 `collection_all_${new Date().toISOString().slice(0,10)}.csv`,
             );
         }
