@@ -600,8 +600,10 @@
             const end = new Date();
             const start = new Date();
             start.setDate(end.getDate() - days);
-            document.getElementById('start-' + rowId).value = toISO(start);
-            document.getElementById('end-' + rowId).value = toISO(end);
+            const startEl = document.getElementById('start-' + rowId);
+            const endEl = document.getElementById('end-' + rowId);
+            if (startEl) startEl.value = toISO(start);
+            if (endEl) endEl.value = toISO(end);
         }
 
         /* ── Dynamic date-range rows ─────────────────────── */
@@ -707,13 +709,16 @@
                 // When "End = today" is checked, compute the End Date at search
                 // time so it's always current (issue #17) — even if the tab has
                 // been open across midnight or the search was loaded from a save.
+                const startEl = document.getElementById('start-' + id);
+                const endEl = document.getElementById('end-' + id);
+                if (!startEl) continue; // row is mid-removal / malformed — skip it
                 const useToday = document.getElementById('today-' + id)?.checked || false;
-                const endDate = useToday ? toISO(new Date()) : document.getElementById('end-' + id).value;
+                const endDate = useToday ? toISO(new Date()) : (endEl ? endEl.value : '');
                 ranges.push({
                     label,
-                    startDate: document.getElementById('start-' + id).value,
+                    startDate: startEl.value,
                     endDate,
-                    colorIdx:  parseInt(row.dataset.colorIdx),
+                    colorIdx:  parseInt(row.dataset.colorIdx, 10),
                 });
             }
             console.log('[Ento:getDateRanges] collected', ranges.length, 'range(s):', JSON.stringify(ranges.map(r => ({ label: r.label, start: r.startDate, end: r.endDate }))));
@@ -770,7 +775,10 @@
 
         function addDateMarker() {
             const mm = document.getElementById('input-datemark-month').value;
-            const dd = String(document.getElementById('input-datemark-day').value).padStart(2, '0');
+            let dayNum = parseInt(document.getElementById('input-datemark-day').value, 10);
+            if (isNaN(dayNum) || dayNum < 1) dayNum = 1;
+            if (dayNum > 31) dayNum = 31;
+            const dd = String(dayNum).padStart(2, '0');
             console.log('[Ento:addDateMarker] mm:', mm, 'dd:', dd);
             const lblInput = document.getElementById('input-datemark-label');
             const md = mm + '-' + dd;
@@ -862,7 +870,15 @@
         }
 
         function setSavedSearches(searches) {
-            localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(searches));
+            try {
+                localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(searches));
+            } catch (e) {
+                console.warn('[Ento:setSavedSearches] failed to save:', e);
+                const quota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014);
+                alert(quota
+                    ? 'Your browser storage is full, so this search could not be saved. Please remove some saved searches and try again.'
+                    : 'This search could not be saved to your browser storage.');
+            }
         }
 
         function collectSearchState() {
@@ -872,10 +888,13 @@
             for (const row of rows) {
                 const id = row.id.replace('range-row-', '');
                 const labelEl = document.getElementById('label-' + id);
+                const startEl = document.getElementById('start-' + id);
+                const endEl = document.getElementById('end-' + id);
+                if (!startEl) continue; // row is mid-removal / malformed — skip it
                 dateRanges.push({
                     label: (labelEl && labelEl.value.trim()) || '',
-                    startDate: document.getElementById('start-' + id).value,
-                    endDate: document.getElementById('end-' + id).value,
+                    startDate: startEl.value,
+                    endDate: endEl ? endEl.value : '',
                     useToday: document.getElementById('today-' + id)?.checked || false,
                 });
             }
@@ -909,6 +928,7 @@
 
             // Date ranges — clear existing, recreate
             const container = document.getElementById('date-ranges-container');
+            if (!container) return;
             container.innerHTML = '';
             rangeCounter = 0;
             if (state.dateRanges && state.dateRanges.length > 0) {
@@ -1056,8 +1076,10 @@
         // Helper: get GDD accumulation start as MM-DD string
         function getGddStartMD() {
             const mm = document.getElementById('input-gdd-month').value;
-            const dd = String(document.getElementById('input-gdd-day').value).padStart(2, '0');
-            return mm + '-' + dd;
+            let day = parseInt(document.getElementById('input-gdd-day').value, 10);
+            if (isNaN(day) || day < 1) day = 1;
+            if (day > 31) day = 31;
+            return mm + '-' + String(day).padStart(2, '0');
         }
 
         /* ── Coordinate parsing (decimal degrees or DMS) ── */
@@ -1268,12 +1290,13 @@
             const { location, search_lat, search_lon, station, ranges } = data;
 
             // Station info
+            const fx = (n) => (typeof n === 'number' && !isNaN(n)) ? n.toFixed(4) : 'N/A';
             document.getElementById('res-location').textContent = location;
-            document.getElementById('res-coords').textContent = `${search_lat.toFixed(4)}, ${search_lon.toFixed(4)}`;
+            document.getElementById('res-coords').textContent = `${fx(search_lat)}, ${fx(search_lon)}`;
             document.getElementById('res-station-name').textContent = station.station_name;
             document.getElementById('res-station-id').textContent = `Station ID: ${station.station_id}`;
             document.getElementById('res-station-dist').textContent =
-                `${station.distance_miles} mi away  ·  ${station.station_lat.toFixed(4)}, ${station.station_lon.toFixed(4)}`;
+                `${station.distance_miles} mi away  ·  ${fx(station.station_lat)}, ${fx(station.station_lon)}`;
 
             // Dynamic chart title
             document.getElementById('chart-title').textContent = 'Temperature (°F)';

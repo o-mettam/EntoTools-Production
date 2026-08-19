@@ -245,14 +245,23 @@
 
         function fmtDate(d) {
             if (!d) return '—';
-            const [y, m, day] = d.split('-');
+            const parts = String(d).split('-');
+            if (parts.length !== 3) return String(d);
+            const [y, m, day] = parts;
+            const monthIdx = parseInt(m, 10) - 1;
+            const dayNum = parseInt(day, 10);
+            if (isNaN(monthIdx) || monthIdx < 0 || monthIdx > 11 || isNaN(dayNum)) return String(d);
             const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            return `${months[parseInt(m)-1]} ${parseInt(day)}, ${y}`;
+            return `${months[monthIdx]} ${dayNum}, ${y}`;
         }
 
         function fmtTime12(t) {
             if (!t) return '';
-            const [h, m] = t.split(':').map(Number);
+            const parts = String(t).split(':');
+            if (parts.length < 2) return String(t);
+            const h = Number(parts[0]);
+            const m = Number(parts[1]);
+            if (isNaN(h) || isNaN(m)) return String(t);
             const suffix = h >= 12 ? 'PM' : 'AM';
             return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${suffix}`;
         }
@@ -318,7 +327,13 @@
                 console.log('[CollectionDB] saved', entries.length, 'entries to store');
                 if (window.EntoSync) EntoSync.scheduleAutoSync();
             }
-            catch (e) { console.warn('[CollectionDB] store save failed:', e); }
+            catch (e) {
+                console.warn('[CollectionDB] store save failed:', e);
+                const quota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014);
+                alert(quota
+                    ? 'Your browser storage is full, so this change could not be saved. Please export your data as CSV and remove some entries to free up space.'
+                    : 'This change could not be saved to your browser storage. Please export your data as CSV to avoid losing it.');
+            }
         }
 
         /* ── Sort ── */
@@ -527,7 +542,12 @@
 
         function csvRowToData(headerMap, vals) {
             const g = (name) => vals[headerMap[name]] ?? '';
-            const num = (name) => { const v = g(name); return v !== '' ? parseFloat(v) : null; };
+            const num = (name) => {
+                const v = g(name);
+                if (v === '') return null;
+                const parsed = parseFloat(v);
+                return isNaN(parsed) ? null : parsed;
+            };
 
             const coordsEstimated = g('Coordinates Estimated').toLowerCase();
             const gddRaw = g('mGDD');
@@ -630,11 +650,19 @@
                     loadEntries();
                     let imported = 0;
 
+                    let skipped = 0;
                     for (let r = 1; r < rows.length; r++) {
                         const vals = rows[r];
                         if (vals.length < 3) continue; // skip empty/malformed rows
 
                         const data = csvRowToData(headerMap, vals);
+                        // Require the columns we advertised as mandatory to hold usable
+                        // values; skip rows that are blank or lack a valid coordinate.
+                        if (!data.dateStart || data.lat == null || data.lon == null) {
+                            console.warn('[CollectionDB] skipping row', r, '— missing date or coordinates');
+                            skipped++;
+                            continue;
+                        }
                         const label1 = buildLabelHtml(data);
                         let label2 = null;
                         if (data.specimenId || data.identification || data.identifier) {
@@ -653,8 +681,9 @@
                     dirtyThisSession = true;
                     expandedIdx = -1;
                     renderTable();
-                    console.log('[CollectionDB] imported', imported, 'records, total entries:', entries.length);
-                    alert(`Successfully imported ${imported} record${imported !== 1 ? 's' : ''}.`);
+                    console.log('[CollectionDB] imported', imported, 'records, skipped', skipped, ', total entries:', entries.length);
+                    alert(`Successfully imported ${imported} record${imported !== 1 ? 's' : ''}.` +
+                        (skipped ? ` (${skipped} row${skipped !== 1 ? 's' : ''} skipped — missing date or coordinates.)` : ''));
                 } catch (err) {
                     alert('Import failed: ' + err.message);
                     console.error('[CollectionDB] import error:', err);

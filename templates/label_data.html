@@ -414,7 +414,7 @@
                 if (m[1] === '-' || /[SWsw]/.test(m[5])) deg = -deg;
                 return Math.round(deg * 1000000) / 1000000;
             }
-            return parseFloat(s);
+            return NaN; // not a recognised coordinate format
         }
 
         /* ── Persistence (via EntoStore) ── */
@@ -424,7 +424,13 @@
                 console.log('[LabelData] saved', labelSheet.length, 'collection(s) to store');
                 if (window.EntoSync) EntoSync.scheduleAutoSync();
             }
-            catch (e) { console.warn('[LabelData] store save failed:', e); }
+            catch (e) {
+                console.warn('[LabelData] store save failed:', e);
+                const quota = e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014);
+                alert(quota
+                    ? 'Your browser storage is full, so this collection could not be saved. Please download your data as CSV and remove some saved collections to free up space.'
+                    : 'This collection could not be saved to your browser storage. Please download your data as CSV to avoid losing it.');
+            }
         }
         function loadSheet() {
             try {
@@ -502,7 +508,11 @@
         /* esc() provided by /ento-gdd.js; CSV column layout + formula-injection
            guard live in EntoCsv (public/sync/sync-core.js). */
         function getGddStartMD() {
-            return document.getElementById('input-gdd-month').value + '-' + String(document.getElementById('input-gdd-day').value).padStart(2, '0');
+            const month = document.getElementById('input-gdd-month').value;
+            let day = parseInt(document.getElementById('input-gdd-day').value, 10);
+            if (isNaN(day) || day < 1) day = 1;
+            if (day > 31) day = 31;
+            return month + '-' + String(day).padStart(2, '0');
         }
         // Date math on 'YYYY-MM-DD' strings, performed in UTC so a result never
         // shifts by a day depending on the viewer's timezone.
@@ -515,7 +525,40 @@
         const ROMAN_MONTHS = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
         function fmtDate(d) {
             const dt = new Date(d + 'T00:00:00');
+            if (isNaN(dt.getTime())) return String(d == null ? '' : d);
             return String(dt.getDate()).padStart(2,'0') + '-' + ROMAN_MONTHS[dt.getMonth()] + '-' + dt.getFullYear();
+        }
+
+        // Build the label HTML from structured data. Rendering ALWAYS goes through
+        // these builders (never a persisted HTML string), so data restored from the
+        // store or a cloud-synced backup is re-escaped here and can never inject
+        // markup — every dynamic field passes through esc().
+        function buildLabel1Html(d) {
+            const dateDisplay = d.isRange
+                ? `${fmtDate(d.dateStart)} – ${fmtDate(d.dateEnd)}`
+                : fmtDate(d.dateStart);
+            const gddDisplay = d.isRange
+                ? `mGDD: ${d.gddStart} – ${d.gddEnd}`
+                : `mGDD: ${d.gddStart}`;
+            const timeDisplay = fmtTimeRange(d);
+            const coordPrefix = d.inputMode === 'latlon' ? '' : 'APPROX. ';
+            const coordStr = `${coordPrefix}${d.lat}, ${d.lon}`;
+            let html = '';
+            if (d.siteName) html += `<div>${esc(d.siteName)}</div>`;
+            html += `<div>${esc(d.location)}</div>`;
+            html += `<div>${esc(coordStr)}</div>`;
+            html += `<div>${esc(dateDisplay)}${timeDisplay ? ', ' + esc(timeDisplay) : ''}</div>`;
+            html += `<div>${esc(gddDisplay)}, Elev. ${d.elevation != null ? esc(d.elevation) + ' m' : '—'}</div>`;
+            if (d.collector) html += `<div>COLL. ${esc(d.collector)}</div>`;
+            return html;
+        }
+        function buildLabel2Html(d) {
+            if (!(d.identifier || d.identification || d.specimenId)) return null;
+            let html = '';
+            if (d.specimenId) html += `<div>${esc(d.specimenId)}</div>`;
+            if (d.identification) html += `<div><em>${esc(d.identification)}</em></div>`;
+            if (d.identifier) html += `<div>DET. ${esc(d.identifier)}</div>`;
+            return html;
         }
         function fmtDateLong(d) { return fmtDate(d); }
         function fmtTime12(t) {
@@ -798,34 +841,12 @@
             document.getElementById('res-elevation').textContent = d.elevation != null ? `${d.elevation} m` : '—';
 
             // Label 1: Collection Label
-            const dateDisplay = d.isRange
-                ? `${fmtDate(d.dateStart)} – ${fmtDate(d.dateEnd)}`
-                : fmtDate(d.dateStart);
-            const gddDisplay = d.isRange
-                ? `mGDD: ${d.gddStart} – ${d.gddEnd}`
-                : `mGDD: ${d.gddStart}`;
-            const timeDisplay = fmtTimeRange(d);
-
-            const coordPrefix = d.inputMode === 'latlon' ? '' : 'APPROX. ';
-            const coordStr = `${coordPrefix}${d.lat}, ${d.lon}`;
-
-            let label1Html = '';
-            if (d.siteName) label1Html += `<div>${esc(d.siteName)}</div>`;
-            label1Html += `<div>${esc(d.location)}</div>`;
-            label1Html += `<div>${esc(coordStr)}</div>`;
-            label1Html += `<div>${esc(dateDisplay)}${timeDisplay ? ', ' + esc(timeDisplay) : ''}</div>`;
-            label1Html += `<div>${esc(gddDisplay)}, Elev. ${d.elevation != null ? d.elevation + ' m' : '—'}</div>`;
-            if (d.collector) label1Html += `<div>COLL. ${esc(d.collector)}</div>`;
-            document.getElementById('label1').innerHTML = label1Html;
+            document.getElementById('label1').innerHTML = buildLabel1Html(d);
 
             // Label 2: Specimen Label (shown if any of identifier, identification, or specimenId is filled)
-            const hasLabel2 = d.identifier || d.identification || d.specimenId;
-            document.getElementById('label2-section').classList.toggle('hidden', !hasLabel2);
-            if (hasLabel2) {
-                let label2Html = '';
-                if (d.specimenId) label2Html += `<div>${esc(d.specimenId)}</div>`;
-                if (d.identification) label2Html += `<div><em>${esc(d.identification)}</em></div>`;
-                if (d.identifier) label2Html += `<div>DET. ${esc(d.identifier)}</div>`;
+            const label2Html = buildLabel2Html(d);
+            document.getElementById('label2-section').classList.toggle('hidden', !label2Html);
+            if (label2Html) {
                 document.getElementById('label2').innerHTML = label2Html;
             }
 
@@ -885,9 +906,11 @@
             console.log('[LabelData] downloading single CSV');
             const d = collectionData;
             const csv = EntoCsv.buildCsv([{ data: d }]);
+            const safeSite = d.siteName ? '_' + String(d.siteName).replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '') : '';
+            const safeDate = String(d.dateStart || 'export').replace(/[^\w-]+/g, '_');
             downloadBlob(
                 new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
-                `collection_${d.dateStart}${d.siteName ? '_' + d.siteName.replace(/\s+/g, '_') : ''}.csv`,
+                `collection_${safeDate}${safeSite}.csv`,
             );
         }
 
@@ -916,11 +939,10 @@
 
         /* ── Print Sheet ── */
         function addToSheet() {
-            const label1 = document.getElementById('label1').innerHTML;
-            if (!label1) { console.warn('[LabelData] addToSheet called but no label content'); return; }
-            const label2El = document.getElementById('label2-section');
-            const label2 = label2El.classList.contains('hidden') ? null : document.getElementById('label2').innerHTML;
-            labelSheet.push({ label1, label2, data: { ...collectionData } });
+            if (!collectionData || !collectionData.dateStart) { console.warn('[LabelData] addToSheet called but no generated collection'); return; }
+            // Persist only the structured data; label HTML is regenerated on render
+            // via buildLabel1Html/buildLabel2Html, so nothing trusts stored markup.
+            labelSheet.push({ data: { ...collectionData } });
             console.log('[LabelData] added to collection database, total:', labelSheet.length);
             updateSheetUI();
             saveSheet();
@@ -944,10 +966,12 @@
             if (viewBtn) { viewBtn.classList.remove('hidden'); badge.textContent = labelSheet.length; }
             container.innerHTML = '';
             labelSheet.forEach((item, i) => {
+                const d = item.data || {};
                 const card = document.createElement('div');
                 card.className = 'relative';
-                let html = `<div class="label-preview rounded-lg text-xs">${item.label1}</div>`;
-                if (item.label2) html += `<div class="label-preview rounded-lg text-xs mt-2">${item.label2}</div>`;
+                const label2 = buildLabel2Html(d);
+                let html = `<div class="label-preview rounded-lg text-xs">${buildLabel1Html(d)}</div>`;
+                if (label2) html += `<div class="label-preview rounded-lg text-xs mt-2">${label2}</div>`;
                 html += `<button onclick="removeFromSheet(${i})" class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600 transition" title="Remove">&times;</button>`;
                 card.innerHTML = html;
                 container.appendChild(card);
@@ -972,8 +996,10 @@
             }
             let labelsHtml = '';
             labelSheet.forEach(item => {
-                labelsHtml += `<div class="label-box">${item.label1}</div>`;
-                if (item.label2) labelsHtml += `<div class="label-box">${item.label2}</div>`;
+                const d = item.data || {};
+                const label2 = buildLabel2Html(d);
+                labelsHtml += `<div class="label-box">${buildLabel1Html(d)}</div>`;
+                if (label2) labelsHtml += `<div class="label-box">${label2}</div>`;
             });
             win.document.write(`<!DOCTYPE html><html><head><style>
                 body { font-family: 'Inter', Arial, sans-serif; padding: 8px; color: #1e293b; font-size: 9px; line-height: 1.3; display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
@@ -989,6 +1015,7 @@
         }
 
         function clearSheet() {
+            if (labelSheet.length && !confirm('Remove all saved collections from this list? This cannot be undone. (Download a CSV backup first if you want to keep them.)')) return;
             console.log('[LabelData] clearing all saved collections');
             labelSheet = [];
             updateSheetUI();

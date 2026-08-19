@@ -27,13 +27,27 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // ── CORS / abuse protection ──────────────────────────────────────
 // Browser submissions to state-changing endpoints (feedback) must come from
-// one of these origins. Non-browser clients (no Origin header) are still
-// subject to per-IP rate limiting below.
+// one of these origins. NOTE: the Origin header is trivially spoofable by
+// non-browser clients (curl, scripts), so this check is NOT an authentication
+// boundary — it only stops opportunistic cross-site browser abuse. The real
+// protection against automated abuse is the per-IP rate limiting below.
 const ALLOWED_ORIGINS = new Set([
   'https://entotools.com',
   'https://www.entotools.com',
-  'http://localhost:8788',   // wrangler pages dev
 ]);
+// The wrangler dev origin is only honoured when the worker itself is being
+// served from localhost, so it can never widen the allowlist in production.
+const DEV_ORIGIN = 'http://localhost:8788';
+
+// Resolve the effective set of allowed origins for the given request. Adds the
+// dev origin only when the request is actually hitting a local host.
+function allowedOriginsFor(requestUrl) {
+  const host = requestUrl.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') {
+    return new Set([...ALLOWED_ORIGINS, DEV_ORIGIN]);
+  }
+  return ALLOWED_ORIGINS;
+}
 const FEEDBACK_RATE_LIMIT = 5;              // max submissions per window per IP
 const FEEDBACK_RATE_WINDOW_SECONDS = 3600; // 1 hour
 const SEARCH_RATE_LIMIT = 60;              // max searches per window per IP
@@ -820,15 +834,32 @@ function maskIp(ip) {
   return ip.split('.').slice(0, 3).join('.') + '.x';
 }
 
+// Hash an IP so it never appears in cleartext in a KV key. SHA-256 → first 16
+// hex chars is ample to avoid collisions within a single time bucket while
+// keeping no reversible record of the caller's address.
+async function hashIp(ip) {
+  try {
+    const data = new TextEncoder().encode(ip);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest).slice(0, 8))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch (e) {
+    // Fallback (crypto unavailable): still avoid storing the raw IP verbatim.
+    return 'nohash';
+  }
+}
+
 // Per-IP rate limit backed by KV (GEOCODE_CACHE). Returns true if the caller
 // has exceeded the allowed number of requests in the current window.
 // The read-modify-write is not atomic, so concurrent requests from one IP can
 // undercount; the window is bucketed by wall-clock so a caller can never be
-// locked out for longer than one window.
+// locked out for longer than one window. The IP is hashed into the key so no
+// cleartext address is ever persisted.
 async function rateLimited(env, ip, prefix, limit, windowSeconds) {
   if (!ip || !env.GEOCODE_CACHE) return false; // can't identify caller — don't hard-block
   const bucket = Math.floor(Date.now() / 1000 / windowSeconds);
-  const key = `${prefix}:${bucket}:${ip}`;
+  const key = `${prefix}:${bucket}:${await hashIp(ip)}`;
   let count = 0;
   try { count = parseInt(await env.GEOCODE_CACHE.get(key), 10) || 0; }
   catch (e) { return false; }
@@ -892,16 +923,17 @@ function sanitizeIssueText(str, maxLen = 4000) {
 
 async function handleFeedback(request, env) {
   // Scope CORS to known origins for this state-changing endpoint.
+  const allowedOrigins = allowedOriginsFor(new URL(request.url));
   const origin = request.headers.get('Origin');
-  const cors = ALLOWED_ORIGINS.has(origin)
+  const cors = allowedOrigins.has(origin)
     ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' }
     : { 'Access-Control-Allow-Origin': 'null' };
   const reply = (data, status = 200) => jsonResponse(data, status, cors);
 
-  // Require an allowlisted Origin. Browser submissions from the app always send
-  // one; scripted clients that omit or spoof it are rejected here (the token
-  // must not be usable outside the first-party site).
-  if (!ALLOWED_ORIGINS.has(origin)) {
+  // Require an allowlisted Origin. This blocks opportunistic cross-site browser
+  // submissions; it is defence-in-depth only (see ALLOWED_ORIGINS note). The
+  // per-IP rate limit is what actually caps automated abuse.
+  if (!allowedOrigins.has(origin)) {
     console.warn('[Worker:handleFeedback] rejected disallowed/missing origin:', origin);
     return reply({ error: 'Forbidden.' }, 403);
   }
@@ -1100,7 +1132,8 @@ export default {
       try {
         return await handleStatusCheck(url);
       } catch (err) {
-        return jsonResponse({ ok: false, error: err.message });
+        console.error('[Worker:handleStatusCheck] unexpected error:', err.message);
+        return jsonResponse({ ok: false, error: 'Status check failed.' });
       }
     }
 
