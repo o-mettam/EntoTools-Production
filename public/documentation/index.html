@@ -224,6 +224,7 @@
                         <li>Interpolated values are tagged as <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-200 text-blue-800">Calculated</span> in the data tables and charts.</li>
                         <li>If no known day exists on either side of the gap (e.g., missing data at the very start or end of the date range), the gap is left unfilled and those days contribute 0 GDD.</li>
                         <li>This ensures the cumulative GDD total remains as accurate as possible even with multi-day data gaps.</li>
+                        <li>This same interpolation bridges the gap between the last known actual reading and the first available <a href="#forecast" class="underline hover:text-lime-600">forecast</a> day, when a station hasn't yet reported recent data but the forecast window hasn't caught up to it either — see <em>Forecast Generation</em> below.</li>
                     </ul>
                 </div>
             </section>
@@ -232,13 +233,14 @@
             <section id="forecast" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                 <h2 class="text-xl font-semibold text-slate-800 mb-4">4. Forecast Generation</h2>
                 <div class="prose prose-sm max-w-none text-slate-700 space-y-3">
-                    <p>When a date range extends to or near the present day, the system appends a <strong>16-day weather forecast</strong> to project future temperature and GDD accumulation.</p>
+                    <p>When a date range's end date reaches today or later, the system appends a <strong>16-day weather forecast</strong> past it to project future temperature and GDD accumulation — regardless of what end date was actually requested (e.g. a range ending "today" still gets the following 15 forecast days appended).</p>
                     <h3 class="text-base font-semibold text-slate-800 mt-4">Method</h3>
                     <ul class="list-disc pl-5 space-y-1">
                         <li><strong>Source:</strong> Forecasts are provided by the <a href="https://open-meteo.com/" class="underline hover:text-lime-600">Open-Meteo Forecast API</a>, which aggregates output from numerical weather prediction models (ECMWF, GFS, and others).</li>
                         <li><strong>Data:</strong> Daily high/low temperatures (TMAX/TMIN) and precipitation are fetched in US customary units (°F, inches).</li>
                         <li><strong>Coverage:</strong> Global — the same forecast endpoint is used regardless of whether the primary data provider is NCEI or Open-Meteo.</li>
-                        <li><strong>Horizon:</strong> Up to 16 days from the current date. Forecast days that overlap with already-available actual data are excluded.</li>
+                        <li><strong>Horizon:</strong> Up to 16 days from the current date, anchored to today rather than to the requested end date. Forecast days that overlap with already-available actual data are excluded.</li>
+                        <li><strong>Estimated transition days:</strong> If a station's most recent actual reading and the earliest available forecast day don't line up back-to-back — for example the station is a few days behind on reporting — the days in between are estimated using the same linear interpolation described in <em>Missing Data Handling</em> above, anchored between the last known actual value and the first known forecast value. Those days are tagged <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-200 text-blue-800">Calculated</span>, not <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800">Forecast</span>.</li>
                     </ul>
                     <p>Forecast values are tagged as <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-200 text-amber-800">Forecast</span> in tables and displayed with dashed lines on charts.</p>
                 </div>
