@@ -707,6 +707,14 @@ async function handleSearch(request, env) {
     console.warn('[Worker:handleSearch] forecast fetch failed — forecast will be skipped:', e.message);
     forecastUnavailable = true;
   }
+  const today = formatDate(new Date());
+  // The forecast horizon (today .. today+15) is anchored to the current date, not
+  // to any range's requested end date — so a range whose end reaches today (e.g.
+  // the common "End = today" case) still gets the full 16-day forecast appended
+  // past it, per the documented behavior.
+  const forecastHorizonEnd = forecastDays.length
+    ? forecastDays.reduce((max, f) => (f.date > max ? f.date : max), forecastDays[0].date)
+    : today;
 
   // Fetch all date ranges in parallel
   let resultsByRange;
@@ -761,20 +769,29 @@ async function handleSearch(request, env) {
             break;
           }
         }
+        // Only extend past the range's requested end date when that end date
+        // reaches today — a wholly historical range (ed < today) has no
+        // business pulling in the current 16-day forecast window.
+        const forecastCutoff = ed >= today ? forecastHorizonEnd : ed;
         const forecast = forecastDays.filter(f =>
-          f.date <= ed && (lastActualDate === null ? f.date >= sd : f.date > lastActualDate));
+          f.date <= forecastCutoff && (lastActualDate === null ? f.date >= sd : f.date > lastActualDate));
         console.log('[Worker:handleSearch] appending', forecast.length, 'forecast days after', lastActualDate || '(no observations)', 'to range "' + label + '"');
 
-        // Replace null-filled placeholders within the range with forecast data.
-        // `temps` already spans the full requested range (gap-filled) and
-        // `forecast` is pre-filtered to dates <= ed, so a simple in-place
-        // replacement covers every applicable day.
+        // Replace null-filled placeholders within the requested range with
+        // forecast data, then append any remaining forecast days that fall
+        // after `ed` (the 16-day horizon extending past the range's end).
         const forecastByDate = {};
         for (const f of forecast) forecastByDate[f.date] = f;
-        const combined = temps.map(t => forecastByDate[t.date] || t);
+        const tempDates = new Set(temps.map(t => t.date));
+        const merged = temps.map(t => forecastByDate[t.date] || t);
+        const extraForecastDays = forecast
+          .filter(f => !tempDates.has(f.date))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const combined = merged.concat(extraForecastDays);
         const tempsWithAccum = calculatePrecipAccumulation(combined);
+        const effectiveEnd = combined.length ? combined[combined.length - 1].date : ed;
 
-        return { label, startDate: sd, endDate: ed, temperatures: tempsWithAccum };
+        return { label, startDate: sd, endDate: effectiveEnd, temperatures: tempsWithAccum };
       }),
     );
   } catch (err) {
