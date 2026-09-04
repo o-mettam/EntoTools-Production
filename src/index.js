@@ -34,6 +34,10 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const ALLOWED_ORIGINS = new Set([
   'https://entotools.com',
   'https://www.entotools.com',
+  // Cloudflare Pages' default *.pages.dev domain stays live and publicly
+  // reachable alongside the custom domain — visitors landing there (bookmarks,
+  // shared links, before DNS propagates) were getting 403'd on feedback.
+  'https://entotools-production.pages.dev',
 ]);
 // The wrangler dev origin is only honoured when the worker itself is being
 // served from localhost, so it can never widen the allowlist in production.

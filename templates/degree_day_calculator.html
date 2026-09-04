@@ -357,6 +357,7 @@
                                 <button onclick="resetGddPreview()" class="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition">Reset</button>
                             </div>
                         </div>
+                        <p class="text-xs text-slate-400 mb-2">Tip: click a legend entry below the chart title to show or hide that line — click it again to bring it back.</p>
                         <div class="relative h-[280px] sm:h-[420px]">
                             <canvas id="gddChart"></canvas>
                         </div>
@@ -441,6 +442,7 @@
                                 <button onclick="resetTempPreview()" class="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition">Reset</button>
                             </div>
                         </div>
+                        <p class="text-xs text-slate-400 mb-2">Tip: click a legend entry below the chart title to show or hide that line — click it again to bring it back.</p>
                         <div class="relative h-[260px] sm:h-[340px]">
                             <canvas id="tempChart"></canvas>
                         </div>
@@ -520,6 +522,7 @@
                                 <button onclick="resetPrecipPreview()" class="px-2 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition">Reset</button>
                             </div>
                         </div>
+                        <p class="text-xs text-slate-400 mb-2">Tip: click a legend entry below the chart title to show or hide that line — click it again to bring it back.</p>
                         <div class="relative h-[260px] sm:h-[340px]">
                             <canvas id="precipChart"></canvas>
                         </div>
@@ -574,6 +577,15 @@
             { max: '#d4a020', min: '#c44e7a', maxBg: 'rgba(212,160,32,.08)', minBg: 'rgba(196,78,122,.08)',  dot: '#d4a020', dotMin: '#c44e7a', border: 'border-amber-400',  bg: 'bg-amber-50'  },
             { max: '#5c8fc4', min: '#abd037', maxBg: 'rgba(92,143,196,.08)', minBg: 'rgba(171,208,55,.08)',  dot: '#5c8fc4', dotMin: '#abd037', border: 'border-blue-400',   bg: 'bg-blue-50'   },
         ];
+
+        // Average/reference lines use a neutral gray so they read as
+        // "context", not a data series — but slate-600 (#54637f), tuned for a
+        // white chart background, is too dark to read against the dark-mode
+        // card background. Lighten to the same slate-300 theme.css already
+        // uses for this text color in dark mode (see .dark .text-slate-600).
+        function chartGray() {
+            return document.documentElement.classList.contains('dark') ? '#9ca9c0' : '#54637f';
+        }
 
         /* ── Sequential categorical colors (C1–C7) ─────── */
         const SERIES_COLORS = [
@@ -1458,12 +1470,12 @@
                 datasets.push({
                     label: 'Average Max (°F)',
                     data: avgMaxData,
-                    borderColor: '#54637f',
+                    borderColor: chartGray(),
                     backgroundColor: 'transparent',
                     fill: false,
                     tension: 0.3,
                     pointRadius: 0,
-                    pointBackgroundColor: '#54637f',
+                    pointBackgroundColor: chartGray(),
                     borderDash: [6, 3],
                     spanGaps: false,
                     borderWidth: 1.5,
@@ -1472,12 +1484,12 @@
                 datasets.push({
                     label: 'Average Min (°F)',
                     data: avgMinData,
-                    borderColor: '#54637f',
+                    borderColor: chartGray(),
                     backgroundColor: 'transparent',
                     fill: false,
                     tension: 0.3,
                     pointRadius: 0,
-                    pointBackgroundColor: '#54637f',
+                    pointBackgroundColor: chartGray(),
                     borderDash: [6, 3],
                     spanGaps: false,
                     borderWidth: 1.5,
@@ -1552,7 +1564,7 @@
                                                 xMin: idx >= 0 ? idx : d.md,
                                                 xMax: idx >= 0 ? idx : d.md,
                                                 xScaleID: 'x',
-                                                borderColor: '#54637f',
+                                                borderColor: chartGray(),
                                                 borderWidth: 2,
                                                 borderDash: [6, 4],
                                                 display: idx >= 0,
@@ -1715,7 +1727,7 @@
                                                 xMin: idx >= 0 ? idx : d.md,
                                                 xMax: idx >= 0 ? idx : d.md,
                                                 xScaleID: 'x',
-                                                borderColor: '#54637f',
+                                                borderColor: chartGray(),
                                                 borderWidth: 2,
                                                 borderDash: [6, 4],
                                                 display: idx >= 0,
@@ -2111,12 +2123,12 @@
                 datasets.push({
                     label: 'Average Cumulative GDD',
                     data: avgCumulativeData,
-                    borderColor: '#54637f',
+                    borderColor: chartGray(),
                     backgroundColor: 'transparent',
                     fill: false,
                     tension: 0.3,
                     pointRadius: 0,
-                    pointBackgroundColor: '#54637f',
+                    pointBackgroundColor: chartGray(),
                     yAxisID: 'y',
                     order: 0, // Behind other lines
                     borderWidth: 1.5,
@@ -2185,7 +2197,7 @@
                                             yMin: t.value,
                                             yMax: t.value,
                                             yScaleID: 'y',
-                                            borderColor: '#54637f',
+                                            borderColor: chartGray(),
                                             borderWidth: 2,
                                             borderDash: [6, 4],
                                             label: {
@@ -2211,7 +2223,7 @@
                                                 xMin: idx >= 0 ? idx : d.md,
                                                 xMax: idx >= 0 ? idx : d.md,
                                                 xScaleID: 'x',
-                                                borderColor: '#54637f',
+                                                borderColor: chartGray(),
                                                 borderWidth: 2,
                                                 borderDash: [6, 4],
                                                 display: idx >= 0,
