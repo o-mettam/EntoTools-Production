@@ -14,6 +14,12 @@
 (function () {
     'use strict';
 
+    // ── App version ──────────────────────────────────────────────
+    // Single source of truth for the version shown in the Settings panel and
+    // attached to feedback/bug reports. KEEP IN SYNC with the "version" field
+    // in package.json.
+    var APP_VERSION = '1.1.0';
+
     // ── Brand palette ────────────────────────────────────────────
     // Overrides Tailwind's default `lime` and `slate` ramps. Pages that miss
     // this config fall back to stock Tailwind colors and look off-brand, which
@@ -104,12 +110,27 @@
         set(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
     }
 
+    // ── Version footer ───────────────────────────────────────────
+    // Every page's Settings dropdown shares the id="settings-panel" markup —
+    // append the version line there once instead of duplicating it per page.
+    function renderVersionInfo() {
+        var panel = document.getElementById('settings-panel');
+        if (!panel || document.getElementById('app-version-info')) return;
+        var footer = document.createElement('p');
+        footer.id = 'app-version-info';
+        footer.className = 'text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100';
+        footer.textContent = 'Version ' + APP_VERSION;
+        panel.appendChild(footer);
+    }
+
     // Exposed as globals because the switches are wired up with inline
     // onclick="toggleTheme()" across all pages.
     window.toggleTheme = toggleTheme;
     window.updateThemeToggleUI = updateThemeToggleUI;
+    window.APP_VERSION = APP_VERSION;
     window.EntoTheme = {
         palette: PALETTE,
+        version: APP_VERSION,
         get: stored,
         resolved: resolved,
         set: set,
@@ -118,9 +139,13 @@
     };
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', updateThemeToggleUI);
+        document.addEventListener('DOMContentLoaded', function () {
+            updateThemeToggleUI();
+            renderVersionInfo();
+        });
     } else {
         updateThemeToggleUI();
+        renderVersionInfo();
     }
 
     // Follow the OS while the user has made no explicit choice.

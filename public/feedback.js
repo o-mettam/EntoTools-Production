@@ -338,6 +338,7 @@
           description,
           email: email || undefined,
           page: window.location.pathname,
+          app_version: window.APP_VERSION,
           console_logs: type === 'bug' ? getFormattedLogs() : undefined,
         }),
       });
