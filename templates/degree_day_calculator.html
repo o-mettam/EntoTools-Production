@@ -10,6 +10,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Shared logging: console capture, version + browser info, action logging -->
+    <script src="/log-capture.js"></script>
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
     <script src="/theme.js"></script>
     <link rel="stylesheet" href="/theme.css">
@@ -585,6 +587,20 @@
         // uses for this text color in dark mode (see .dark .text-slate-600).
         function chartGray() {
             return document.documentElement.classList.contains('dark') ? '#9ca9c0' : '#54637f';
+        }
+
+        // Chart.js defaults axis ticks, axis titles, and legend labels to a
+        // fixed medium gray (~#666) that it never adjusts for the page theme —
+        // on the dark-mode card background that text (and the near-white grid
+        // lines, and the precip bar value labels) is exactly what was still
+        // "hard to read" after chartGray() alone; every text/grid color below
+        // has to be set explicitly per theme, not just the reference lines.
+        function chartGridColor() {
+            return document.documentElement.classList.contains('dark') ? '#3e4a64' : '#eef1f6';
+        }
+
+        function chartDataLabelColor() {
+            return document.documentElement.classList.contains('dark') ? '#eef1f6' : '#3e4a64';
         }
 
         /* ── Sequential categorical colors (C1–C7) ─────── */
@@ -1529,14 +1545,15 @@
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         datalabels: { display: false },
-                        legend: { 
-                            position: 'top', 
-                            labels: { 
-                                usePointStyle: true, 
-                                padding: 16, 
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 16,
                                 font: { size: 11 },
+                                color: chartGray(),
                                 filter: createTempLegendFilter(tempYearsWithActualData)
-                            } 
+                            }
                         },
                         tooltip: {
                             backgroundColor: '#2a3348',
@@ -1587,10 +1604,14 @@
                     },
                     scales: {
                         y: {
-                            title: { display: true, text: '°F', font: { weight: '600' } },
-                            grid: { color: '#eef1f6' },
+                            title: { display: true, text: '°F', font: { weight: '600' }, color: chartGray() },
+                            ticks: { color: chartGray() },
+                            grid: { color: chartGridColor() },
                         },
-                        x: { grid: { display: false } },
+                        x: {
+                            ticks: { color: chartGray() },
+                            grid: { display: false },
+                        },
                     },
                 },
             });
@@ -1681,25 +1702,26 @@
                                     ? ctx.parsed.y > 0
                                     : false;
                             },
-                            color: '#3e4a64',
+                            color: chartDataLabelColor(),
                             font: { size: 10, weight: '500' },
                             anchor: 'end',
                             align: 'top',
                             offset: 4,
                             formatter: val => val !== null ? val.toFixed(2) : '',
                         },
-                        legend: { 
-                            position: 'top', 
-                            labels: { 
-                                usePointStyle: true, 
-                                padding: 16, 
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 16,
                                 font: { size: 11 },
+                                color: chartGray(),
                                 filter: function(legendItem, chartData) {
                                     if (legendItem.text.includes('Daily')) return false;
                                     if (legendItem.text.includes('Forecast')) return false;
                                     return true;
                                 }
-                            } 
+                            }
                         },
                         tooltip: {
                             backgroundColor: '#2a3348',
@@ -1752,18 +1774,23 @@
                         y: {
                             type: 'linear',
                             position: 'left',
-                            title: { display: true, text: 'Daily Precip (in)', font: { weight: '600' } },
-                            grid: { color: '#eef1f6' },
+                            title: { display: true, text: 'Daily Precip (in)', font: { weight: '600' }, color: chartGray() },
+                            ticks: { color: chartGray() },
+                            grid: { color: chartGridColor() },
                             beginAtZero: true,
                         },
                         y1: {
                             type: 'linear',
                             position: 'right',
-                            title: { display: true, text: 'Accumulation (in)', font: { weight: '600' } },
+                            title: { display: true, text: 'Accumulation (in)', font: { weight: '600' }, color: chartGray() },
+                            ticks: { color: chartGray() },
                             grid: { drawOnChartArea: false },
                             beginAtZero: true,
                         },
-                        x: { grid: { display: false } },
+                        x: {
+                            ticks: { color: chartGray() },
+                            grid: { display: false },
+                        },
                     },
                 },
             });
@@ -2164,14 +2191,15 @@
                     interaction: { mode: 'index', intersect: false },
                     plugins: {
                         datalabels: { display: false },
-                        legend: { 
-                            position: 'top', 
-                            labels: { 
-                                usePointStyle: true, 
-                                padding: 16, 
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 16,
                                 font: { size: 11 },
+                                color: chartGray(),
                                 filter: createLegendFilter(yearsWithActualData)
-                            } 
+                            }
                         },
                         tooltip: {
                             backgroundColor: '#2a3348',
@@ -2248,16 +2276,21 @@
                         y: {
                             type: 'linear',
                             position: 'left',
-                            title: { display: true, text: 'Cumulative GDD', font: { weight: '600' } },
-                            grid: { color: '#eef1f6' },
+                            title: { display: true, text: 'Cumulative GDD', font: { weight: '600' }, color: chartGray() },
+                            ticks: { color: chartGray() },
+                            grid: { color: chartGridColor() },
                         },
                         y1: {
                             type: 'linear',
                             position: 'right',
-                            title: { display: true, text: 'Daily GDD', font: { weight: '600' } },
+                            title: { display: true, text: 'Daily GDD', font: { weight: '600' }, color: chartGray() },
+                            ticks: { color: chartGray() },
                             grid: { drawOnChartArea: false },
                         },
-                        x: { grid: { display: false } },
+                        x: {
+                            ticks: { color: chartGray() },
+                            grid: { display: false },
+                        },
                     },
                 },
             });

@@ -5,12 +5,13 @@
 #
 # Every page served from public/ has a source in templates/. Assets that are NOT
 # generated here and are edited directly in public/ are:
-#   public/theme.js      — shared brand palette + dark-mode handling (all pages)
-#   public/theme.css     — shared base styles + dark-mode overrides (all pages)
-#   public/ento-gdd.js   — shared mGDD calculation + HTML-escape helpers
-#   public/feedback.js   — feedback widget
-#   public/sync/*.js     — local store, merge engine, Drive provider, OAuth config
-#   public/stations.json  — generated station index
+#   public/theme.js        — shared brand palette + dark-mode handling (all pages)
+#   public/theme.css       — shared base styles + dark-mode overrides (all pages)
+#   public/ento-gdd.js     — shared mGDD calculation + HTML-escape helpers
+#   public/log-capture.js — shared console log capture + startup/action logging
+#   public/feedback.js     — feedback widget
+#   public/sync/*.js       — local store, merge engine, Drive provider, OAuth config
+#   public/stations.json   — generated station index
 
 set -euo pipefail
 
