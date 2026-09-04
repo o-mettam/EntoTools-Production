@@ -968,13 +968,17 @@ async function handleFeedback(request, env) {
   } catch (e) {
     return reply({ error: 'Invalid request body — expected JSON.' }, 400);
   }
-  const { type, title, description, page, console_logs } = body;
+  const { type, title, description, email, page, console_logs } = body;
 
   if (!title || !title.trim()) {
     return reply({ error: 'A title is required.' }, 400);
   }
   if (!description || !description.trim()) {
     return reply({ error: 'A description is required.' }, 400);
+  }
+  const trimmedEmail = email && email.trim();
+  if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    return reply({ error: 'Please enter a valid email address, or leave it blank.' }, 400);
   }
 
   const token = env.GITHUB_TOKEN;
@@ -994,6 +998,9 @@ async function handleFeedback(request, env) {
   issueBody += '\n\n---\n';
   issueBody += `**Type:** ${sanitizeIssueText(feedbackType, 40)}\n`;
   if (page) issueBody += `**Page:** ${sanitizeIssueText(redactPii(page), 200)}\n`;
+  // Contact email is deliberately NOT PII-redacted — the reporter opted in to
+  // sharing it so they can be followed up with. It is still Markdown/HTML-sanitized.
+  if (trimmedEmail) issueBody += `**Contact email:** ${sanitizeIssueText(trimmedEmail, 200)}\n`;
   issueBody += `**Submitted:** ${new Date().toISOString()}\n`;
 
   if (console_logs && console_logs.trim()) {

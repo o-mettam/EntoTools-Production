@@ -251,7 +251,9 @@
         <input id="feedback-title" type="text" placeholder="Brief summary of your feedback" maxlength="100" />
         <label for="feedback-desc">Description</label>
         <textarea id="feedback-desc" placeholder="Please describe in detail…" maxlength="2000"></textarea>
-        <p id="feedback-logs-note">Feedback is posted as a public issue on GitHub. Bug reports automatically include your recent browser console logs — emails, IP addresses, coordinates, and tokens are removed before anything is posted.</p>
+        <label for="feedback-email">Email (optional)</label>
+        <input id="feedback-email" type="email" placeholder="you@example.com — if you'd like a reply" maxlength="200" />
+        <p id="feedback-logs-note">Feedback is posted as a public issue on GitHub. Bug reports automatically include your recent browser console logs — emails, IP addresses, coordinates, and tokens are removed before anything is posted. If you enter an email above, it will be included and visible on the public issue.</p>
         <div class="feedback-actions">
           <button class="feedback-btn feedback-btn-cancel" id="feedback-cancel">Cancel</button>
           <button class="feedback-btn feedback-btn-submit" id="feedback-submit">Submit</button>
@@ -288,6 +290,7 @@
     document.getElementById('feedback-type').value = 'bug';
     document.getElementById('feedback-title').value = '';
     document.getElementById('feedback-desc').value = '';
+    document.getElementById('feedback-email').value = '';
   }
 
   fab.addEventListener('click', openModal);
@@ -303,6 +306,7 @@
     const type = document.getElementById('feedback-type').value;
     const title = document.getElementById('feedback-title').value.trim();
     const description = document.getElementById('feedback-desc').value.trim();
+    const email = document.getElementById('feedback-email').value.trim();
 
     if (!title) {
       statusEl.textContent = 'Please enter a title.';
@@ -311,6 +315,11 @@
     }
     if (!description) {
       statusEl.textContent = 'Please enter a description.';
+      statusEl.className = 'feedback-status-error';
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      statusEl.textContent = 'Please enter a valid email address, or leave it blank.';
       statusEl.className = 'feedback-status-error';
       return;
     }
@@ -327,6 +336,7 @@
           type,
           title,
           description,
+          email: email || undefined,
           page: window.location.pathname,
           console_logs: type === 'bug' ? getFormattedLogs() : undefined,
         }),
