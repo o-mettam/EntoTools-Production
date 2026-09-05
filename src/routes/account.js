@@ -20,6 +20,7 @@ import * as db from '../lib/db.js';
 const CHALLENGE_TTL_SECONDS = 300;       // 5 minutes to complete a ceremony
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 const REREGISTER_TOKEN_TTL_SECONDS = 15 * 60;  // matches #36's "short-lived" requirement
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // same check used in public/feedback.js, public/account.js
 
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
@@ -111,7 +112,9 @@ export async function handleRegisterOptions(request, env) {
     isNewUser = false;
   } else {
     label = (body.label || '').trim().slice(0, 200);
-    if (!label) return jsonResponse({ error: 'A label (email or name) is required.' }, 400);
+    // Never trust client-side validation alone — accounts require an email,
+    // not an arbitrary display name (same check as public/account.js).
+    if (!EMAIL_RE.test(label)) return jsonResponse({ error: 'A valid email address is required.' }, 400);
     userId = crypto.randomUUID();
     isNewUser = true;
   }

@@ -18910,6 +18910,7 @@ async function countUserCredentials(env, userId) {
 var CHALLENGE_TTL_SECONDS = 300;
 var SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 var REREGISTER_TOKEN_TTL_SECONDS = 15 * 60;
+var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -18980,7 +18981,7 @@ async function handleRegisterOptions(request, env) {
     isNewUser = false;
   } else {
     label = (body.label || "").trim().slice(0, 200);
-    if (!label) return jsonResponse({ error: "A label (email or name) is required." }, 400);
+    if (!EMAIL_RE.test(label)) return jsonResponse({ error: "A valid email address is required." }, 400);
     userId = crypto.randomUUID();
     isNewUser = true;
   }

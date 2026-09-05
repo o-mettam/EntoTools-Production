@@ -21,6 +21,10 @@
 
   var state = { user: null, credentials: [] };
 
+  // Same simple check used elsewhere in this codebase (public/feedback.js,
+  // src/index.js) — accounts require an email, not an arbitrary display name.
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   // Set from a ?reregister=<token> URL param (see below) — an admin-issued
   // link from the admin portal after resetting a user's passkeys (#36).
   var pendingReregisterToken = null;
@@ -105,19 +109,29 @@
   }
 
   // ── WebAuthn ceremonies ──────────────────────────────────────────
+  // Every step logs — issue #38 was a bug report submitted right after a
+  // failed login attempt that captured zero information about what
+  // actually happened (no console output either way), making it
+  // undiagnosable from the report alone. That gap is the actual bug this
+  // logging exists to close.
   async function signUp(label) {
+    console.log('[EntoAccount] signUp: requesting registration options');
     await webauthnBrowserReady;
     const options = await api('/api/account/register/options', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }),
     });
+    console.log('[EntoAccount] signUp: got options, starting browser ceremony');
     const attResp = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options });
+    console.log('[EntoAccount] signUp: ceremony complete, verifying with server');
     await api('/api/account/register/verify', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attResp),
     });
+    console.log('[EntoAccount] signUp: verified, session established');
     await checkSession();
   }
 
   async function addPasskey() {
+    console.log('[EntoAccount] addPasskey: requesting registration options');
     await webauthnBrowserReady;
     const options = await api('/api/account/register/options', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
@@ -126,22 +140,28 @@
     await api('/api/account/register/verify', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attResp),
     });
+    console.log('[EntoAccount] addPasskey: verified and added');
     await refreshCredentials();
     renderSettingsSection();
   }
 
   async function logIn() {
+    console.log('[EntoAccount] logIn: requesting authentication options');
     await webauthnBrowserReady;
     const options = await api('/api/account/login/options', { method: 'POST' });
+    console.log('[EntoAccount] logIn: got options, starting browser ceremony');
     const authResp = await SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: options });
+    console.log('[EntoAccount] logIn: ceremony complete, verifying with server');
     await api('/api/account/login/verify', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(authResp),
     });
+    console.log('[EntoAccount] logIn: verified, session established');
     await checkSession();
   }
 
   async function logOut() {
-    try { await api('/api/account/logout', { method: 'POST' }); } catch (e) { /* log out locally regardless */ }
+    try { await api('/api/account/logout', { method: 'POST' }); } catch (e) { console.error('[EntoAccount] logOut: server call failed, clearing local state anyway:', e.message); }
+    console.log('[EntoAccount] logOut: complete');
     await checkSession();
   }
 
@@ -231,7 +251,7 @@
           clearReregisterFromUrl();
           setStatus('Passkey registered.');
           closeModalSoon();
-        } catch (err) { setStatus(err.message, true); }
+        } catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
       return;
     }
@@ -248,7 +268,7 @@
       document.getElementById('ento-account-add-passkey').addEventListener('click', async function () {
         setStatus('Follow your browser/device prompt…');
         try { await addPasskey(); setStatus('Passkey added.'); renderCredentialList(); }
-        catch (err) { setStatus(err.message, true); }
+        catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
       document.getElementById('ento-account-logout').addEventListener('click', async function () {
         await logOut();
@@ -257,8 +277,8 @@
     } else {
       title.textContent = 'Sign in';
       body.innerHTML = `
-        <label class="block text-xs font-medium text-slate-500 mb-1">Email or name (just to recognize your account — not a login secret)</label>
-        <input id="ento-account-label" type="text" placeholder="you@example.com"
+        <label class="block text-xs font-medium text-slate-500 mb-1">Email address</label>
+        <input id="ento-account-label" type="email" placeholder="you@example.com"
                class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none mb-3">
         <button id="ento-account-signup" class="w-full px-3 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition mb-2">Create account with a passkey</button>
         <div class="text-center text-xs text-slate-400 my-2">— or —</div>
@@ -266,15 +286,15 @@
       `;
       document.getElementById('ento-account-signup').addEventListener('click', async function () {
         var label = document.getElementById('ento-account-label').value.trim();
-        if (!label) { setStatus('Enter an email or name first.', true); return; }
+        if (!EMAIL_RE.test(label)) { setStatus('Enter a valid email address.', true); return; }
         setStatus('Follow your browser/device prompt…');
         try { await signUp(label); setStatus('Account created.'); closeModalSoon(); }
-        catch (err) { setStatus(err.message, true); }
+        catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
       document.getElementById('ento-account-login').addEventListener('click', async function () {
         setStatus('Follow your browser/device prompt…');
         try { await logIn(); setStatus('Signed in.'); closeModalSoon(); }
-        catch (err) { setStatus(err.message, true); }
+        catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
     }
   }
@@ -296,7 +316,7 @@
       btn.addEventListener('click', async function () {
         if (!confirm('Remove this passkey? You will no longer be able to log in with that device.')) return;
         try { await removeCredential(btn.dataset.id); renderCredentialList(); }
-        catch (err) { setStatus(err.message, true); }
+        catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
     });
   }
