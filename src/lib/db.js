@@ -19,12 +19,14 @@ export async function getUser(env, id) {
   return env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
 }
 
-// Admin user search — label is not a secret, so a simple substring match is fine.
+// Admin user search — label/id are not secrets, so a simple substring match
+// on either is fine. Matches on id too so an admin can paste a user ID
+// (e.g. from the audit log or a support conversation) directly into search.
 export async function searchUsers(env, query) {
   const like = `%${query}%`;
   const { results } = await env.DB.prepare(
-    'SELECT id, label, created_at FROM users WHERE label LIKE ? ORDER BY created_at DESC LIMIT 50'
-  ).bind(like).all();
+    'SELECT id, label, created_at FROM users WHERE label LIKE ? OR id LIKE ? ORDER BY created_at DESC LIMIT 50'
+  ).bind(like, like).all();
   return results;
 }
 

@@ -18784,8 +18784,8 @@ async function getUser(env, id) {
 async function searchUsers(env, query) {
   const like = `%${query}%`;
   const { results } = await env.DB.prepare(
-    "SELECT id, label, created_at FROM users WHERE label LIKE ? ORDER BY created_at DESC LIMIT 50"
-  ).bind(like).all();
+    "SELECT id, label, created_at FROM users WHERE label LIKE ? OR id LIKE ? ORDER BY created_at DESC LIMIT 50"
+  ).bind(like, like).all();
   return results;
 }
 async function getUserDetail(env, userId) {
@@ -19281,7 +19281,7 @@ var admin_default = `<!DOCTYPE html>
         <!-- \u2500\u2500 Users tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
         <div id="tab-users" class="tab-panel">
             <div class="flex gap-2 mb-4">
-                <input id="user-search-input" type="text" placeholder="Search by label (email or name)\u2026"
+                <input id="user-search-input" type="text" placeholder="Search by label, email, or user ID\u2026"
                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
                 <button id="user-search-btn" class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Search</button>
             </div>
@@ -19355,7 +19355,7 @@ var admin_default = `<!DOCTYPE html>
 
                 <h3 class="text-sm font-semibold text-slate-700 mb-2">Assign to a user</h3>
                 <div class="flex gap-2 mb-2">
-                    <input id="fd-assign-input" type="text" placeholder="Search by label (email or name)\u2026"
+                    <input id="fd-assign-input" type="text" placeholder="Search by label, email, or user ID\u2026"
                            class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
                     <button id="fd-assign-search-btn" class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Search</button>
                 </div>
@@ -19469,8 +19469,11 @@ var admin_default = `<!DOCTYPE html>
                 }
                 resultsEl.innerHTML = users.map((u) => \`
                     <button class="user-result-row w-full text-left px-4 py-2.5 hover:bg-slate-50 transition flex items-center justify-between" data-id="\${esc(u.id)}">
-                        <span class="text-sm text-slate-800">\${esc(u.label)}</span>
-                        <span class="text-xs text-slate-400">\${fmtDate(u.created_at)}</span>
+                        <span>
+                            <span class="block text-sm text-slate-800">\${esc(u.label)}</span>
+                            <span class="block text-xs text-slate-400 font-mono">\${esc(u.id)}</span>
+                        </span>
+                        <span class="text-xs text-slate-400 whitespace-nowrap">\${fmtDate(u.created_at)}</span>
                     </button>
                 \`).join('');
                 resultsEl.querySelectorAll('.user-result-row').forEach((row) => {

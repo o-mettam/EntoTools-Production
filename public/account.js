@@ -86,7 +86,11 @@
       state.credentials = [];
       document.dispatchEvent(new CustomEvent('entoflags:updated'));
     }
-    renderSettingsSection();
+    // A throw in here (e.g. settings-panel markup not matching what this
+    // expects on some page) would otherwise silently swallow the rest of
+    // checkSession(), including the entoaccount:ready dispatch that other
+    // scripts (Drive sync gating, account-based sync) depend on.
+    try { renderSettingsSection(); } catch (e) { console.error('[EntoAccount] renderSettingsSection failed:', e.message); }
     document.dispatchEvent(new CustomEvent('entoaccount:ready', { detail: { user: state.user } }));
   }
 
