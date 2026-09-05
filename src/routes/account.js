@@ -16,7 +16,7 @@ import {
 } from '@simplewebauthn/server';
 import { rpConfigFor, decodeClientDataChallenge } from '../lib/webauthn.js';
 import * as db from '../lib/db.js';
-import { rateLimited, atRateLimit, bumpRateLimit, maskIp } from '../lib/ratelimit.js';
+import { rateLimited, atRateLimit, bumpRateLimit, maskIp, LIMITS } from '../lib/ratelimit.js';
 
 // ── Sign-up abuse limits ──────────────────────────────────────────
 // An anonymous visitor's only stable identity is their IP, so that's the
@@ -26,9 +26,11 @@ import { rateLimited, atRateLimit, bumpRateLimit, maskIp } from '../lib/ratelimi
 // a soft second layer — trivially cleared, but it stops a single browser
 // churning out accounts by accident, and costs nothing. The general
 // passkey-ceremony limit (20/hour/IP, src/index.js) applies on top.
-const SIGNUP_WINDOW_SECONDS = 2 * 60 * 60;
-const SIGNUP_ATTEMPTS_PER_WINDOW = 6;
-const SIGNUP_ACCOUNTS_PER_WINDOW = 3;
+// Numbers live in LIMITS (src/lib/ratelimit.js) so the admin Status tab
+// shows exactly what is enforced.
+const SIGNUP_WINDOW_SECONDS = LIMITS.signupAccounts.windowSeconds;
+const SIGNUP_ATTEMPTS_PER_WINDOW = LIMITS.signupAttempts.limit;
+const SIGNUP_ACCOUNTS_PER_WINDOW = LIMITS.signupAccounts.limit;
 const SIGNUP_COOKIE = 'ento_su';
 
 function signupCookieCount(request) {

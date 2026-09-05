@@ -19227,6 +19227,35 @@ async function deleteSession(env, id) {
 async function deleteAllUserSessions(env, userId) {
   await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run();
 }
+async function getStats(env) {
+  const now = nowIso();
+  const rows = await env.DB.batch([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM users"),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM credentials"),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?").bind(now),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM sessions"),
+    env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(envelope)), 0) AS bytes FROM collections"),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM admin_audit_log"),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM feature_flags"),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM user_feature_flags"),
+    env.DB.prepare("SELECT MAX(created_at) AS at FROM users"),
+    env.DB.prepare("SELECT MAX(last_used_at) AS at FROM credentials")
+  ]);
+  const first = (i) => rows[i] && rows[i].results && rows[i].results[0] || {};
+  return {
+    users: first(0).n || 0,
+    credentials: first(1).n || 0,
+    sessionsActive: first(2).n || 0,
+    sessionsTotal: first(3).n || 0,
+    collections: first(4).n || 0,
+    collectionBytes: first(4).bytes || 0,
+    auditEntries: first(5).n || 0,
+    featureFlags: first(6).n || 0,
+    flagAssignments: first(7).n || 0,
+    lastSignupAt: first(8).at || null,
+    lastLoginAt: first(9).at || null
+  };
+}
 async function writeAuditLog(env, { adminIdentity, action, targetUserId, detail }) {
   await env.DB.prepare(
     "INSERT INTO admin_audit_log (id, admin_identity, action, target_user_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)"
@@ -19301,6 +19330,14 @@ async function purgeExpiredSessions(env) {
 }
 
 // src/lib/ratelimit.js
+var LIMITS = {
+  search: { limit: 60, windowSeconds: 3600, applies: "POST /api/search" },
+  feedback: { limit: 5, windowSeconds: 3600, applies: "POST /api/feedback" },
+  status: { limit: 120, windowSeconds: 3600, applies: "GET /api/status/check" },
+  ceremony: { limit: 20, windowSeconds: 3600, applies: "Passkey ceremony starts (register / login / re-auth options)" },
+  signupAttempts: { limit: 6, windowSeconds: 7200, applies: "Sign-up attempts (register/options for a new account)" },
+  signupAccounts: { limit: 3, windowSeconds: 7200, applies: "Accounts created (also mirrored in a per-browser cookie)" }
+};
 function maskIp(ip) {
   if (!ip) return "(unknown)";
   if (ip.includes(":")) return ip.split(":").slice(0, 2).join(":") + "::\u2026";
@@ -19354,9 +19391,9 @@ async function bumpRateLimit(env, ip, prefix, windowSeconds) {
 }
 
 // src/routes/account.js
-var SIGNUP_WINDOW_SECONDS = 2 * 60 * 60;
-var SIGNUP_ATTEMPTS_PER_WINDOW = 6;
-var SIGNUP_ACCOUNTS_PER_WINDOW = 3;
+var SIGNUP_WINDOW_SECONDS = LIMITS.signupAccounts.windowSeconds;
+var SIGNUP_ATTEMPTS_PER_WINDOW = LIMITS.signupAttempts.limit;
+var SIGNUP_ACCOUNTS_PER_WINDOW = LIMITS.signupAccounts.limit;
 var SIGNUP_COOKIE = "ento_su";
 function signupCookieCount(request) {
   const m = (request.headers.get("Cookie") || "").match(/(?:^|;\s*)ento_su=(\d+)/);
@@ -19891,8 +19928,8 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-09-05T04:19:10.350Z",
-  tailwindHash: "ddfd1b16b20b",
+  generated: "2026-09-05T16:01:24.800Z",
+  tailwindHash: "1db23f6ad98d",
   routes: {
     "/404.html": [],
     "/500.html": [],
@@ -19926,7 +19963,7 @@ var csp_hashes_default = {
     ]
   },
   admin: [
-    "sha256-8+T9IcUYMR/Jf8WnQgI27uZiF2PXIC6Y/+DW/KHHm8c="
+    "sha256-BZ3LqOzsREN1P/LJulnmSnL21aCMsgjFLr35oMLRziU="
   ]
 };
 
@@ -19976,6 +20013,88 @@ function cspForAdmin() {
   });
 }
 var TAILWIND_HASH = csp_hashes_default.tailwindHash || "";
+var BUILD_GENERATED_AT = csp_hashes_default.generated || null;
+
+// src/lib/status.js
+var USER_AGENT = "EntoTools/1.0 (educational-project)";
+var STATUS_SERVICES = {
+  ncei: {
+    name: "NOAA NCEI",
+    role: "Historical daily weather (US stations) for the calculator",
+    url: "https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=USW00094728&startDate=2024-01-01&endDate=2024-01-01&dataTypes=TMAX&format=json",
+    timeout: 1e4
+  },
+  "open-meteo": {
+    name: "Open-Meteo",
+    role: "Forecast + archive weather (global fallback)",
+    url: "https://api.open-meteo.com/v1/forecast?latitude=40&longitude=-74&current_weather=true",
+    timeout: 8e3
+  },
+  nominatim: {
+    name: "Nominatim (OpenStreetMap)",
+    role: "Geocoding for city/state lookups",
+    url: "https://nominatim.openstreetmap.org/search?q=New+York&format=json&limit=1",
+    timeout: 8e3
+  },
+  github: {
+    name: "GitHub API",
+    role: "Feedback widget \u2192 public issues",
+    url: "https://api.github.com/rate_limit",
+    timeout: 8e3
+  }
+};
+async function checkService(id) {
+  const config = STATUS_SERVICES[id];
+  if (!config) return { ok: false, error: "Unknown service", latency: 0 };
+  const start = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.timeout);
+  try {
+    const resp = await fetch(config.url, { headers: { "User-Agent": USER_AGENT }, signal: controller.signal });
+    const latency = Date.now() - start;
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}`, latency };
+    return { ok: true, latency };
+  } catch (err) {
+    const latency = Date.now() - start;
+    return { ok: false, error: err.name === "AbortError" ? "Timeout" : err.message, latency };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function checkAllServices() {
+  const ids = Object.keys(STATUS_SERVICES);
+  const results = await Promise.all(ids.map((id) => checkService(id)));
+  const checkedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return ids.map((id, i) => ({
+    id,
+    name: STATUS_SERVICES[id].name,
+    role: STATUS_SERVICES[id].role,
+    host: new URL(STATUS_SERVICES[id].url).host,
+    timeoutMs: STATUS_SERVICES[id].timeout,
+    checkedAt,
+    ...results[i]
+  }));
+}
+
+// package.json
+var package_default = {
+  name: "entotools-production",
+  version: "1.11.0",
+  private: true,
+  scripts: {
+    dev: "wrangler pages dev public/",
+    "build-public": "bash scripts/build-public.sh",
+    "build-worker": "esbuild src/index.js --bundle --format=esm --platform=browser --loader:.html=text --outfile=public/_worker.js"
+  },
+  dependencies: {
+    "@simplewebauthn/server": "^14.0.1"
+  },
+  devDependencies: {
+    esbuild: "^0.28.2",
+    tailwindcss: "^3.4.19",
+    wrangler: "^4.129.0"
+  }
+};
 
 // templates/admin.html
 var admin_default = `<!DOCTYPE html>
@@ -19993,7 +20112,7 @@ var admin_default = `<!DOCTYPE html>
          an internal tool gated entirely by Cloudflare Access. esc() is reused
          since it's a plain, dependency-free XSS-safe escaping helper (#36
          still has to escape admin-entered/user label data like any other page). -->
-    <script src="/theme.js?v=1"><\/script>
+    <script src="/theme.js?v=2"><\/script>
     <link rel="stylesheet" href="/theme.css">
     <script src="/ento-gdd.js?v=1"><\/script>
 </head>
@@ -20044,6 +20163,7 @@ var admin_default = `<!DOCTYPE html>
             <button class="tab-btn px-3 sm:px-4 py-2 rounded-md transition tab-active" data-tab="users">Users</button>
             <button class="tab-btn px-3 sm:px-4 py-2 rounded-md transition" data-tab="flags">Feature Flags</button>
             <button class="tab-btn px-3 sm:px-4 py-2 rounded-md transition" data-tab="audit">Audit Log</button>
+            <button class="tab-btn px-3 sm:px-4 py-2 rounded-md transition" data-tab="status">Status</button>
         </div>
 
         <p id="global-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
@@ -20168,6 +20288,54 @@ var admin_default = `<!DOCTYPE html>
                 </table>
             </div>
         </div>
+
+        <!-- \u2500\u2500 Status tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+        <div id="tab-status" class="tab-panel hidden">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <p class="text-sm text-slate-500">Restricted view \u2014 bindings, limits and the API catalogue that the public
+                    <a href="/status" class="text-lime-700 underline">/status</a> page doesn't show.
+                    <span id="status-checked-at" class="text-slate-400"></span></p>
+                <button id="status-refresh" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition">Refresh</button>
+            </div>
+
+            <div id="status-overview" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6"></div>
+
+            <h3 class="text-sm font-semibold text-slate-700 mb-2">Upstream services</h3>
+            <div id="status-upstream" class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-6">
+                <p class="px-4 py-3 text-sm text-slate-400">Checking\u2026</p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-6 mb-6">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700 mb-2">Configuration &amp; bindings</h3>
+                    <div id="status-config" class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 text-sm"></div>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700 mb-2">Data (D1)</h3>
+                    <div id="status-data" class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 text-sm"></div>
+                </div>
+            </div>
+
+            <h3 class="text-sm font-semibold text-slate-700 mb-2">Rate limits (per IP)</h3>
+            <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto mb-6">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr><th class="text-left px-4 py-2">Applies to</th><th class="text-left px-4 py-2">Limit</th><th class="text-left px-4 py-2">Window</th></tr>
+                    </thead>
+                    <tbody id="status-limits"></tbody>
+                </table>
+            </div>
+
+            <h3 class="text-sm font-semibold text-slate-700 mb-2">EntoTools API endpoints</h3>
+            <div class="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr><th class="text-left px-4 py-2">Method</th><th class="text-left px-4 py-2">Path</th><th class="text-left px-4 py-2">Auth</th><th class="text-left px-4 py-2">Protection</th><th class="text-left px-4 py-2">Purpose</th></tr>
+                    </thead>
+                    <tbody id="status-endpoints"></tbody>
+                </table>
+            </div>
+        </div>
     </main>
 
     <script>
@@ -20225,6 +20393,7 @@ var admin_default = `<!DOCTYPE html>
                 document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
                 if (btn.dataset.tab === 'flags') loadFlags();
                 if (btn.dataset.tab === 'audit') loadAuditLog();
+                if (btn.dataset.tab === 'status') loadStatus();
             });
         });
 
@@ -20527,6 +20696,98 @@ var admin_default = `<!DOCTYPE html>
             } catch (err) { showError('Could not load audit log: ' + err.message); }
         }
 
+        // \u2500\u2500 Status tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function statusDot(ok, pending) {
+            const cls = pending ? 'bg-slate-300' : ok ? 'bg-lime-500' : 'bg-red-500';
+            return \`<span class="inline-block w-2.5 h-2.5 rounded-full \${cls} shrink-0"></span>\`;
+        }
+        function fmtWindow(seconds) {
+            return seconds % 3600 === 0 ? (seconds / 3600) + ' h' : Math.round(seconds / 60) + ' min';
+        }
+        function fmtBytes(n) {
+            if (n < 1024) return n + ' B';
+            if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+            return (n / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+        function card(label, value, sub, ok) {
+            return \`
+                <div class="bg-white rounded-xl border border-slate-200 p-4">
+                    <div class="text-xs text-slate-500 mb-1">\${esc(label)}</div>
+                    <div class="flex items-center gap-2 text-lg font-semibold text-slate-800">\${ok === undefined ? '' : statusDot(ok)}\${esc(value)}</div>
+                    \${sub ? \`<div class="text-xs text-slate-400 mt-1">\${esc(sub)}</div>\` : ''}
+                </div>\`;
+        }
+        function kvRow(label, value, ok) {
+            return \`<div class="flex items-center justify-between gap-3 px-4 py-2">
+                <span class="text-slate-600">\${esc(label)}</span>
+                <span class="flex items-center gap-2 text-slate-800 font-medium text-right">\${ok === undefined ? '' : statusDot(ok)}\${esc(value)}</span></div>\`;
+        }
+
+        async function loadStatus() {
+            const checkedAt = document.getElementById('status-checked-at');
+            checkedAt.textContent = '';
+            document.getElementById('status-upstream').innerHTML = '<p class="px-4 py-3 text-sm text-slate-400">Checking\u2026</p>';
+            // Internal (fast) and upstream (slow) in parallel; each renders as it lands.
+            const internal = api('/frost/admin/status/internal').then((s) => {
+                const w = s.worker, c = s.config, d = s.d1, k = s.kv;
+                document.getElementById('status-overview').innerHTML = [
+                    card('Worker', 'v' + w.version, (w.colo ? 'Served from ' + w.colo : '') + (w.builtAt ? ' \xB7 built ' + fmtDate(w.builtAt) : ''), true),
+                    card('D1 (accounts)', d.ok ? d.latencyMs + ' ms' : 'unavailable', d.ok ? 'batch of 10 count queries' : (d.error || ''), d.ok),
+                    card('KV (cache, challenges, limits)', k.ok ? k.latencyMs + ' ms' : 'unavailable', k.ok ? 'write \u2192 read \u2192 delete probe' : (k.error || ''), k.ok),
+                    card('Active sessions', String(d.sessionsActive ?? '\u2014'), (d.users ?? '\u2014') + ' accounts \xB7 ' + (d.credentials ?? '\u2014') + ' passkeys'),
+                ].join('');
+                document.getElementById('status-config').innerHTML = [
+                    kvRow('Cloudflare Access (admin gate)', c.accessConfigured ? (c.accessTeamDomain || 'configured') : 'NOT configured \u2014 portal would 404', c.accessConfigured),
+                    kvRow('GITHUB_TOKEN (feedback \u2192 issues)', c.githubTokenConfigured ? 'configured' : 'missing \u2014 feedback will fail', c.githubTokenConfigured),
+                    kvRow('D1 binding (DB)', c.d1Bound ? 'bound' : 'missing', c.d1Bound),
+                    kvRow('KV binding (GEOCODE_CACHE)', c.kvBound ? 'bound' : 'missing', c.kvBound),
+                    kvRow('Static assets (ASSETS)', c.assetsBound ? 'bound' : 'missing', c.assetsBound),
+                    kvRow('Request', (w.cfRay || '\u2014') + (w.servedFromCountry ? ' \xB7 ' + w.servedFromCountry : '')),
+                ].join('');
+                document.getElementById('status-data').innerHTML = d.ok ? [
+                    kvRow('Accounts', String(d.users)),
+                    kvRow('Passkeys', String(d.credentials)),
+                    kvRow('Sessions (active / total rows)', d.sessionsActive + ' / ' + d.sessionsTotal),
+                    kvRow('Synced collections', d.collections + ' \xB7 ' + fmtBytes(d.collectionBytes)),
+                    kvRow('Feature flags / assignments', d.featureFlags + ' / ' + d.flagAssignments),
+                    kvRow('Audit log entries', String(d.auditEntries)),
+                    kvRow('Last sign-up', fmtDate(d.lastSignupAt)),
+                    kvRow('Last passkey use', fmtDate(d.lastLoginAt)),
+                ].join('') : '<p class="px-4 py-3 text-red-600">' + esc(d.error || 'D1 unavailable') + '</p>';
+                document.getElementById('status-limits').innerHTML = Object.values(s.limits).map((l) => \`
+                    <tr class="border-t border-slate-100">
+                        <td class="px-4 py-2 text-slate-700">\${esc(l.applies)}</td>
+                        <td class="px-4 py-2 font-mono text-xs">\${esc(String(l.limit))}</td>
+                        <td class="px-4 py-2 text-slate-500">\${esc(fmtWindow(l.windowSeconds))}</td>
+                    </tr>\`).join('');
+                document.getElementById('status-endpoints').innerHTML = s.endpoints.map((e) => \`
+                    <tr class="border-t border-slate-100 align-top">
+                        <td class="px-4 py-2 font-mono text-xs whitespace-nowrap">\${esc(e.method)}</td>
+                        <td class="px-4 py-2 font-mono text-xs whitespace-nowrap">\${esc(e.path)}</td>
+                        <td class="px-4 py-2 text-xs text-slate-600 whitespace-nowrap">\${esc(e.auth)}</td>
+                        <td class="px-4 py-2 text-xs text-slate-500">\${esc(e.protection)}</td>
+                        <td class="px-4 py-2 text-xs text-slate-600">\${esc(e.purpose)}</td>
+                    </tr>\`).join('');
+                checkedAt.textContent = 'Checked ' + fmtDateTz(s.checkedAt) + '.';
+            }).catch((err) => showError('Could not load internal status: ' + err.message));
+
+            const upstream = api('/frost/admin/status/upstream').then(({ services }) => {
+                document.getElementById('status-upstream').innerHTML = services.map((svc) => \`
+                    <div class="flex items-center gap-3 px-4 py-2.5">
+                        \${statusDot(svc.ok)}
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm text-slate-800">\${esc(svc.name)} <span class="text-xs text-slate-400 font-mono">\${esc(svc.host)}</span></div>
+                            <div class="text-xs text-slate-500">\${esc(svc.role)}</div>
+                        </div>
+                        <div class="text-right text-xs \${svc.ok ? 'text-slate-500' : 'text-red-600'} whitespace-nowrap">\${svc.ok ? esc(svc.latency + ' ms') : esc(svc.error || 'down')}<div class="text-slate-400">timeout \${esc(String(svc.timeoutMs / 1000))} s</div></div>
+                    </div>\`).join('');
+            }).catch((err) => {
+                document.getElementById('status-upstream').innerHTML = '<p class="px-4 py-3 text-sm text-red-600">' + esc('Could not check upstream services: ' + err.message) + '</p>';
+            });
+            await Promise.allSettled([internal, upstream]);
+        }
+        document.getElementById('status-refresh').addEventListener('click', loadStatus);
+
         // \u2500\u2500 Init \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         (async function init() {
             try {
@@ -20540,6 +20801,44 @@ var admin_default = `<!DOCTYPE html>
 `;
 
 // src/routes/admin.js
+var API_ENDPOINTS = [
+  { method: "POST", path: "/api/search", auth: "none", protection: "per-IP limit, input caps (ranges/days)", purpose: "Weather + station lookup for the calculator" },
+  { method: "POST", path: "/api/feedback", auth: "none", protection: "Origin allowlist, per-IP limit, PII redaction, Markdown neutralised", purpose: "Feedback widget \u2192 public GitHub issue" },
+  { method: "GET", path: "/api/status/ping", auth: "none", protection: "\u2014", purpose: "Worker liveness" },
+  { method: "GET", path: "/api/status/check?service=", auth: "none", protection: "per-IP limit, allow-listed targets", purpose: "One upstream service probe (public /status page)" },
+  { method: "POST", path: "/api/account/register/options", auth: "none / session", protection: "Origin, ceremony + sign-up limits, unique email, re-auth when adding", purpose: "Start passkey registration" },
+  { method: "POST", path: "/api/account/register/verify", auth: "none / session", protection: "Origin, single-use challenge, UV required, unique email", purpose: "Finish registration \u2192 session" },
+  { method: "POST", path: "/api/account/login/options", auth: "none", protection: "Origin, ceremony limit", purpose: "Start passkey login (username-less)" },
+  { method: "POST", path: "/api/account/login/verify", auth: "none", protection: "Origin, single-use challenge, UV required, sign-counter", purpose: "Finish login \u2192 session" },
+  { method: "POST", path: "/api/account/reauth/options", auth: "session", protection: "Origin, ceremony limit", purpose: "Start step-up assertion" },
+  { method: "POST", path: "/api/account/reauth/verify", auth: "session", protection: "Origin, challenge bound to session + user, UV required", purpose: "Finish step-up (single-use, \u2264 2 min)" },
+  { method: "GET", path: "/api/account/session", auth: "session", protection: "SameSite=Lax cookie, no-store", purpose: "Who am I" },
+  { method: "POST", path: "/api/account/logout", auth: "session", protection: "Origin", purpose: "End this session" },
+  { method: "GET", path: "/api/account/credentials", auth: "session", protection: "no-store", purpose: "List own passkeys" },
+  { method: "PATCH", path: "/api/account/credentials/:id", auth: "session", protection: "Origin, step-up required, scoped to owner", purpose: "Rename a passkey" },
+  { method: "DELETE", path: "/api/account/credentials/:id", auth: "session", protection: "Origin, step-up required, last-passkey guard, revokes its sessions", purpose: "Remove a passkey" },
+  { method: "GET", path: "/api/account/sessions", auth: "session", protection: "no-store, ids never returned", purpose: "List signed-in devices" },
+  { method: "DELETE", path: "/api/account/sessions", auth: "session", protection: "Origin", purpose: "Sign out everywhere else" },
+  { method: "GET", path: "/api/account/collection", auth: "session", protection: "\u2014", purpose: "Pull account-synced collection" },
+  { method: "PUT", path: "/api/account/collection", auth: "session", protection: "Origin, 1 MB / 20k-entry cap", purpose: "Push collection" },
+  { method: "GET", path: "/api/account/flags", auth: "session", protection: "fail-closed (empty on error)", purpose: "Own feature flags" },
+  { method: "GET", path: "/api/account/export", auth: "session", protection: "no-store, attachment", purpose: "Data export (JSON)" },
+  { method: "DELETE", path: "/api/account", auth: "session", protection: "Origin, step-up required", purpose: "Delete own account" },
+  { method: "*", path: "/frost/admin/**", auth: "Cloudflare Access + JWT", protection: "Access JWT (RS256, aud/iss/exp), CSRF guard on writes, 404 on failure, audit log", purpose: "This portal" }
+];
+async function probeKv(env) {
+  if (!env.GEOCODE_CACHE) return { bound: false, ok: false, error: "KV binding missing" };
+  const key = `admin-probe:${crypto.randomUUID()}`;
+  const start = Date.now();
+  try {
+    await env.GEOCODE_CACHE.put(key, "1", { expirationTtl: 60 });
+    const back = await env.GEOCODE_CACHE.get(key);
+    await env.GEOCODE_CACHE.delete(key);
+    return { bound: true, ok: back === "1", latencyMs: Date.now() - start };
+  } catch (err) {
+    return { bound: true, ok: false, latencyMs: Date.now() - start, error: err.message };
+  }
+}
 var adminHtml = admin_default.replace('href="/tailwind.css"', `href="/tailwind.css?h=${TAILWIND_HASH}"`);
 var SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
@@ -20589,6 +20888,8 @@ async function handleAdminRoute(request, env, path) {
         "DELETE /frost/admin/users/:id/sessions",
         "POST   /frost/admin/users/:id/reregister-token",
         "GET    /frost/admin/audit-log",
+        "GET    /frost/admin/status/internal",
+        "GET    /frost/admin/status/upstream",
         "GET    /frost/admin/flags",
         "POST   /frost/admin/flags",
         "GET    /frost/admin/flags/:key/users",
@@ -20645,6 +20946,43 @@ async function handleAdminRoute(request, env, path) {
   if (path === "/frost/admin/audit-log" && method === "GET") {
     return jsonResponse3({ log: await getAuditLog(env) });
   }
+  if (path === "/frost/admin/status/internal" && method === "GET") {
+    let d1;
+    const t0 = Date.now();
+    try {
+      const stats = await getStats(env);
+      d1 = { bound: true, ok: true, latencyMs: Date.now() - t0, ...stats };
+    } catch (err) {
+      d1 = { bound: !!env.DB, ok: false, latencyMs: Date.now() - t0, error: err.message };
+    }
+    const kv = await probeKv(env);
+    const cf = request.cf || {};
+    return jsonResponse3({
+      checkedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      worker: {
+        version: package_default.version,
+        builtAt: BUILD_GENERATED_AT,
+        colo: cf.colo || null,
+        servedFromCountry: cf.country || null,
+        cfRay: request.headers.get("cf-ray")
+      },
+      config: {
+        accessConfigured: !!(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD),
+        accessTeamDomain: env.CF_ACCESS_TEAM_DOMAIN || null,
+        githubTokenConfigured: !!env.GITHUB_TOKEN,
+        d1Bound: !!env.DB,
+        kvBound: !!env.GEOCODE_CACHE,
+        assetsBound: !!env.ASSETS
+      },
+      d1,
+      kv,
+      limits: LIMITS,
+      endpoints: API_ENDPOINTS
+    });
+  }
+  if (path === "/frost/admin/status/upstream" && method === "GET") {
+    return jsonResponse3({ services: await checkAllServices() });
+  }
   if (path === "/frost/admin/flags" && method === "GET") {
     return jsonResponse3({ flags: await listFlags(env) });
   }
@@ -20695,7 +21033,7 @@ var NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 var NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse";
 var OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive";
 var OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-var USER_AGENT = "EntoTools/1.0 (educational-project)";
+var USER_AGENT2 = "EntoTools/1.0 (educational-project)";
 var NCEI_MAX_RETRIES = 3;
 var OPEN_METEO_MAX_RETRIES = 3;
 var RETRYABLE_STATUS_CODES = /* @__PURE__ */ new Set([429, 500, 502, 503, 504]);
@@ -20723,14 +21061,6 @@ function allowedOriginsFor(requestUrl) {
   }
   return ALLOWED_ORIGINS;
 }
-var FEEDBACK_RATE_LIMIT = 5;
-var FEEDBACK_RATE_WINDOW_SECONDS = 3600;
-var SEARCH_RATE_LIMIT = 60;
-var SEARCH_RATE_WINDOW_SECONDS = 3600;
-var STATUS_RATE_LIMIT = 120;
-var STATUS_RATE_WINDOW_SECONDS = 3600;
-var ACCOUNT_RATE_LIMIT = 20;
-var ACCOUNT_RATE_WINDOW_SECONDS = 3600;
 var COUNTRY_PROVIDER_MAP = {
   "us": "ncei"
   // Add country-specific providers here, e.g.:
@@ -20794,7 +21124,7 @@ async function nominatimGet(params, env) {
     url.searchParams.set(k, v);
   }
   const resp = await fetch(url.toString(), {
-    headers: { "User-Agent": USER_AGENT }
+    headers: { "User-Agent": USER_AGENT2 }
   });
   if (!resp.ok) {
     console.error("[Worker:nominatimGet] Nominatim error:", resp.status);
@@ -20843,7 +21173,7 @@ async function reverseGeocode(lat, lon, env) {
   url.searchParams.set("format", "json");
   url.searchParams.set("addressdetails", "1");
   const resp = await fetch(url.toString(), {
-    headers: { "User-Agent": USER_AGENT }
+    headers: { "User-Agent": USER_AGENT2 }
   });
   if (!resp.ok) {
     console.error("[Worker:reverseGeocode] Nominatim reverse error:", resp.status);
@@ -20864,7 +21194,7 @@ async function nceiFetch(url) {
   for (let attempt = 0; attempt < NCEI_MAX_RETRIES; attempt++) {
     try {
       if (attempt > 0) console.log("[Worker:nceiFetch] retry attempt", attempt + 1, "/", NCEI_MAX_RETRIES);
-      const resp = await fetch(url.toString(), { headers: { "User-Agent": USER_AGENT } });
+      const resp = await fetch(url.toString(), { headers: { "User-Agent": USER_AGENT2 } });
       if (RETRYABLE_STATUS_CODES.has(resp.status)) {
         if (attempt < NCEI_MAX_RETRIES - 1) {
           console.warn("[Worker:nceiFetch] NCEI returned", resp.status, "\u2014 backing off", 2 ** attempt, "s");
@@ -21055,7 +21385,7 @@ async function getWeatherDataOpenMeteo(lat, lon, startDate, endDate) {
   url.searchParams.set("timezone", "UTC");
   const resp = await fetchWithRetry(
     url.toString(),
-    { headers: { "User-Agent": USER_AGENT } },
+    { headers: { "User-Agent": USER_AGENT2 } },
     { maxRetries: OPEN_METEO_MAX_RETRIES, label: "Open-Meteo Archive" }
   );
   if (!resp.ok) {
@@ -21106,7 +21436,7 @@ async function getForecastOpenMeteo(lat, lon) {
   url.searchParams.set("timezone", "UTC");
   const resp = await fetchWithRetry(
     url.toString(),
-    { headers: { "User-Agent": USER_AGENT } },
+    { headers: { "User-Agent": USER_AGENT2 } },
     { maxRetries: OPEN_METEO_MAX_RETRIES, label: "Open-Meteo Forecast" }
   );
   if (!resp.ok) throw new Error(`Open-Meteo Forecast returned ${resp.status}`);
@@ -21357,16 +21687,16 @@ var FEEDBACK_TYPE_LABELS = {
   other: "feedback"
 };
 function feedbackRateLimited(env, ip) {
-  return rateLimited(env, ip, "fb-rl", FEEDBACK_RATE_LIMIT, FEEDBACK_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, "fb-rl", LIMITS.feedback.limit, LIMITS.feedback.windowSeconds);
 }
 function searchRateLimited(env, ip) {
-  return rateLimited(env, ip, "search-rl", SEARCH_RATE_LIMIT, SEARCH_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, "search-rl", LIMITS.search.limit, LIMITS.search.windowSeconds);
 }
 function accountRateLimited(env, ip) {
-  return rateLimited(env, ip, "acct-rl", ACCOUNT_RATE_LIMIT, ACCOUNT_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, "acct-rl", LIMITS.ceremony.limit, LIMITS.ceremony.windowSeconds);
 }
 function statusRateLimited(env, ip) {
-  return rateLimited(env, ip, "status-rl", STATUS_RATE_LIMIT, STATUS_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, "status-rl", LIMITS.status.limit, LIMITS.status.windowSeconds);
 }
 var PII_PATTERNS = [
   // Email addresses
@@ -21465,7 +21795,7 @@ async function handleFeedback(request, env) {
       headers: {
         "Authorization": `Bearer ${token}`,
         "Accept": "application/vnd.github+json",
-        "User-Agent": USER_AGENT,
+        "User-Agent": USER_AGENT2,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(issuePayload)
@@ -21480,50 +21810,10 @@ async function handleFeedback(request, env) {
   console.log("[Worker:handleFeedback] issue created:", issue.html_url);
   return reply({ success: true, issue_url: issue.html_url });
 }
-var STATUS_SERVICES = {
-  ncei: {
-    url: "https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=USW00094728&startDate=2024-01-01&endDate=2024-01-01&dataTypes=TMAX&format=json",
-    timeout: 1e4
-  },
-  "open-meteo": {
-    url: "https://api.open-meteo.com/v1/forecast?latitude=40&longitude=-74&current_weather=true",
-    timeout: 8e3
-  },
-  nominatim: {
-    url: "https://nominatim.openstreetmap.org/search?q=New+York&format=json&limit=1",
-    timeout: 8e3
-  },
-  github: {
-    url: "https://api.github.com/rate_limit",
-    timeout: 8e3
-  }
-};
 async function handleStatusCheck(url) {
   const service = url.searchParams.get("service");
-  const config = STATUS_SERVICES[service];
-  if (!config) {
-    return jsonResponse4({ error: "Unknown service" }, 400);
-  }
-  const start = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeout);
-  try {
-    const resp = await fetch(config.url, {
-      headers: { "User-Agent": USER_AGENT },
-      signal: controller.signal
-    });
-    const latency = Date.now() - start;
-    if (!resp.ok) {
-      return jsonResponse4({ ok: false, error: `HTTP ${resp.status}`, latency });
-    }
-    return jsonResponse4({ ok: true, latency });
-  } catch (err) {
-    const latency = Date.now() - start;
-    const msg = err.name === "AbortError" ? "Timeout" : err.message;
-    return jsonResponse4({ ok: false, error: msg, latency });
-  } finally {
-    clearTimeout(timer);
-  }
+  if (!STATUS_SERVICES[service]) return jsonResponse4({ error: "Unknown service" }, 400);
+  return jsonResponse4(await checkService(service));
 }
 var index_default = {
   async fetch(request, env) {

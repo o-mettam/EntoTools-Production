@@ -1,6 +1,6 @@
 {
-  "generated": "2026-09-05T04:19:10.350Z",
-  "tailwindHash": "ddfd1b16b20b",
+  "generated": "2026-09-05T16:01:24.800Z",
+  "tailwindHash": "1db23f6ad98d",
   "routes": {
     "/404.html": [],
     "/500.html": [],
@@ -34,6 +34,6 @@
     ]
   },
   "admin": [
-    "sha256-8+T9IcUYMR/Jf8WnQgI27uZiF2PXIC6Y/+DW/KHHm8c="
+    "sha256-BZ3LqOzsREN1P/LJulnmSnL21aCMsgjFLr35oMLRziU="
   ]
 }

@@ -180,6 +180,39 @@ export async function deleteAllUserSessions(env, userId) {
   await env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run();
 }
 
+// ── Admin Status tab ────────────────────────────────────────────
+// One batch of counts — cheap, and the round-trip doubles as a D1 latency
+// probe. Nothing here is per-user data.
+export async function getStats(env) {
+  const now = nowIso();
+  const rows = await env.DB.batch([
+    env.DB.prepare('SELECT COUNT(*) AS n FROM users'),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM credentials'),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM sessions WHERE expires_at > ?').bind(now),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM sessions'),
+    env.DB.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(envelope)), 0) AS bytes FROM collections'),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM admin_audit_log'),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM feature_flags'),
+    env.DB.prepare('SELECT COUNT(*) AS n FROM user_feature_flags'),
+    env.DB.prepare('SELECT MAX(created_at) AS at FROM users'),
+    env.DB.prepare('SELECT MAX(last_used_at) AS at FROM credentials'),
+  ]);
+  const first = (i) => (rows[i] && rows[i].results && rows[i].results[0]) || {};
+  return {
+    users: first(0).n || 0,
+    credentials: first(1).n || 0,
+    sessionsActive: first(2).n || 0,
+    sessionsTotal: first(3).n || 0,
+    collections: first(4).n || 0,
+    collectionBytes: first(4).bytes || 0,
+    auditEntries: first(5).n || 0,
+    featureFlags: first(6).n || 0,
+    flagAssignments: first(7).n || 0,
+    lastSignupAt: first(8).at || null,
+    lastLoginAt: first(9).at || null,
+  };
+}
+
 // ── Admin audit log (#36) ───────────────────────────────────────
 export async function writeAuditLog(env, { adminIdentity, action, targetUserId, detail }) {
   await env.DB.prepare(

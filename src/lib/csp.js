@@ -75,3 +75,6 @@ export function cspForAdmin() {
 // Content hash of public/tailwind.css, for cache-busting the <link> in the
 // bundled admin HTML (public pages get it stamped in at build time).
 export const TAILWIND_HASH = manifest.tailwindHash || '';
+// When this bundle was built (gen-csp.js runs on every build) — shown on
+// the admin Status tab.
+export const BUILD_GENERATED_AT = manifest.generated || null;

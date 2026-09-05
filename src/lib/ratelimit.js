@@ -11,6 +11,17 @@
  * (Cloudflare WAF rate-limiting rules are the atomic option if ever needed.)
  */
 
+// Every per-IP limit in one place — enforced by src/index.js and
+// src/routes/account.js, and displayed on the admin portal's Status tab.
+export const LIMITS = {
+  search:         { limit: 60,  windowSeconds: 3600, applies: 'POST /api/search' },
+  feedback:       { limit: 5,   windowSeconds: 3600, applies: 'POST /api/feedback' },
+  status:         { limit: 120, windowSeconds: 3600, applies: 'GET /api/status/check' },
+  ceremony:       { limit: 20,  windowSeconds: 3600, applies: 'Passkey ceremony starts (register / login / re-auth options)' },
+  signupAttempts: { limit: 6,   windowSeconds: 7200, applies: 'Sign-up attempts (register/options for a new account)' },
+  signupAccounts: { limit: 3,   windowSeconds: 7200, applies: 'Accounts created (also mirrored in a per-browser cookie)' },
+};
+
 // Mask an IP before logging (privacy): keep enough to spot patterns in the
 // logs, drop enough that a single user can't be identified from them.
 // IPv4 → first three octets (1.2.3.x); IPv6 → first two hextets (a:b::…).

@@ -519,8 +519,10 @@
     if (!section) {
       section = document.createElement('div');
       section.id = 'ento-account-section';
-      var versionLine = document.getElementById('app-version-info');
-      panel.insertBefore(section, versionLine || null);
+      // Above the Service Status link and the version line (both appended
+      // by theme.js), so those two stay the panel's footer.
+      var anchor = document.getElementById('app-status-link') || document.getElementById('app-version-info');
+      panel.insertBefore(section, anchor || null);
     }
     if (state.user) {
       section.innerHTML = `

@@ -26,7 +26,7 @@
     // Single source of truth for the version shown in the Settings panel and
     // attached to feedback/bug reports. KEEP IN SYNC with the "version" field
     // in package.json.
-    var APP_VERSION = '1.10.1';
+    var APP_VERSION = '1.11.0';
 
     // ── Brand palette ────────────────────────────────────────────
     // Overrides Tailwind's default `lime` and `slate` ramps. Pages that miss
@@ -121,9 +121,20 @@
     // ── Version footer ───────────────────────────────────────────
     // Every page's Settings dropdown shares the id="settings-panel" markup —
     // append the version line there once instead of duplicating it per page.
+    // Also appends the "Service Status" link (every page, except on /status
+    // itself). account.js inserts its section ABOVE this link, so the panel
+    // reads: page settings → account → Service Status → Version.
     function renderVersionInfo() {
         var panel = document.getElementById('settings-panel');
         if (!panel || document.getElementById('app-version-info')) return;
+        if (!/^\/status\/?$/.test(location.pathname)) {
+            var link = document.createElement('a');
+            link.id = 'app-status-link';
+            link.href = '/status';
+            link.className = 'flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 text-sm text-slate-700 hover:text-lime-700 transition';
+            link.innerHTML = '<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Service Status</span>';
+            panel.appendChild(link);
+        }
         var footer = document.createElement('p');
         footer.id = 'app-version-info';
         footer.className = 'text-xs text-slate-400 mt-3 pt-3 border-t border-slate-100';

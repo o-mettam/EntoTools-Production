@@ -10,7 +10,53 @@
 import { verifyAccessRequest } from '../lib/access.js';
 import * as db from '../lib/db.js';
 import { REREGISTER_TOKEN_TTL_SECONDS } from './account.js';
-import { cspForAdmin, TAILWIND_HASH } from '../lib/csp.js';
+import { cspForAdmin, TAILWIND_HASH, BUILD_GENERATED_AT } from '../lib/csp.js';
+import { LIMITS } from '../lib/ratelimit.js';
+import { checkAllServices } from '../lib/status.js';
+import pkg from '../../package.json' with { type: 'json' };
+
+// Catalogue for the Status tab — what exists, who may call it, and what
+// protects it. Restricted view: this is more than the public /status page
+// says, by design.
+const API_ENDPOINTS = [
+  { method: 'POST',   path: '/api/search',                     auth: 'none',           protection: 'per-IP limit, input caps (ranges/days)', purpose: 'Weather + station lookup for the calculator' },
+  { method: 'POST',   path: '/api/feedback',                   auth: 'none',           protection: 'Origin allowlist, per-IP limit, PII redaction, Markdown neutralised', purpose: 'Feedback widget → public GitHub issue' },
+  { method: 'GET',    path: '/api/status/ping',                auth: 'none',           protection: '—', purpose: 'Worker liveness' },
+  { method: 'GET',    path: '/api/status/check?service=',      auth: 'none',           protection: 'per-IP limit, allow-listed targets', purpose: 'One upstream service probe (public /status page)' },
+  { method: 'POST',   path: '/api/account/register/options',   auth: 'none / session', protection: 'Origin, ceremony + sign-up limits, unique email, re-auth when adding', purpose: 'Start passkey registration' },
+  { method: 'POST',   path: '/api/account/register/verify',    auth: 'none / session', protection: 'Origin, single-use challenge, UV required, unique email', purpose: 'Finish registration → session' },
+  { method: 'POST',   path: '/api/account/login/options',      auth: 'none',           protection: 'Origin, ceremony limit', purpose: 'Start passkey login (username-less)' },
+  { method: 'POST',   path: '/api/account/login/verify',       auth: 'none',           protection: 'Origin, single-use challenge, UV required, sign-counter', purpose: 'Finish login → session' },
+  { method: 'POST',   path: '/api/account/reauth/options',     auth: 'session',        protection: 'Origin, ceremony limit', purpose: 'Start step-up assertion' },
+  { method: 'POST',   path: '/api/account/reauth/verify',      auth: 'session',        protection: 'Origin, challenge bound to session + user, UV required', purpose: 'Finish step-up (single-use, ≤ 2 min)' },
+  { method: 'GET',    path: '/api/account/session',            auth: 'session',        protection: 'SameSite=Lax cookie, no-store', purpose: 'Who am I' },
+  { method: 'POST',   path: '/api/account/logout',             auth: 'session',        protection: 'Origin', purpose: 'End this session' },
+  { method: 'GET',    path: '/api/account/credentials',        auth: 'session',        protection: 'no-store', purpose: 'List own passkeys' },
+  { method: 'PATCH',  path: '/api/account/credentials/:id',    auth: 'session',        protection: 'Origin, step-up required, scoped to owner', purpose: 'Rename a passkey' },
+  { method: 'DELETE', path: '/api/account/credentials/:id',    auth: 'session',        protection: 'Origin, step-up required, last-passkey guard, revokes its sessions', purpose: 'Remove a passkey' },
+  { method: 'GET',    path: '/api/account/sessions',           auth: 'session',        protection: 'no-store, ids never returned', purpose: 'List signed-in devices' },
+  { method: 'DELETE', path: '/api/account/sessions',           auth: 'session',        protection: 'Origin', purpose: 'Sign out everywhere else' },
+  { method: 'GET',    path: '/api/account/collection',         auth: 'session',        protection: '—', purpose: 'Pull account-synced collection' },
+  { method: 'PUT',    path: '/api/account/collection',         auth: 'session',        protection: 'Origin, 1 MB / 20k-entry cap', purpose: 'Push collection' },
+  { method: 'GET',    path: '/api/account/flags',              auth: 'session',        protection: 'fail-closed (empty on error)', purpose: 'Own feature flags' },
+  { method: 'GET',    path: '/api/account/export',             auth: 'session',        protection: 'no-store, attachment', purpose: 'Data export (JSON)' },
+  { method: 'DELETE', path: '/api/account',                    auth: 'session',        protection: 'Origin, step-up required', purpose: 'Delete own account' },
+  { method: '*',      path: '/frost/admin/**',                 auth: 'Cloudflare Access + JWT', protection: 'Access JWT (RS256, aud/iss/exp), CSRF guard on writes, 404 on failure, audit log', purpose: 'This portal' },
+];
+
+async function probeKv(env) {
+  if (!env.GEOCODE_CACHE) return { bound: false, ok: false, error: 'KV binding missing' };
+  const key = `admin-probe:${crypto.randomUUID()}`;
+  const start = Date.now();
+  try {
+    await env.GEOCODE_CACHE.put(key, '1', { expirationTtl: 60 });
+    const back = await env.GEOCODE_CACHE.get(key);
+    await env.GEOCODE_CACHE.delete(key);
+    return { bound: true, ok: back === '1', latencyMs: Date.now() - start };
+  } catch (err) {
+    return { bound: true, ok: false, latencyMs: Date.now() - start, error: err.message };
+  }
+}
 // Bundled as a raw string (esbuild --loader:.html=text) and returned
 // directly, rather than served via env.ASSETS.fetch(). That was tried first
 // and caused an infinite redirect loop: requesting the exact index.html path
@@ -94,6 +140,8 @@ export async function handleAdminRoute(request, env, path) {
         'DELETE /frost/admin/users/:id/sessions',
         'POST   /frost/admin/users/:id/reregister-token',
         'GET    /frost/admin/audit-log',
+        'GET    /frost/admin/status/internal',
+        'GET    /frost/admin/status/upstream',
         'GET    /frost/admin/flags',
         'POST   /frost/admin/flags',
         'GET    /frost/admin/flags/:key/users',
@@ -158,6 +206,48 @@ export async function handleAdminRoute(request, env, path) {
 
   if (path === '/frost/admin/audit-log' && method === 'GET') {
     return jsonResponse({ log: await db.getAuditLog(env) });
+  }
+
+  // ── Status tab ───────────────────────────────────────────────
+  // Internal health: bindings, configuration, data counts, limits, the API
+  // catalogue. Fast (one D1 batch + one KV round-trip).
+  if (path === '/frost/admin/status/internal' && method === 'GET') {
+    let d1;
+    const t0 = Date.now();
+    try {
+      const stats = await db.getStats(env);
+      d1 = { bound: true, ok: true, latencyMs: Date.now() - t0, ...stats };
+    } catch (err) {
+      d1 = { bound: !!env.DB, ok: false, latencyMs: Date.now() - t0, error: err.message };
+    }
+    const kv = await probeKv(env);
+    const cf = request.cf || {};
+    return jsonResponse({
+      checkedAt: new Date().toISOString(),
+      worker: {
+        version: pkg.version,
+        builtAt: BUILD_GENERATED_AT,
+        colo: cf.colo || null,
+        servedFromCountry: cf.country || null,
+        cfRay: request.headers.get('cf-ray'),
+      },
+      config: {
+        accessConfigured: !!(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD),
+        accessTeamDomain: env.CF_ACCESS_TEAM_DOMAIN || null,
+        githubTokenConfigured: !!env.GITHUB_TOKEN,
+        d1Bound: !!env.DB,
+        kvBound: !!env.GEOCODE_CACHE,
+        assetsBound: !!env.ASSETS,
+      },
+      d1,
+      kv,
+      limits: LIMITS,
+      endpoints: API_ENDPOINTS,
+    });
+  }
+  // Upstream services, all in parallel. Slower (up to the longest timeout).
+  if (path === '/frost/admin/status/upstream' && method === 'GET') {
+    return jsonResponse({ services: await checkAllServices() });
   }
 
   // ── #37: feature flag administration ───────────────────────────

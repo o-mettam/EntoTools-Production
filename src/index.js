@@ -30,7 +30,8 @@ import {
 import { handleMyFlags } from './routes/flags.js';
 import { handleAdminRoute } from './routes/admin.js';
 import { cspForPage } from './lib/csp.js';
-import { rateLimited, maskIp } from './lib/ratelimit.js';
+import { rateLimited, maskIp, LIMITS } from './lib/ratelimit.js';
+import { STATUS_SERVICES, checkService } from './lib/status.js';
 
 const NCEI_BASE_URL = 'https://www.ncei.noaa.gov/access/services/data/v1';
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
@@ -80,14 +81,8 @@ function allowedOriginsFor(requestUrl) {
   }
   return ALLOWED_ORIGINS;
 }
-const FEEDBACK_RATE_LIMIT = 5;              // max submissions per window per IP
-const FEEDBACK_RATE_WINDOW_SECONDS = 3600; // 1 hour
-const SEARCH_RATE_LIMIT = 60;              // max searches per window per IP
-const SEARCH_RATE_WINDOW_SECONDS = 3600;   // 1 hour
-const STATUS_RATE_LIMIT = 120;             // max status probes per window per IP
-const STATUS_RATE_WINDOW_SECONDS = 3600;   // 1 hour
-const ACCOUNT_RATE_LIMIT = 20;             // max register/login attempts per window per IP
-const ACCOUNT_RATE_WINDOW_SECONDS = 3600;  // 1 hour
+// Per-IP limits are defined once in src/lib/ratelimit.js (LIMITS) so the
+// admin Status tab can display exactly what is enforced.
 
 // ── Country → data-provider mapping ──────────────────────────────
 // Each key is a 2-letter ISO country code (lowercase).
@@ -887,19 +882,19 @@ const FEEDBACK_TYPE_LABELS = {
 // maskIp / rateLimited live in src/lib/ratelimit.js (shared with the
 // sign-up limits in src/routes/account.js).
 function feedbackRateLimited(env, ip) {
-  return rateLimited(env, ip, 'fb-rl', FEEDBACK_RATE_LIMIT, FEEDBACK_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, 'fb-rl', LIMITS.feedback.limit, LIMITS.feedback.windowSeconds);
 }
 
 function searchRateLimited(env, ip) {
-  return rateLimited(env, ip, 'search-rl', SEARCH_RATE_LIMIT, SEARCH_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, 'search-rl', LIMITS.search.limit, LIMITS.search.windowSeconds);
 }
 
 function accountRateLimited(env, ip) {
-  return rateLimited(env, ip, 'acct-rl', ACCOUNT_RATE_LIMIT, ACCOUNT_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, 'acct-rl', LIMITS.ceremony.limit, LIMITS.ceremony.windowSeconds);
 }
 
 function statusRateLimited(env, ip) {
-  return rateLimited(env, ip, 'status-rl', STATUS_RATE_LIMIT, STATUS_RATE_WINDOW_SECONDS);
+  return rateLimited(env, ip, 'status-rl', LIMITS.status.limit, LIMITS.status.windowSeconds);
 }
 
 // Server-side PII redaction. The client sanitizes before sending, but this
@@ -1052,54 +1047,12 @@ async function handleFeedback(request, env) {
 }
 
 // ── Status / Health Checks ────────────────────────────────────────
-
-const STATUS_SERVICES = {
-  ncei: {
-    url: 'https://www.ncei.noaa.gov/access/services/data/v1?dataset=daily-summaries&stations=USW00094728&startDate=2024-01-01&endDate=2024-01-01&dataTypes=TMAX&format=json',
-    timeout: 10000,
-  },
-  'open-meteo': {
-    url: 'https://api.open-meteo.com/v1/forecast?latitude=40&longitude=-74&current_weather=true',
-    timeout: 8000,
-  },
-  nominatim: {
-    url: 'https://nominatim.openstreetmap.org/search?q=New+York&format=json&limit=1',
-    timeout: 8000,
-  },
-  github: {
-    url: 'https://api.github.com/rate_limit',
-    timeout: 8000,
-  },
-};
-
+// Service definitions + the check itself live in src/lib/status.js (shared
+// with the admin portal's Status tab).
 async function handleStatusCheck(url) {
   const service = url.searchParams.get('service');
-  const config = STATUS_SERVICES[service];
-  if (!config) {
-    return jsonResponse({ error: 'Unknown service' }, 400);
-  }
-
-  const start = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeout);
-  try {
-    const resp = await fetch(config.url, {
-      headers: { 'User-Agent': USER_AGENT },
-      signal: controller.signal,
-    });
-    const latency = Date.now() - start;
-
-    if (!resp.ok) {
-      return jsonResponse({ ok: false, error: `HTTP ${resp.status}`, latency });
-    }
-    return jsonResponse({ ok: true, latency });
-  } catch (err) {
-    const latency = Date.now() - start;
-    const msg = err.name === 'AbortError' ? 'Timeout' : err.message;
-    return jsonResponse({ ok: false, error: msg, latency });
-  } finally {
-    clearTimeout(timer);
-  }
+  if (!STATUS_SERVICES[service]) return jsonResponse({ error: 'Unknown service' }, 400);
+  return jsonResponse(await checkService(service));
 }
 
 // ── Worker entry point ────────────────────────────────────────────
