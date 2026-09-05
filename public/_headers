@@ -1,5 +1,26 @@
 # Cloudflare Pages headers config: https://developers.cloudflare.com/pages/configuration/headers/
 #
+# ── Security headers (all pages) ──────────────────────────────────
+# CSP allows 'unsafe-inline' for script-src/style-src because the app is built
+# entirely from inline <script> blocks and the Tailwind Play CDN (which injects
+# a <style> tag at runtime) — a nonce/hash-based CSP would need a build step
+# this project doesn't have. Still meaningfully reduces blast radius: blocks
+# framing (clickjacking), restricts which hosts can load a script/style/font/
+# XHR at all, and disables object/base-uri/form-action injection vectors.
+#
+# connect-src lists every external host the client actually calls: the
+# open-meteo/nominatim/sunrise-sunset APIs used directly from the browser
+# (label_data.html, degree_day_calculator.html), plus the Google Drive/OAuth
+# hosts used by the Cloud Sync feature (public/sync/provider-gdrive.js) — that
+# feature is currently disabled in the UI but not removed, so it's kept here
+# to avoid a silent CSP break whenever it's turned back on.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()
+  Referrer-Policy: strict-origin-when-cross-origin
+
 # Without this file, Cloudflare Pages applies its own default edge cache to
 # static JS/CSS (observed: `Cache-Control: public, max-age=14400, must-revalidate`,
 # ~4 hours). That cache is keyed per-hostname, so entotools.com and
