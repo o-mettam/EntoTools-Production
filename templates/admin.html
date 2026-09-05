@@ -19,16 +19,32 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
     <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        <header class="flex items-start justify-between mb-6">
-            <div>
-                <h1 class="text-xl font-semibold text-slate-800">EntoTools Admin</h1>
-                <p class="text-sm text-slate-500 mt-1">Signed in as <span id="admin-email" class="font-medium">…</span></p>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-sm text-slate-500">Dark Mode</span>
-                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
-                    <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+        <header class="flex items-center justify-between mb-6">
+            <h1 class="text-xl font-semibold text-slate-800">EntoTools Admin</h1>
+            <div class="relative">
+                <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                    </svg>
                 </button>
+                <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
+                    <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                    <div class="flex items-center justify-between py-2">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+                            </svg>
+                            <span class="text-sm text-slate-700">Dark Mode</span>
+                        </div>
+                        <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                            <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                        </button>
+                    </div>
+                    <hr class="my-2 border-slate-100">
+                    <p class="text-xs text-slate-500">Signed in as <span id="admin-email" class="font-medium">…</span></p>
+                    <!-- theme.js's renderVersionInfo() auto-appends "Version X.Y.Z" here -->
+                </div>
             </div>
         </header>
 
@@ -41,7 +57,7 @@
         <p id="global-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
 
         <!-- ── Users tab ─────────────────────────────────────────── -->
-        <section id="tab-users" class="tab-panel">
+        <div id="tab-users" class="tab-panel">
             <div class="flex gap-2 mb-4">
                 <input id="user-search-input" type="text" placeholder="Search by label (email or name)…"
                        class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
@@ -86,10 +102,10 @@
                     </div>
                 </div>
             </div>
-        </section>
+        </div>
 
         <!-- ── Feature Flags tab ────────────────────────────────────── -->
-        <section id="tab-flags" class="tab-panel hidden">
+        <div id="tab-flags" class="tab-panel hidden">
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
                 <table class="w-full text-sm">
                     <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
@@ -97,6 +113,28 @@
                     </thead>
                     <tbody id="flags-table-body"></tbody>
                 </table>
+            </div>
+
+            <!-- Assign this flag to specific users, once it's been created below. -->
+            <div id="flag-detail" class="hidden bg-white rounded-xl border border-slate-200 p-5 mb-6">
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h2 id="fd-key" class="text-base font-semibold text-slate-800 font-mono"></h2>
+                        <p id="fd-description" class="text-xs text-slate-400 mt-0.5"></p>
+                    </div>
+                    <button id="fd-close" class="text-slate-400 hover:text-slate-600 text-sm">Close</button>
+                </div>
+
+                <h3 class="text-sm font-semibold text-slate-700 mb-2">Assigned users</h3>
+                <div id="fd-users" class="text-sm space-y-1.5 mb-4"></div>
+
+                <h3 class="text-sm font-semibold text-slate-700 mb-2">Assign to a user</h3>
+                <div class="flex gap-2 mb-2">
+                    <input id="fd-assign-input" type="text" placeholder="Search by label (email or name)…"
+                           class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                    <button id="fd-assign-search-btn" class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Search</button>
+                </div>
+                <div id="fd-assign-results" class="text-sm space-y-1"></div>
             </div>
 
             <form id="new-flag-form" class="flex flex-wrap gap-2 items-end bg-white rounded-xl border border-slate-200 p-4">
@@ -112,10 +150,10 @@
                 </div>
                 <button type="submit" class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Create flag</button>
             </form>
-        </section>
+        </div>
 
         <!-- ── Audit Log tab ────────────────────────────────────────── -->
-        <section id="tab-audit" class="tab-panel hidden">
+        <div id="tab-audit" class="tab-panel hidden">
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <table class="w-full text-sm">
                     <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
@@ -130,7 +168,7 @@
                     <tbody id="audit-table-body"></tbody>
                 </table>
             </div>
-        </section>
+        </div>
     </div>
 
     <script>
@@ -143,6 +181,21 @@
             if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
             return data;
         }
+
+        // ── Settings panel ───────────────────────────────────────────
+        // Same toggleSettings()/click-outside pattern used on every public
+        // page (see templates/entotools.html) — kept identical so the
+        // behavior matches, not just the look.
+        function toggleSettings() {
+            document.getElementById('settings-panel').classList.toggle('open');
+        }
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('settings-panel');
+            const btn = document.getElementById('settings-btn');
+            if (panel && btn && !panel.contains(e.target) && !btn.contains(e.target)) {
+                panel.classList.remove('open');
+            }
+        });
 
         function showError(msg) {
             const el = document.getElementById('global-error');
@@ -314,6 +367,8 @@
         });
 
         // ── Feature Flags tab ────────────────────────────────────────
+        let currentFlagKey = null;
+
         async function loadFlags() {
             try {
                 const { flags } = await api('/frost/admin/flags');
@@ -321,14 +376,83 @@
                 const tbody = document.getElementById('flags-table-body');
                 tbody.innerHTML = flags.length
                     ? flags.map((f) => `
-                        <tr class="border-t border-slate-100">
+                        <tr class="flag-row border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition" data-key="${esc(f.flag_key)}" data-description="${esc(f.description || '')}">
                             <td class="px-4 py-2 font-mono text-xs">${esc(f.flag_key)}</td>
                             <td class="px-4 py-2 text-slate-600">${esc(f.description || '—')}</td>
                         </tr>
                     `).join('')
                     : '<tr><td colspan="2" class="px-4 py-4 text-center text-slate-400">No flags defined yet.</td></tr>';
+                tbody.querySelectorAll('.flag-row').forEach((row) => {
+                    row.addEventListener('click', () => openFlag(row.dataset.key, row.dataset.description));
+                });
             } catch (err) { showError('Could not load flags: ' + err.message); }
         }
+
+        function openFlag(key, description) {
+            currentFlagKey = key;
+            document.getElementById('flag-detail').classList.remove('hidden');
+            document.getElementById('fd-key').textContent = key;
+            document.getElementById('fd-description').textContent = description || '';
+            document.getElementById('fd-assign-input').value = '';
+            document.getElementById('fd-assign-results').innerHTML = '';
+            renderFlagUsers();
+        }
+
+        document.getElementById('fd-close').addEventListener('click', () => {
+            document.getElementById('flag-detail').classList.add('hidden');
+            currentFlagKey = null;
+        });
+
+        async function renderFlagUsers() {
+            const container = document.getElementById('fd-users');
+            try {
+                const { users } = await api('/frost/admin/flags/' + encodeURIComponent(currentFlagKey) + '/users');
+                container.innerHTML = users.length
+                    ? users.map((u) => `
+                        <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                            <span class="text-slate-700">${esc(u.label)}</span>
+                            <button class="fd-remove-user text-xs text-red-600 hover:text-red-700 font-medium" data-id="${esc(u.id)}">Remove</button>
+                        </div>
+                    `).join('')
+                    : '<p class="text-slate-400 text-sm">No users have this flag yet.</p>';
+                container.querySelectorAll('.fd-remove-user').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        try {
+                            await api('/frost/admin/users/' + encodeURIComponent(btn.dataset.id) + '/flags/' + encodeURIComponent(currentFlagKey), { method: 'DELETE' });
+                            renderFlagUsers();
+                        } catch (err) { showError('Could not remove: ' + err.message); }
+                    });
+                });
+            } catch (err) { showError('Could not load assigned users: ' + err.message); }
+        }
+
+        async function searchUsersToAssign() {
+            const q = document.getElementById('fd-assign-input').value.trim();
+            const resultsEl = document.getElementById('fd-assign-results');
+            try {
+                const { users } = await api('/frost/admin/users?q=' + encodeURIComponent(q));
+                resultsEl.innerHTML = users.length
+                    ? users.map((u) => `
+                        <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                            <span class="text-slate-700">${esc(u.label)}</span>
+                            <button class="fd-assign-user text-xs text-lime-700 hover:text-lime-800 font-medium" data-id="${esc(u.id)}">Assign</button>
+                        </div>
+                    `).join('')
+                    : '<p class="text-slate-400 text-sm">No users found.</p>';
+                resultsEl.querySelectorAll('.fd-assign-user').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        try {
+                            await api('/frost/admin/users/' + encodeURIComponent(btn.dataset.id) + '/flags/' + encodeURIComponent(currentFlagKey), { method: 'PUT' });
+                            resultsEl.innerHTML = '';
+                            document.getElementById('fd-assign-input').value = '';
+                            renderFlagUsers();
+                        } catch (err) { showError('Could not assign: ' + err.message); }
+                    });
+                });
+            } catch (err) { showError('Search failed: ' + err.message); }
+        }
+        document.getElementById('fd-assign-search-btn').addEventListener('click', searchUsersToAssign);
+        document.getElementById('fd-assign-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchUsersToAssign(); });
 
         document.getElementById('new-flag-form').addEventListener('submit', async (e) => {
             e.preventDefault();
