@@ -20764,7 +20764,17 @@ var index_default = {
         return new Response("Not found", { status: 404 });
       }
     }
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+    if (url.pathname.endsWith(".js") || url.pathname.endsWith(".css")) {
+      const headers = new Headers(assetResponse.headers);
+      headers.set("Cache-Control", "no-cache");
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers
+      });
+    }
+    return assetResponse;
   }
 };
 export {

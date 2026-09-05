@@ -1,6 +1,6 @@
 # Cloudflare Pages headers config: https://developers.cloudflare.com/pages/configuration/headers/
 #
-# ── Security headers + cache control (all pages) ──────────────────
+# ── Security headers (all pages) ──────────────────────────────────
 # CSP allows 'unsafe-inline' for script-src/style-src because the app is built
 # entirely from inline <script> blocks and the Tailwind Play CDN (which injects
 # a <style> tag at runtime) — a nonce/hash-based CSP would need a build step
@@ -15,30 +15,26 @@
 # feature is currently disabled in the UI but not removed, so it's kept here
 # to avoid a silent CSP break whenever it's turned back on.
 #
-# Cache-Control lives in THIS block, not a separate `/*.js` / `/*.css` rule —
-# a previous version of this file used those, and they silently never took
-# effect: Cloudflare Pages' _headers path matching doesn't support extension
-# globs like `/*.js` (it doesn't error, it just never matches anything real).
-# `/*` is the only pattern confirmed to actually apply here, verified by
-# checking which headers show up on a live response — so this rule now
-# covers everything uniformly, HTML included. Without it, Cloudflare Pages'
-# own default (`public, max-age=14400, must-revalidate`, ~4h) caches static
-# JS/CSS per-hostname at the edge — since entotools.com and entotools.org are
-# two separate custom domains on the same deployment, each fills/expires that
-# cache independently, so right after a deploy one domain can keep serving a
-# stale APP_VERSION for up to 4 hours while the other already has the new
-# one. That's the version drift originally reported in issue #33, and this
-# `_headers` file existing at all was supposed to already have fixed it.
-#
-# `no-cache` (not `no-store`) still lets browsers/edge cache these files, but
-# forces a revalidation (conditional If-None-Match request) on every fetch —
-# an unchanged file gets a cheap 304, a changed one is served immediately, so
-# a deploy is visible everywhere on the next request instead of after a
-# multi-hour cache window.
+# NOTE: Cache-Control is deliberately NOT set here. Two things were tried and
+# both failed to actually take effect, verified against live response
+# headers each time:
+#   1. Separate `/*.js` / `/*.css` blocks — Cloudflare Pages' _headers path
+#      matching doesn't support extension globs like that; it doesn't error,
+#      it just silently never matches anything.
+#   2. Cache-Control inside this same `/*` block — this pattern IS confirmed
+#      to work (every other header here does reach .js/.css requests), but
+#      Cloudflare Pages overrides Cache-Control specifically with its own
+#      default asset policy (`max-age=14400`, ~4h) regardless.
+# The actual fix lives in src/index.js's final catch-all: the Worker rewrites
+# Cache-Control on the response itself after env.ASSETS.fetch() returns,
+# which isn't subject to whatever Pages does internally with this file. See
+# the comment there for why this matters (issue #33 — entotools.com and
+# entotools.org, as separate custom domains on the same deployment, cache
+# independently, so a stale edge cache on one could keep serving an old
+# APP_VERSION for hours after a deploy).
 /*
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=63072000; includeSubDomains
   Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()
   Referrer-Policy: strict-origin-when-cross-origin
-  Cache-Control: no-cache

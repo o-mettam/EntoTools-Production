@@ -1256,7 +1256,26 @@ export default {
       }
     }
 
-    // Everything else → static assets from public/
-    return env.ASSETS.fetch(request);
+    // Everything else → static assets from public/.
+    //
+    // Cache-Control is rewritten here for .js/.css rather than left to
+    // public/_headers: verified live that Cloudflare Pages' own default
+    // asset cache policy (`max-age=14400`, ~4h) wins over whatever _headers
+    // specifies for Cache-Control specifically, even from a rule pattern
+    // (`/*`) that's confirmed to work for every other header. Rewriting the
+    // response here, in application code, isn't subject to that — it's the
+    // one path guaranteed to actually take effect. This is what #33's fix
+    // was supposed to be from the start; the _headers version never worked.
+    const assetResponse = await env.ASSETS.fetch(request);
+    if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+      const headers = new Headers(assetResponse.headers);
+      headers.set('Cache-Control', 'no-cache');
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers,
+      });
+    }
+    return assetResponse;
   },
 };
