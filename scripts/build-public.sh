@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # build-public.sh
-# Copies HTML templates into public/ for Cloudflare Workers static assets.
-# Run: npm run build-public (or bash scripts/build-public.sh)
+# Copies HTML templates into public/ for Cloudflare Workers static assets,
+# and bundles src/index.js (now with npm dependencies — see #35) into
+# public/_worker.js via esbuild.
+# Run: npm install (first time only), then npm run build-public (or bash
+# scripts/build-public.sh)
 #
 # Every page served from public/ has a source in templates/. Assets that are NOT
 # generated here and are edited directly in public/ are:
@@ -59,8 +62,14 @@ cp "$ROOT/templates/404.html" "$ROOT/public/404.html"
 cp "$ROOT/templates/500.html" "$ROOT/public/500.html"
 cp "$ROOT/templates/503.html" "$ROOT/public/503.html"
 
-# Worker entry point for Cloudflare Pages advanced mode
-cp "$ROOT/src/index.js" "$ROOT/public/_worker.js"
+# Worker entry point for Cloudflare Pages advanced mode.
+# src/index.js now imports from node_modules (@simplewebauthn/server, #35), so
+# it's bundled with esbuild rather than copied verbatim like before.
+if [ ! -x "$ROOT/node_modules/.bin/esbuild" ]; then
+  echo "✗ esbuild not found — run 'npm install' first (see README 'Account system setup')." >&2
+  exit 1
+fi
+"$ROOT/node_modules/.bin/esbuild" "$ROOT/src/index.js" --bundle --format=esm --platform=browser --outfile="$ROOT/public/_worker.js"
 
 echo "✓ public/ directory built successfully."
 ls -lh "$ROOT/public/"

@@ -1,7 +1,35 @@
 name = 'entotools'
 compatibility_date = "2024-12-01"
 pages_build_output_dir = "./public"
+# @simplewebauthn/server (#35) is designed to be edge/Workers-safe, but its
+# dependency tree wasn't installed or bundle-tested in this change (see
+# README "Account system setup") — nodejs_compat is a no-op safety net if
+# something transitively expects a Node global (Buffer, etc.) that the
+# Workers runtime doesn't provide natively. Remove it if a real build proves
+# it's unnecessary.
+compatibility_flags = ["nodejs_compat"]
 
 [[kv_namespaces]]
 binding = "GEOCODE_CACHE"
 id = "f44e390b2fba41c78dc6e6fa2c487a9c"
+
+# Accounts (#35) / admin portal (#36) / feature flags (#37).
+# Binding is "DB" (not the "entotools_accounts" name wrangler suggested when
+# the database was created) — the binding name just has to match what
+# src/lib/db.js references (env.DB), it doesn't need to match wrangler's
+# auto-generated suggestion. Apply the schema once, in order:
+#   wrangler d1 execute entotools-accounts --file=migrations/0001_accounts.sql
+#   wrangler d1 execute entotools-accounts --file=migrations/0002_admin_audit.sql
+#   wrangler d1 execute entotools-accounts --file=migrations/0003_feature_flags.sql
+# (add --remote to each once verified against a local copy)
+[[d1_databases]]
+binding = "DB"
+database_name = "entotools-accounts"
+database_id = "6290f7de-5acf-44e8-ba0a-8e4caba3af82"
+
+# CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD gate the admin portal (#36) — set
+# these as Pages environment variables in the Cloudflare dashboard (Settings →
+# Environment variables) AFTER creating the Access application, rather than
+# here, since this file is committed to a public repo. See README "Admin
+# portal setup" for the exact steps (this is a dashboard-only action; it
+# cannot be scripted from this repo).

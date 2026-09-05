@@ -2,11 +2,28 @@
  * EntoTools Dashboard — Cloudflare Pages Worker (_worker.js)
  *
  * KV bindings required:
- *   GEOCODE_CACHE  – runtime cache for Nominatim geocode responses
+ *   GEOCODE_CACHE  – runtime cache for Nominatim geocode responses, also
+ *                    reused for short-lived WebAuthn challenges and
+ *                    admin-issued re-registration tokens (#35/#36)
+ * D1 binding required:
+ *   DB             – accounts/credentials/sessions/admin audit log/feature
+ *                    flags (#35, #36, #37) — see README "Account system setup"
  *
  * Station data loaded from public/stations.json via env.ASSETS
  * Static assets served by Cloudflare Pages from public/
+ *
+ * NOTE: this file now has npm dependencies (@simplewebauthn/server) and is no
+ * longer copied verbatim into public/_worker.js — scripts/build-public.sh
+ * bundles it with esbuild instead. Run `npm install` before `npm run
+ * build-public` for the first time.
  */
+import {
+  handleRegisterOptions, handleRegisterVerify,
+  handleLoginOptions, handleLoginVerify,
+  handleSession, handleLogout,
+} from './routes/account.js';
+import { handleMyFlags } from './routes/flags.js';
+import { handleAdminRoute } from './routes/admin.js';
 
 const NCEI_BASE_URL = 'https://www.ncei.noaa.gov/access/services/data/v1';
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
@@ -62,6 +79,8 @@ const SEARCH_RATE_LIMIT = 60;              // max searches per window per IP
 const SEARCH_RATE_WINDOW_SECONDS = 3600;   // 1 hour
 const STATUS_RATE_LIMIT = 120;             // max status probes per window per IP
 const STATUS_RATE_WINDOW_SECONDS = 3600;   // 1 hour
+const ACCOUNT_RATE_LIMIT = 20;             // max register/login attempts per window per IP
+const ACCOUNT_RATE_WINDOW_SECONDS = 3600;  // 1 hour
 
 // ── Country → data-provider mapping ──────────────────────────────
 // Each key is a 2-letter ISO country code (lowercase).
@@ -902,6 +921,10 @@ function searchRateLimited(env, ip) {
   return rateLimited(env, ip, 'search-rl', SEARCH_RATE_LIMIT, SEARCH_RATE_WINDOW_SECONDS);
 }
 
+function accountRateLimited(env, ip) {
+  return rateLimited(env, ip, 'acct-rl', ACCOUNT_RATE_LIMIT, ACCOUNT_RATE_WINDOW_SECONDS);
+}
+
 function statusRateLimited(env, ip) {
   return rateLimited(env, ip, 'status-rl', STATUS_RATE_LIMIT, STATUS_RATE_WINDOW_SECONDS);
 }
@@ -1170,8 +1193,67 @@ export default {
       }
     }
 
+    // ── Accounts (#35) ────────────────────────────────────────────
+    // Same origin-allowlist treatment as /api/feedback — the Origin header is
+    // spoofable by non-browser clients, so this is defence-in-depth only; the
+    // per-IP rate limit below is what actually caps automated abuse.
+    const ACCOUNT_ROUTES = new Set([
+      '/api/account/register/options', '/api/account/register/verify',
+      '/api/account/login/options', '/api/account/login/verify',
+      '/api/account/logout', '/api/account/session',
+    ]);
+    if (ACCOUNT_ROUTES.has(url.pathname)) {
+      const allowedOrigins = allowedOriginsFor(url);
+      const origin = request.headers.get('Origin');
+      if (!allowedOrigins.has(origin)) {
+        console.warn('[Worker:account] rejected disallowed/missing origin:', origin);
+        return jsonResponse({ error: 'Forbidden.' }, 403);
+      }
+      const isCeremonyStart = url.pathname.endsWith('/options');
+      if (isCeremonyStart) {
+        const ip = request.headers.get('CF-Connecting-IP') || '';
+        if (await accountRateLimited(env, ip)) {
+          console.warn('[Worker:account] rate limit exceeded for IP:', maskIp(ip));
+          return jsonResponse({ error: 'Too many attempts. Please try again later.' }, 429);
+        }
+      }
+      try {
+        if (url.pathname === '/api/account/register/options' && request.method === 'POST') return await handleRegisterOptions(request, env);
+        if (url.pathname === '/api/account/register/verify' && request.method === 'POST') return await handleRegisterVerify(request, env);
+        if (url.pathname === '/api/account/login/options' && request.method === 'POST') return await handleLoginOptions(request, env);
+        if (url.pathname === '/api/account/login/verify' && request.method === 'POST') return await handleLoginVerify(request, env);
+        if (url.pathname === '/api/account/logout' && request.method === 'POST') return await handleLogout(request, env);
+        if (url.pathname === '/api/account/session' && request.method === 'GET') return await handleSession(request, env);
+      } catch (err) {
+        console.error('[Worker:account] unexpected error:', err.message, err.stack);
+        return jsonResponse({ error: 'An unexpected server error occurred. Please try again.' }, 500);
+      }
+    }
+
+    // #37 — a logged-in user reading their own feature flags.
+    if (url.pathname === '/api/account/flags' && request.method === 'GET') {
+      try {
+        return await handleMyFlags(request, env);
+      } catch (err) {
+        console.error('[Worker:flags] unexpected error:', err.message, err.stack);
+        return jsonResponse({ flags: [] }); // fail safe — never block the page over this
+      }
+    }
+
     if (url.pathname.startsWith('/api/')) {
       return jsonResponse({ error: 'Not found' }, 404);
+    }
+
+    // ── Admin portal (#36) ──────────────────────────────────────────
+    // Not linked anywhere; unauthorized requests get a plain 404, not a
+    // login wall, so probing this path looks identical to a typo'd URL.
+    if (url.pathname === '/frost/admin' || url.pathname.startsWith('/frost/admin/')) {
+      try {
+        return await handleAdminRoute(request, env, url.pathname);
+      } catch (err) {
+        console.error('[Worker:admin] unexpected error:', err.message, err.stack);
+        return new Response('Not found', { status: 404 }); // never leak errors on this path either
+      }
     }
 
     // Everything else → static assets from public/
