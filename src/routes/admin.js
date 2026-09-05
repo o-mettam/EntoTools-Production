@@ -27,8 +27,13 @@ export async function handleAdminRoute(request, env, path) {
   // The admin GUI itself (templates/admin.html → public/frost/admin/index.html)
   // — served as a static asset once Access + the JWT check above have both
   // passed, exactly like any other page on the site, just gated first.
-  if (path === '/frost/admin' && method === 'GET') {
-    return env.ASSETS.fetch(request);
+  // Explicit index.html path rather than relying on directory-index
+  // resolution — that implicit resolution only appeared to apply to the
+  // top-level fallthrough in src/index.js, not a fetch made from in here.
+  if ((path === '/frost/admin' || path === '/frost/admin/') && method === 'GET') {
+    const assetUrl = new URL(request.url);
+    assetUrl.pathname = '/frost/admin/index.html';
+    return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
   }
 
   // Machine-readable equivalent, used by the GUI's own init() to confirm the

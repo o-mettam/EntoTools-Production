@@ -19142,8 +19142,10 @@ async function handleAdminRoute(request, env, path) {
   const adminEmail = identity.email;
   const url = new URL(request.url);
   const method = request.method;
-  if (path === "/frost/admin" && method === "GET") {
-    return env.ASSETS.fetch(request);
+  if ((path === "/frost/admin" || path === "/frost/admin/") && method === "GET") {
+    const assetUrl = new URL(request.url);
+    assetUrl.pathname = "/frost/admin/index.html";
+    return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
   }
   if (path === "/frost/admin/status" && method === "GET") {
     return jsonResponse3({
