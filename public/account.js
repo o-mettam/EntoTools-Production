@@ -1,0 +1,292 @@
+/**
+ * EntoTools — Account system client (issue #35, phases 2-4).
+ * Passkey sign-up/login/logout, self-service passkey management, and
+ * feature-flag population (window.EntoFlags) used to gate other features —
+ * see public/sync/provider-gdrive.js, which only loads/activates Google
+ * Drive Sync for users with the "gdrive-sync" flag (#37).
+ *
+ * Loads @simplewebauthn/browser from jsDelivr (pinned + SRI, same pattern
+ * already used for Chart.js in degree_day_calculator.html) — public/*.js
+ * files aren't bundled the way src/index.js is via esbuild, so this can't be
+ * an npm import here; the actual WebAuthn ceremony (navigator.credentials.
+ * create/get plus base64url encoding of the binary fields) is handled by
+ * that library rather than hand-rolled in this file.
+ */
+(function () {
+  'use strict';
+
+  // Fails safe: empty until we know better, and reset to empty on any error
+  // below — a bug here can only ever hide a gated feature, never show one.
+  window.EntoFlags = new Set();
+
+  var state = { user: null, credentials: [] };
+
+  function loadScript(src, integrity) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src;
+      if (integrity) { s.integrity = integrity; s.crossOrigin = 'anonymous'; }
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  var webauthnBrowserReady = loadScript(
+    'https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js',
+    'sha384-06g944bCm8L/wG3i0Q8PdB8jccE4GdpHdNCa1tJY8eMqoP3GIHGJdL6B5lD5OMGD'
+  ).catch(function (e) { console.error('[EntoAccount] failed to load WebAuthn browser library:', e); });
+
+  async function api(path, options) {
+    const resp = await fetch(path, options);
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* non-JSON or empty body */ }
+    if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+    return data;
+  }
+
+  function esc(str) {
+    var el = document.createElement('span');
+    el.textContent = str == null ? '' : str;
+    return el.innerHTML;
+  }
+
+  // ── Session + flags ──────────────────────────────────────────────
+  async function refreshFlags() {
+    try {
+      const { flags } = await api('/api/account/flags');
+      window.EntoFlags = new Set(flags);
+    } catch (e) {
+      window.EntoFlags = new Set();
+    }
+    document.dispatchEvent(new CustomEvent('entoflags:updated'));
+  }
+
+  async function refreshCredentials() {
+    if (!state.user) { state.credentials = []; return; }
+    try {
+      const { credentials } = await api('/api/account/credentials');
+      state.credentials = credentials;
+    } catch (e) {
+      state.credentials = [];
+    }
+  }
+
+  async function checkSession() {
+    try {
+      const { user } = await api('/api/account/session');
+      state.user = user;
+    } catch (e) {
+      state.user = null;
+    }
+    if (state.user) {
+      await Promise.all([refreshFlags(), refreshCredentials()]);
+    } else {
+      window.EntoFlags = new Set();
+      state.credentials = [];
+      document.dispatchEvent(new CustomEvent('entoflags:updated'));
+    }
+    renderSettingsSection();
+    document.dispatchEvent(new CustomEvent('entoaccount:ready', { detail: { user: state.user } }));
+  }
+
+  // ── WebAuthn ceremonies ──────────────────────────────────────────
+  async function signUp(label) {
+    await webauthnBrowserReady;
+    const options = await api('/api/account/register/options', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }),
+    });
+    const attResp = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options });
+    await api('/api/account/register/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attResp),
+    });
+    await checkSession();
+  }
+
+  async function addPasskey() {
+    await webauthnBrowserReady;
+    const options = await api('/api/account/register/options', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+    });
+    const attResp = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options });
+    await api('/api/account/register/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attResp),
+    });
+    await refreshCredentials();
+    renderSettingsSection();
+  }
+
+  async function logIn() {
+    await webauthnBrowserReady;
+    const options = await api('/api/account/login/options', { method: 'POST' });
+    const authResp = await SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: options });
+    await api('/api/account/login/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(authResp),
+    });
+    await checkSession();
+  }
+
+  async function logOut() {
+    try { await api('/api/account/logout', { method: 'POST' }); } catch (e) { /* log out locally regardless */ }
+    await checkSession();
+  }
+
+  async function removeCredential(credentialId) {
+    await api('/api/account/credentials/' + encodeURIComponent(credentialId), { method: 'DELETE' });
+    await refreshCredentials();
+    renderSettingsSection();
+  }
+
+  // ── Modal (sign up / log in / manage passkeys) ────────────────────
+  var modalInjected = false;
+  function injectModal() {
+    if (modalInjected) return;
+    modalInjected = true;
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = `
+      <div id="ento-account-overlay" class="fixed inset-0 z-[9999] bg-black/40 hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 id="ento-account-title" class="text-lg font-semibold text-slate-800">Account</h2>
+            <button id="ento-account-close" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+          </div>
+          <div id="ento-account-body"></div>
+          <p id="ento-account-status" class="text-sm mt-3"></p>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrapper);
+    document.getElementById('ento-account-close').addEventListener('click', closeModal);
+    document.getElementById('ento-account-overlay').addEventListener('click', function (e) {
+      if (e.target.id === 'ento-account-overlay') closeModal();
+    });
+  }
+
+  function openModal() {
+    injectModal();
+    document.getElementById('ento-account-overlay').classList.remove('hidden');
+    document.getElementById('ento-account-overlay').classList.add('flex');
+    renderModalBody();
+  }
+  function closeModal() {
+    var overlay = document.getElementById('ento-account-overlay');
+    if (overlay) { overlay.classList.add('hidden'); overlay.classList.remove('flex'); }
+  }
+  function setStatus(msg, isError) {
+    var el = document.getElementById('ento-account-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'text-sm mt-3 ' + (isError ? 'text-red-600' : 'text-lime-700');
+  }
+
+  function renderModalBody() {
+    var body = document.getElementById('ento-account-body');
+    var title = document.getElementById('ento-account-title');
+    if (state.user) {
+      title.textContent = 'Manage account';
+      body.innerHTML = `
+        <p class="text-sm text-slate-600 mb-3">Signed in as <span class="font-medium">${esc(state.user.label)}</span></p>
+        <h3 class="text-sm font-semibold text-slate-700 mb-2">Passkeys</h3>
+        <div id="ento-account-credentials" class="space-y-1.5 mb-3"></div>
+        <button id="ento-account-add-passkey" class="w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition mb-2">Add a passkey on this device</button>
+        <button id="ento-account-logout" class="w-full px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium transition">Log out</button>
+      `;
+      renderCredentialList();
+      document.getElementById('ento-account-add-passkey').addEventListener('click', async function () {
+        setStatus('Follow your browser/device prompt…');
+        try { await addPasskey(); setStatus('Passkey added.'); renderCredentialList(); }
+        catch (err) { setStatus(err.message, true); }
+      });
+      document.getElementById('ento-account-logout').addEventListener('click', async function () {
+        await logOut();
+        closeModal();
+      });
+    } else {
+      title.textContent = 'Sign in';
+      body.innerHTML = `
+        <label class="block text-xs font-medium text-slate-500 mb-1">Email or name (just to recognize your account — not a login secret)</label>
+        <input id="ento-account-label" type="text" placeholder="you@example.com"
+               class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none mb-3">
+        <button id="ento-account-signup" class="w-full px-3 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition mb-2">Create account with a passkey</button>
+        <div class="text-center text-xs text-slate-400 my-2">— or —</div>
+        <button id="ento-account-login" class="w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition">Log in with an existing passkey</button>
+      `;
+      document.getElementById('ento-account-signup').addEventListener('click', async function () {
+        var label = document.getElementById('ento-account-label').value.trim();
+        if (!label) { setStatus('Enter an email or name first.', true); return; }
+        setStatus('Follow your browser/device prompt…');
+        try { await signUp(label); setStatus('Account created.'); renderModalBody(); }
+        catch (err) { setStatus(err.message, true); }
+      });
+      document.getElementById('ento-account-login').addEventListener('click', async function () {
+        setStatus('Follow your browser/device prompt…');
+        try { await logIn(); setStatus('Signed in.'); renderModalBody(); }
+        catch (err) { setStatus(err.message, true); }
+      });
+    }
+  }
+
+  function renderCredentialList() {
+    var el = document.getElementById('ento-account-credentials');
+    if (!el) return;
+    el.innerHTML = state.credentials.length
+      ? state.credentials.map(function (c) {
+          return `
+            <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
+              <span class="text-slate-700">${esc(c.device_label || 'Unnamed device')}</span>
+              <button class="ento-remove-cred text-xs text-red-600 hover:text-red-700 font-medium" data-id="${esc(c.credential_id)}">Remove</button>
+            </div>
+          `;
+        }).join('')
+      : '<p class="text-slate-400 text-sm">No passkeys found.</p>';
+    el.querySelectorAll('.ento-remove-cred').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
+        if (!confirm('Remove this passkey? You will no longer be able to log in with that device.')) return;
+        try { await removeCredential(btn.dataset.id); renderCredentialList(); }
+        catch (err) { setStatus(err.message, true); }
+      });
+    });
+  }
+
+  // ── Settings panel entry point ────────────────────────────────────
+  // Same auto-inject convention theme.js already uses for the version line
+  // (id="settings-panel" is shared markup across every page) — appended
+  // before that version line so the final order reads: account section,
+  // then "Version X.Y.Z" as the last line.
+  function renderSettingsSection() {
+    var panel = document.getElementById('settings-panel');
+    if (!panel) return;
+    var section = document.getElementById('ento-account-section');
+    if (!section) {
+      section = document.createElement('div');
+      section.id = 'ento-account-section';
+      var versionLine = document.getElementById('app-version-info');
+      panel.insertBefore(section, versionLine || null);
+    }
+    if (state.user) {
+      section.innerHTML = `
+        <hr class="my-2 border-slate-100">
+        <button id="ento-account-open" class="w-full text-left py-2 text-sm text-slate-700 hover:text-slate-900 transition">
+          Signed in as <span class="font-medium">${esc(state.user.label)}</span> — manage
+        </button>
+      `;
+    } else {
+      section.innerHTML = `
+        <hr class="my-2 border-slate-100">
+        <button id="ento-account-open" class="w-full text-left py-2 text-sm text-lime-700 hover:text-lime-800 font-medium transition">Sign in / Create account</button>
+      `;
+    }
+    document.getElementById('ento-account-open').addEventListener('click', openModal);
+  }
+
+  window.EntoAccount = {
+    isLoggedIn: function () { return !!state.user; },
+    getUser: function () { return state.user; },
+    login: logIn,
+    logout: logOut,
+    open: openModal,
+    refresh: checkSession,
+  };
+
+  checkSession();
+})();

@@ -21,6 +21,8 @@ import {
   handleRegisterOptions, handleRegisterVerify,
   handleLoginOptions, handleLoginVerify,
   handleSession, handleLogout,
+  handleListCredentials, handleDeleteCredential,
+  handleGetCollection, handlePutCollection,
 } from './routes/account.js';
 import { handleMyFlags } from './routes/flags.js';
 import { handleAdminRoute } from './routes/admin.js';
@@ -1201,8 +1203,10 @@ export default {
       '/api/account/register/options', '/api/account/register/verify',
       '/api/account/login/options', '/api/account/login/verify',
       '/api/account/logout', '/api/account/session',
+      '/api/account/credentials', '/api/account/collection',
     ]);
-    if (ACCOUNT_ROUTES.has(url.pathname)) {
+    const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
+    if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
       const allowedOrigins = allowedOriginsFor(url);
       const origin = request.headers.get('Origin');
       if (!allowedOrigins.has(origin)) {
@@ -1224,6 +1228,10 @@ export default {
         if (url.pathname === '/api/account/login/verify' && request.method === 'POST') return await handleLoginVerify(request, env);
         if (url.pathname === '/api/account/logout' && request.method === 'POST') return await handleLogout(request, env);
         if (url.pathname === '/api/account/session' && request.method === 'GET') return await handleSession(request, env);
+        if (url.pathname === '/api/account/credentials' && request.method === 'GET') return await handleListCredentials(request, env);
+        if (credentialDeleteMatch && request.method === 'DELETE') return await handleDeleteCredential(request, env, credentialDeleteMatch[1]);
+        if (url.pathname === '/api/account/collection' && request.method === 'GET') return await handleGetCollection(request, env);
+        if (url.pathname === '/api/account/collection' && request.method === 'PUT') return await handlePutCollection(request, env);
       } catch (err) {
         console.error('[Worker:account] unexpected error:', err.message, err.stack);
         return jsonResponse({ error: 'An unexpected server error occurred. Please try again.' }, 500);

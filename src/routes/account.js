@@ -76,7 +76,17 @@ export async function handleRegisterOptions(request, env) {
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
 
   let userId, label, isNewUser;
-  if (body.reregisterToken) {
+  const session = await requireSession(request, env);
+  if (session) {
+    // Already logged in — this is "add another passkey to my account," not a
+    // new signup. Ignores any label/reregisterToken in the body; the target
+    // account is always the session's own, never client-supplied.
+    const existing = await db.getUser(env, session.user_id);
+    if (!existing) return jsonResponse({ error: 'Account not found.' }, 404);
+    userId = existing.id;
+    label = existing.label;
+    isNewUser = false;
+  } else if (body.reregisterToken) {
     const existingUserId = await env.GEOCODE_CACHE.get(`reregister-token:${body.reregisterToken}`);
     if (!existingUserId) {
       return jsonResponse({ error: 'This re-registration link has expired or already been used.' }, 400);
@@ -226,6 +236,55 @@ export async function handleLogout(request, env) {
   const sessionId = getSessionIdFromCookie(request);
   if (sessionId) await db.deleteSession(env, sessionId);
   return jsonResponse({ success: true }, 200, { 'Set-Cookie': clearSessionCookie() });
+}
+
+// ── Self-service credential management (#35 phase 2) ─────────────
+export async function handleListCredentials(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  const credentials = await db.getOwnCredentials(env, session.user_id);
+  return jsonResponse({ credentials });
+}
+
+export async function handleDeleteCredential(request, env, credentialId) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  const count = await db.countUserCredentials(env, session.user_id);
+  if (count <= 1) {
+    return jsonResponse({ error: 'This is your only passkey — add another before removing it, or you’ll be locked out.' }, 400);
+  }
+  await db.deleteOwnCredential(env, session.user_id, credentialId);
+  return jsonResponse({ success: true });
+}
+
+// ── Account-backed collection sync (#35 phase 3) ─────────────────
+// Mirrors EntoDriveProvider's pull()/push() shape exactly (see
+// public/sync/provider-gdrive.js) so public/sync/provider-account.js can
+// implement the same StorageProvider interface with no server-side merge
+// logic — merging stays entirely client-side in EntoStore.mergeEnvelopes().
+export async function handleGetCollection(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  const row = await db.getCollection(env, session.user_id);
+  if (!row) return jsonResponse({ json: null, meta: {} });
+  let parsed = null;
+  try { parsed = JSON.parse(row.envelope); }
+  catch (e) { console.warn('[Worker:account] stored collection envelope failed to parse:', e.message); }
+  return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } });
+}
+
+export async function handlePutCollection(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  let snapshot;
+  try { snapshot = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
+  if (!snapshot || !Array.isArray(snapshot.entries)) {
+    return jsonResponse({ error: 'Malformed snapshot.' }, 400);
+  }
+  const revision = Number(snapshot.revision) || 1;
+  await db.saveCollection(env, session.user_id, JSON.stringify(snapshot), revision);
+  const updatedAt = new Date().toISOString();
+  return jsonResponse({ modifiedTime: updatedAt, revision });
 }
 
 export { REREGISTER_TOKEN_TTL_SECONDS };

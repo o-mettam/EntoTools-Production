@@ -147,3 +147,41 @@ export async function disableUserFlag(env, userId, flagKey) {
   await env.DB.prepare('DELETE FROM user_feature_flags WHERE user_id = ? AND flag_key = ?')
     .bind(userId, flagKey).run();
 }
+
+// ── Collections (#35 phase 3) ───────────────────────────────────
+export async function getCollection(env, userId) {
+  return env.DB.prepare('SELECT * FROM collections WHERE user_id = ?').bind(userId).first();
+}
+
+export async function saveCollection(env, userId, envelopeJson, revision) {
+  await env.DB.prepare(
+    'INSERT INTO collections (user_id, envelope, revision, updated_at) VALUES (?, ?, ?, ?) ' +
+    'ON CONFLICT(user_id) DO UPDATE SET envelope = excluded.envelope, revision = excluded.revision, updated_at = excluded.updated_at'
+  ).bind(userId, envelopeJson, revision, nowIso()).run();
+}
+
+// ── Self-service credential management (#35 phase 2) ────────────
+// Distinct from the admin equivalents in this file — these are always
+// scoped to the calling user's own userId (enforced by the route handler
+// deriving userId from the session, never from client input).
+export async function getOwnCredentials(env, userId) {
+  const { results } = await env.DB.prepare(
+    'SELECT credential_id, device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at DESC'
+  ).bind(userId).all();
+  return results;
+}
+
+export async function deleteOwnCredential(env, userId, credentialId) {
+  await env.DB.prepare('DELETE FROM credentials WHERE user_id = ? AND credential_id = ?')
+    .bind(userId, credentialId).run();
+}
+
+export async function countUserCredentials(env, userId) {
+  const row = await env.DB.prepare('SELECT COUNT(*) as n FROM credentials WHERE user_id = ?').bind(userId).first();
+  return row ? row.n : 0;
+}
+
+export async function renameCredential(env, userId, credentialId, deviceLabel) {
+  await env.DB.prepare('UPDATE credentials SET device_label = ? WHERE user_id = ? AND credential_id = ?')
+    .bind(deviceLabel, userId, credentialId).run();
+}

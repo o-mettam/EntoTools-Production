@@ -14,9 +14,10 @@
     <link rel="stylesheet" href="/theme.css">
     <script src="/sync/config.js?v=2"></script>
     <script src="/sync/sync-core.js?v=2"></script>
-    <!-- Google Drive sync hidden in production (re-enable by uncommenting the two lines below) -->
-    <!-- <script src="/sync/provider-gdrive.js?v=2"></script> -->
-    <!-- <script src="https://accounts.google.com/gsi/client" async defer></script> -->
+    <script src="/sync/provider-account.js?v=1"></script>
+    <!-- Google Drive sync (provider-gdrive.js + the GIS script) is loaded
+         dynamically, only for a logged-in user with the "gdrive-sync" flag —
+         see the entoaccount:ready listener further down this file (#37). -->
     <style>
         /* Page-specific rules — everything shared lives in /theme.css */
         .dark .detail-panel { background-color: #1a2030 !important; border-color: #3e4a64 !important; }
@@ -709,14 +710,15 @@
         console.log('[CollectionDB] page initialized');
         renderTable();
 
-        /* ── Cloud Backup (Google Drive) ── */
-        (function initCloudBackup() {
+        /* ── Cloud Backup (Google Drive) — gated behind the "gdrive-sync"
+           feature flag (#37). Neither the Google Identity Services script nor
+           provider-gdrive.js is loaded at all — not just hidden — unless the
+           logged-in user has that flag; see the bootstrap block below. */
+        function initCloudBackup() {
             const btn = document.getElementById('drive-btn');
             const statusEl = document.getElementById('drive-status');
             const syncBtn = document.getElementById('drive-sync-now');
             if (!btn) return;
-            // No provider loaded (Drive sync is disabled in production): make the
-            // control inert rather than leaving it wired to an undefined handler.
             if (!window.EntoSync || !window.EntoDriveProvider) {
                 btn.disabled = true;
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -766,8 +768,47 @@
             };
             render();
             EntoSync.tryResume().then((ok) => { if (ok) render(); });
-        })();
+        }
+
+        function loadScriptOnce(src) {
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.onload = resolve;
+                s.onerror = reject;
+                document.head.appendChild(s);
+            });
+        }
+
+        // account.js fires this once it knows whether the visitor is logged
+        // in and, if so, which flags they have (empty/false for a logged-out
+        // visitor — feature flags are inherently account-scoped).
+        document.addEventListener('entoaccount:ready', (e) => {
+            // A logged-in user automatically syncs via their EntoTools
+            // account — no separate "Connect" step, the session itself is
+            // the connection (#35 phase 3).
+            if (e.detail && e.detail.user && window.EntoSync && window.EntoAccountProvider) {
+                EntoSync.setProvider(EntoAccountProvider);
+                // tryResume() already runs a fullSync() internally once
+                // connected — no separate call needed here.
+                EntoSync.tryResume().catch(() => { /* surfaced via EntoStore events elsewhere */ });
+            }
+
+            // Google Drive stays an optional, additional backend, and only
+            // past this flag check do its scripts even get added to the
+            // page at all — an unflagged user never downloads them, not
+            // just never sees the UI for them (#37).
+            if (!window.EntoFlags || !window.EntoFlags.has('gdrive-sync')) return;
+            document.getElementById('cloud-backup').classList.remove('hidden');
+            Promise.all([
+                loadScriptOnce('https://accounts.google.com/gsi/client'),
+                loadScriptOnce('/sync/provider-gdrive.js?v=2'),
+            ]).then(initCloudBackup).catch((err) => {
+                console.error('[CollectionDatabase] failed to load Drive sync scripts:', err);
+            });
+        });
     </script>
+    <script src="/account.js"></script>
     <script src="/feedback.js"></script>
 </body>
 </html>

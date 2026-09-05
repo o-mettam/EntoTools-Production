@@ -18875,6 +18875,27 @@ async function enableUserFlag(env, userId, flagKey) {
 async function disableUserFlag(env, userId, flagKey) {
   await env.DB.prepare("DELETE FROM user_feature_flags WHERE user_id = ? AND flag_key = ?").bind(userId, flagKey).run();
 }
+async function getCollection(env, userId) {
+  return env.DB.prepare("SELECT * FROM collections WHERE user_id = ?").bind(userId).first();
+}
+async function saveCollection(env, userId, envelopeJson, revision) {
+  await env.DB.prepare(
+    "INSERT INTO collections (user_id, envelope, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET envelope = excluded.envelope, revision = excluded.revision, updated_at = excluded.updated_at"
+  ).bind(userId, envelopeJson, revision, nowIso()).run();
+}
+async function getOwnCredentials(env, userId) {
+  const { results } = await env.DB.prepare(
+    "SELECT credential_id, device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at DESC"
+  ).bind(userId).all();
+  return results;
+}
+async function deleteOwnCredential(env, userId, credentialId) {
+  await env.DB.prepare("DELETE FROM credentials WHERE user_id = ? AND credential_id = ?").bind(userId, credentialId).run();
+}
+async function countUserCredentials(env, userId) {
+  const row = await env.DB.prepare("SELECT COUNT(*) as n FROM credentials WHERE user_id = ?").bind(userId).first();
+  return row ? row.n : 0;
+}
 
 // src/routes/account.js
 var CHALLENGE_TTL_SECONDS = 300;
@@ -18925,7 +18946,14 @@ async function handleRegisterOptions(request, env) {
     return jsonResponse({ error: "Invalid request body." }, 400);
   }
   let userId, label, isNewUser;
-  if (body.reregisterToken) {
+  const session = await requireSession(request, env);
+  if (session) {
+    const existing = await getUser(env, session.user_id);
+    if (!existing) return jsonResponse({ error: "Account not found." }, 404);
+    userId = existing.id;
+    label = existing.label;
+    isNewUser = false;
+  } else if (body.reregisterToken) {
     const existingUserId = await env.GEOCODE_CACHE.get(`reregister-token:${body.reregisterToken}`);
     if (!existingUserId) {
       return jsonResponse({ error: "This re-registration link has expired or already been used." }, 400);
@@ -19058,6 +19086,52 @@ async function handleLogout(request, env) {
   const sessionId = getSessionIdFromCookie(request);
   if (sessionId) await deleteSession(env, sessionId);
   return jsonResponse({ success: true }, 200, { "Set-Cookie": clearSessionCookie() });
+}
+async function handleListCredentials(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  const credentials = await getOwnCredentials(env, session.user_id);
+  return jsonResponse({ credentials });
+}
+async function handleDeleteCredential(request, env, credentialId) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  const count = await countUserCredentials(env, session.user_id);
+  if (count <= 1) {
+    return jsonResponse({ error: "This is your only passkey \u2014 add another before removing it, or you\u2019ll be locked out." }, 400);
+  }
+  await deleteOwnCredential(env, session.user_id, credentialId);
+  return jsonResponse({ success: true });
+}
+async function handleGetCollection(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  const row = await getCollection(env, session.user_id);
+  if (!row) return jsonResponse({ json: null, meta: {} });
+  let parsed = null;
+  try {
+    parsed = JSON.parse(row.envelope);
+  } catch (e) {
+    console.warn("[Worker:account] stored collection envelope failed to parse:", e.message);
+  }
+  return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } });
+}
+async function handlePutCollection(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  let snapshot;
+  try {
+    snapshot = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "Invalid request body." }, 400);
+  }
+  if (!snapshot || !Array.isArray(snapshot.entries)) {
+    return jsonResponse({ error: "Malformed snapshot." }, 400);
+  }
+  const revision = Number(snapshot.revision) || 1;
+  await saveCollection(env, session.user_id, JSON.stringify(snapshot), revision);
+  const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  return jsonResponse({ modifiedTime: updatedAt, revision });
 }
 
 // src/routes/flags.js
@@ -20716,9 +20790,12 @@ var index_default = {
       "/api/account/login/options",
       "/api/account/login/verify",
       "/api/account/logout",
-      "/api/account/session"
+      "/api/account/session",
+      "/api/account/credentials",
+      "/api/account/collection"
     ]);
-    if (ACCOUNT_ROUTES.has(url.pathname)) {
+    const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
+    if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
       const allowedOrigins = allowedOriginsFor(url);
       const origin = request.headers.get("Origin");
       if (!allowedOrigins.has(origin)) {
@@ -20740,6 +20817,10 @@ var index_default = {
         if (url.pathname === "/api/account/login/verify" && request.method === "POST") return await handleLoginVerify(request, env);
         if (url.pathname === "/api/account/logout" && request.method === "POST") return await handleLogout(request, env);
         if (url.pathname === "/api/account/session" && request.method === "GET") return await handleSession(request, env);
+        if (url.pathname === "/api/account/credentials" && request.method === "GET") return await handleListCredentials(request, env);
+        if (credentialDeleteMatch && request.method === "DELETE") return await handleDeleteCredential(request, env, credentialDeleteMatch[1]);
+        if (url.pathname === "/api/account/collection" && request.method === "GET") return await handleGetCollection(request, env);
+        if (url.pathname === "/api/account/collection" && request.method === "PUT") return await handlePutCollection(request, env);
       } catch (err) {
         console.error("[Worker:account] unexpected error:", err.message, err.stack);
         return jsonResponse4({ error: "An unexpected server error occurred. Please try again." }, 500);
