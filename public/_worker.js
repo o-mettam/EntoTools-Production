@@ -18851,6 +18851,10 @@ async function defineFlag(env, { key, description }) {
     "INSERT INTO feature_flags (flag_key, description, created_at) VALUES (?, ?, ?) ON CONFLICT(flag_key) DO UPDATE SET description = excluded.description"
   ).bind(key, description || null, nowIso()).run();
 }
+async function deleteFlag(env, flagKey) {
+  await env.DB.prepare("DELETE FROM user_feature_flags WHERE flag_key = ?").bind(flagKey).run();
+  await env.DB.prepare("DELETE FROM feature_flags WHERE flag_key = ?").bind(flagKey).run();
+}
 async function listFlagUsers(env, flagKey) {
   const { results } = await env.DB.prepare(
     "SELECT u.id, u.label, f.enabled_at FROM user_feature_flags f JOIN users u ON u.id = f.user_id WHERE f.flag_key = ? ORDER BY f.enabled_at DESC"
@@ -19150,41 +19154,53 @@ var admin_default = `<!DOCTYPE html>
     <script src="/ento-gdd.js"><\/script>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        <header class="flex items-center justify-between mb-6">
-            <h1 class="text-xl font-semibold text-slate-800">EntoTools Admin</h1>
-            <div class="relative">
-                <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                    </svg>
-                </button>
-                <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
-                    <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
-                    <div class="flex items-center justify-between py-2">
-                        <div class="flex items-center gap-2">
-                            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
-                            </svg>
-                            <span class="text-sm text-slate-700">Dark Mode</span>
+    <!-- Nav + Header follow the same two-tier layout as every public page
+         (see templates/entotools.html) rather than a single flat title bar. -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 relative z-40">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6">
+            <div class="flex items-center justify-between h-14 sm:h-16">
+                <span class="text-lime-600 font-semibold text-lg">EntoTools Admin</span>
+                <div class="relative">
+                    <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                        </svg>
+                    </button>
+                    <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
+                        <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
+                        <div class="flex items-center justify-between py-2">
+                            <div class="flex items-center gap-2">
+                                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+                                </svg>
+                                <span class="text-sm text-slate-700">Dark Mode</span>
+                            </div>
+                            <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                            </button>
                         </div>
-                        <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
-                            <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
-                        </button>
+                        <hr class="my-2 border-slate-100">
+                        <p class="text-xs text-slate-500">Signed in as <span id="admin-email" class="font-medium">\u2026</span></p>
+                        <!-- theme.js's renderVersionInfo() auto-appends "Version X.Y.Z" here -->
                     </div>
-                    <hr class="my-2 border-slate-100">
-                    <p class="text-xs text-slate-500">Signed in as <span id="admin-email" class="font-medium">\u2026</span></p>
-                    <!-- theme.js's renderVersionInfo() auto-appends "Version X.Y.Z" here -->
                 </div>
             </div>
-        </header>
+        </div>
+    </nav>
 
-        <nav class="flex gap-1 border-b border-slate-200 mb-6" role="tablist">
-            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-lime-600 text-lime-700" data-tab="users">Users</button>
-            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-tab="flags">Feature Flags</button>
-            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-tab="audit">Audit Log</button>
-        </nav>
+    <header class="bg-slate-700 text-white shadow-lg">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">Admin Portal</h1>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div class="inline-flex flex-wrap rounded-lg bg-slate-100 p-1 mb-4 text-sm font-medium items-center gap-1" role="tablist">
+            <button class="tab-btn px-3 sm:px-4 py-2 rounded-md transition tab-active" data-tab="users">Users</button>
+            <button class="tab-btn px-3 sm:px-4 py-2 rounded-md transition" data-tab="flags">Feature Flags</button>
+            <button class="tab-btn px-3 sm:px-4 py-2 rounded-md transition" data-tab="audit">Audit Log</button>
+        </div>
 
         <p id="global-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
 
@@ -19254,7 +19270,10 @@ var admin_default = `<!DOCTYPE html>
                         <h2 id="fd-key" class="text-base font-semibold text-slate-800 font-mono"></h2>
                         <p id="fd-description" class="text-xs text-slate-400 mt-0.5"></p>
                     </div>
-                    <button id="fd-close" class="text-slate-400 hover:text-slate-600 text-sm">Close</button>
+                    <div class="flex items-center gap-3">
+                        <button id="fd-delete" class="text-xs text-red-600 hover:text-red-700 font-medium">Delete flag</button>
+                        <button id="fd-close" class="text-slate-400 hover:text-slate-600 text-sm">Close</button>
+                    </div>
                 </div>
 
                 <h3 class="text-sm font-semibold text-slate-700 mb-2">Assigned users</h3>
@@ -19301,7 +19320,7 @@ var admin_default = `<!DOCTYPE html>
                 </table>
             </div>
         </div>
-    </div>
+    </main>
 
     <script>
         // \u2500\u2500 Fetch helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
@@ -19341,15 +19360,19 @@ var admin_default = `<!DOCTYPE html>
             try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
         }
 
+        // Audit log entries specifically show the timezone abbreviation
+        // (e.g. "EDT") \u2014 everything is stored in UTC, and admin actions
+        // taken across time zones are otherwise ambiguous at a glance.
+        function fmtDateTz(iso) {
+            if (!iso) return '\u2014';
+            try { return new Date(iso).toLocaleString(undefined, { timeZoneName: 'short' }); } catch (e) { return iso; }
+        }
+
         // \u2500\u2500 Tabs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         document.querySelectorAll('.tab-btn').forEach((btn) => {
             btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach((b) => {
-                    b.classList.remove('border-lime-600', 'text-lime-700');
-                    b.classList.add('border-transparent', 'text-slate-500');
-                });
-                btn.classList.add('border-lime-600', 'text-lime-700');
-                btn.classList.remove('border-transparent', 'text-slate-500');
+                document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('tab-active'));
+                btn.classList.add('tab-active');
                 document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
                 document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
                 if (btn.dataset.tab === 'flags') loadFlags();
@@ -19535,6 +19558,18 @@ var admin_default = `<!DOCTYPE html>
             currentFlagKey = null;
         });
 
+        document.getElementById('fd-delete').addEventListener('click', async () => {
+            if (!currentFlagKey) return;
+            if (!confirm('Delete the flag "' + currentFlagKey + '"? This also removes it from every user currently assigned it.')) return;
+            try {
+                await api('/frost/admin/flags/' + encodeURIComponent(currentFlagKey), { method: 'DELETE' });
+                document.getElementById('flag-detail').classList.add('hidden');
+                currentFlagKey = null;
+                allFlags = []; // force a refresh next time a user is opened
+                loadFlags();
+            } catch (err) { showError('Could not delete flag: ' + err.message); }
+        });
+
         async function renderFlagUsers() {
             const container = document.getElementById('fd-users');
             try {
@@ -19612,7 +19647,7 @@ var admin_default = `<!DOCTYPE html>
                 tbody.innerHTML = log.length
                     ? log.map((entry) => \`
                         <tr class="border-t border-slate-100">
-                            <td class="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">\${fmtDate(entry.created_at)}</td>
+                            <td class="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">\${fmtDateTz(entry.created_at)}</td>
                             <td class="px-4 py-2 text-slate-700">\${esc(entry.admin_identity)}</td>
                             <td class="px-4 py-2 font-mono text-xs">\${esc(entry.action)}</td>
                             <td class="px-4 py-2 text-xs text-slate-500">\${esc(entry.target_user_id || '\u2014')}</td>
@@ -19729,6 +19764,13 @@ async function handleAdminRoute(request, env, path) {
   m = path.match(/^\/frost\/admin\/flags\/([^/]+)\/users$/);
   if (m && method === "GET") {
     return jsonResponse3({ users: await listFlagUsers(env, m[1]) });
+  }
+  m = path.match(/^\/frost\/admin\/flags\/([^/]+)$/);
+  if (m && method === "DELETE") {
+    const key = m[1];
+    await deleteFlag(env, key);
+    await writeAuditLog(env, { adminIdentity: adminEmail, action: "delete_flag", detail: key });
+    return jsonResponse3({ success: true });
   }
   m = path.match(/^\/frost\/admin\/users\/([^/]+)\/flags\/([^/]+)$/);
   if (m) {

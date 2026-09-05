@@ -130,6 +130,14 @@ export async function handleAdminRoute(request, env, path) {
     return jsonResponse({ users: await db.listFlagUsers(env, m[1]) });
   }
 
+  m = path.match(/^\/frost\/admin\/flags\/([^/]+)$/);
+  if (m && method === 'DELETE') {
+    const key = m[1];
+    await db.deleteFlag(env, key);
+    await db.writeAuditLog(env, { adminIdentity: adminEmail, action: 'delete_flag', detail: key });
+    return jsonResponse({ success: true });
+  }
+
   m = path.match(/^\/frost\/admin\/users\/([^/]+)\/flags\/([^/]+)$/);
   if (m) {
     const [, userId, flagKey] = m;

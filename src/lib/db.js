@@ -112,6 +112,15 @@ export async function defineFlag(env, { key, description }) {
   ).bind(key, description || null, nowIso()).run();
 }
 
+// D1 doesn't enforce the FK from user_feature_flags.flag_key by default, so
+// deleting a flag without also clearing its assignments would leave orphaned
+// rows — which would silently reappear "assigned" if a flag with the same
+// key were ever created again later. Delete assignments first.
+export async function deleteFlag(env, flagKey) {
+  await env.DB.prepare('DELETE FROM user_feature_flags WHERE flag_key = ?').bind(flagKey).run();
+  await env.DB.prepare('DELETE FROM feature_flags WHERE flag_key = ?').bind(flagKey).run();
+}
+
 export async function listFlagUsers(env, flagKey) {
   const { results } = await env.DB.prepare(
     'SELECT u.id, u.label, f.enabled_at FROM user_feature_flags f ' +
