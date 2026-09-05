@@ -240,11 +240,19 @@ export async function handleLoginVerify(request, env) {
 }
 
 // ── Session / logout ────────────────────────────────────────────
+// Cache-Control: no-store on every handler below that reflects session
+// state — Safari has been observed reusing a cached GET response for these
+// exact URLs across a login that changed the session cookie, leaving the
+// client stuck showing the pre-login state even though the server session
+// is valid (issues #38/#39). The client now also sends cache: 'no-store',
+// but this is cheap defense in depth against any other cache in the path.
+const NO_STORE = { 'Cache-Control': 'no-store' };
+
 export async function handleSession(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse({ user: null }, 401);
+  if (!session) return jsonResponse({ user: null }, 401, NO_STORE);
   const user = await db.getUser(env, session.user_id);
-  return jsonResponse({ user: user ? { id: user.id, label: user.label } : null });
+  return jsonResponse({ user: user ? { id: user.id, label: user.label } : null }, 200, NO_STORE);
 }
 
 export async function handleLogout(request, env) {
@@ -257,9 +265,9 @@ export async function handleLogout(request, env) {
 // ── Self-service credential management (#35 phase 2) ─────────────
 export async function handleListCredentials(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401, NO_STORE);
   const credentials = await db.getOwnCredentials(env, session.user_id);
-  return jsonResponse({ credentials });
+  return jsonResponse({ credentials }, 200, NO_STORE);
 }
 
 export async function handleDeleteCredential(request, env, credentialId) {

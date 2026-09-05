@@ -51,8 +51,15 @@
     'sha384-06g944bCm8L/wG3i0Q8PdB8jccE4GdpHdNCa1tJY8eMqoP3GIHGJdL6B5lD5OMGD'
   ).catch(function (e) { console.error('[EntoAccount] failed to load WebAuthn browser library:', e); });
 
+  // cache: 'no-store' matters here specifically for Safari, which — unlike
+  // Chrome/Firefox — will reuse a cached GET response for an identical URL
+  // even across a login that changed the session cookie. Without this, a
+  // checkSession() call right after logIn()/signUp() can silently be served
+  // the stale pre-login "{user: null}" response instead of hitting the
+  // network, so the UI never updates even though the server-side session is
+  // fine (issues #38/#39).
   async function api(path, options) {
-    const resp = await fetch(path, options);
+    const resp = await fetch(path, Object.assign({ cache: 'no-store' }, options));
     let data = {};
     try { data = await resp.json(); } catch (e) { /* non-JSON or empty body */ }
     if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));

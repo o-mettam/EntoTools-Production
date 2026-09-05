@@ -19091,11 +19091,12 @@ async function handleLoginVerify(request, env) {
   await createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
   return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookie(sessionId, SESSION_TTL_SECONDS, url) });
 }
+var NO_STORE = { "Cache-Control": "no-store" };
 async function handleSession(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse({ user: null }, 401);
+  if (!session) return jsonResponse({ user: null }, 401, NO_STORE);
   const user = await getUser(env, session.user_id);
-  return jsonResponse({ user: user ? { id: user.id, label: user.label } : null });
+  return jsonResponse({ user: user ? { id: user.id, label: user.label } : null }, 200, NO_STORE);
 }
 async function handleLogout(request, env) {
   const url = new URL(request.url);
@@ -19105,9 +19106,9 @@ async function handleLogout(request, env) {
 }
 async function handleListCredentials(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401, NO_STORE);
   const credentials = await getOwnCredentials(env, session.user_id);
-  return jsonResponse({ credentials });
+  return jsonResponse({ credentials }, 200, NO_STORE);
 }
 async function handleDeleteCredential(request, env, credentialId) {
   const session = await requireSession(request, env);
@@ -19152,7 +19153,7 @@ async function handlePutCollection(request, env) {
 
 // src/routes/flags.js
 function jsonResponse2(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
 async function handleMyFlags(request, env) {
   const session = await requireSession(request, env);

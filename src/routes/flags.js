@@ -8,7 +8,11 @@ import * as db from '../lib/db.js';
 import { requireSession } from './account.js';
 
 function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+  // no-store: this reflects session state, and Safari has been observed
+  // reusing a cached GET response here across a login that changed the
+  // session cookie (issues #38/#39) — see the matching note in
+  // src/routes/account.js.
+  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 }
 
 // A flag being off is always the safe default (#37 security checklist) — any
