@@ -117,13 +117,14 @@ export async function deleteAllUserCredentials(env, userId) {
 }
 
 // ── Sessions ────────────────────────────────────────────────────
-// A fresh login counts as a recent re-authentication (reauth_at = now), so
-// adding a second passkey right after signing up doesn't prompt twice.
+// reauth_at starts NULL: logging in never counts as a step-up. Every
+// sensitive action needs its own fresh assertion (see consumeReauth in
+// src/routes/account.js), which is cleared again the moment it's used.
 export async function createSession(env, { id, userId, expiresAt, credentialId }) {
   const now = nowIso();
   await env.DB.prepare(
-    'INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, credential_id, reauth_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, userId, now, expiresAt, now, credentialId || null, now).run();
+    'INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, credential_id, reauth_at) VALUES (?, ?, ?, ?, ?, ?, NULL)'
+  ).bind(id, userId, now, expiresAt, now, credentialId || null).run();
 }
 
 export async function getSession(env, id) {
@@ -136,6 +137,16 @@ export async function touchSession(env, id) {
 
 export async function markSessionReauth(env, id) {
   await env.DB.prepare('UPDATE sessions SET reauth_at = ? WHERE id = ?').bind(nowIso(), id).run();
+}
+
+// Single-use: clears the step-up mark so one assertion covers exactly one
+// sensitive action. Returns the number of rows changed (1 only if the mark
+// was still present and fresh), which makes the consume atomic in D1 —
+// two concurrent requests can't both spend the same assertion.
+export async function consumeSessionReauth(env, id, notBeforeIso) {
+  const res = await env.DB.prepare('UPDATE sessions SET reauth_at = NULL WHERE id = ? AND reauth_at IS NOT NULL AND reauth_at >= ?')
+    .bind(id, notBeforeIso).run();
+  return res && res.meta ? (res.meta.changes || 0) : 0;
 }
 
 // The user's own view of their sessions. Never returns session ids — the id

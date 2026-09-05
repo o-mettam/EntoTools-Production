@@ -50,14 +50,19 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // same check used in public/feed
 // above is the absolute lifetime; a session unused for SESSION_IDLE_SECONDS
 // is rejected before that. last_seen_at is refreshed at most once per
 // SESSION_TOUCH_SECONDS so a busy page doesn't write D1 on every request.
-// Sensitive actions need a passkey assertion within REAUTH_WINDOW_SECONDS.
+// Every sensitive action (add / rename / remove a passkey, delete the
+// account) needs its OWN fresh passkey assertion, regardless of how recently
+// the user logged in or last confirmed: the step-up mark set by
+// reauth/verify is single-use and must be at most REAUTH_WINDOW_SECONDS old
+// (just long enough to cover the round-trip from the prompt to the action).
 const SESSION_IDLE_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_TOUCH_SECONDS = 60 * 60;
-const REAUTH_WINDOW_SECONDS = 5 * 60;
+const REAUTH_WINDOW_SECONDS = 2 * 60;
 
-function recentlyReauthed(session) {
-  const t = session && session.reauth_at ? Date.parse(session.reauth_at) : 0;
-  return t && Date.now() - t < REAUTH_WINDOW_SECONDS * 1000;
+// Spends the session's step-up mark. True exactly once per assertion.
+async function consumeReauth(env, session) {
+  const notBefore = new Date(Date.now() - REAUTH_WINDOW_SECONDS * 1000).toISOString();
+  return (await db.consumeSessionReauth(env, session.id, notBefore)) > 0;
 }
 const reauthRequired = () => jsonResponse({ error: 'reauth_required' }, 403);
 
@@ -170,8 +175,9 @@ export async function handleRegisterOptions(request, env) {
     // new signup. Ignores any label/reregisterToken in the body; the target
     // account is always the session's own, never client-supplied. Adding a
     // passkey is how a hijacked session would make itself permanent, so it
-    // needs a fresh assertion first (R3).
-    if (!recentlyReauthed(session)) return reauthRequired();
+    // needs its own fresh assertion first (R3); consumed here, before the
+    // registration challenge is issued.
+    if (!(await consumeReauth(env, session))) return reauthRequired();
     const existing = await db.getUser(env, session.user_id);
     if (!existing) return jsonResponse({ error: 'Account not found.' }, 404);
     userId = existing.id;
@@ -391,7 +397,7 @@ export async function handleListCredentials(request, env) {
 export async function handleDeleteCredential(request, env, credentialId) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
-  if (!recentlyReauthed(session)) return reauthRequired();
+  if (!(await consumeReauth(env, session))) return reauthRequired();
   const count = await db.countUserCredentials(env, session.user_id);
   if (count <= 1) {
     return jsonResponse({ error: 'This is your only passkey — add another before removing it, or you’ll be locked out.' }, 400);
@@ -404,9 +410,9 @@ export async function handleDeleteCredential(request, env, credentialId) {
 }
 
 // ── Step-up re-authentication (R3) ───────────────────────────────
-// A fresh passkey assertion on the CURRENT session, required within
-// REAUTH_WINDOW_SECONDS before anything that could lock the user out or
-// entrench an attacker: removing/adding a passkey, deleting the account.
+// A fresh passkey assertion on the CURRENT session. Required, once per
+// action, before anything that could lock the user out or entrench an
+// attacker: adding, renaming or removing a passkey, deleting the account.
 export async function handleReauthOptions(request, env) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
@@ -503,7 +509,7 @@ export async function handleExport(request, env) {
 export async function handleDeleteAccount(request, env) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
-  if (!recentlyReauthed(session)) return reauthRequired();
+  if (!(await consumeReauth(env, session))) return reauthRequired();
   const url = new URL(request.url);
   await db.deleteUser(env, session.user_id); // passkeys, sessions, flags, collection, then the user row
   console.log('[Worker:account] account deleted by its owner');
@@ -518,6 +524,7 @@ const DEVICE_LABEL_MAX = 60;
 export async function handleRenameCredential(request, env, credentialId) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  if (!(await consumeReauth(env, session))) return reauthRequired(); // any passkey edit needs the passkey
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
   const label = typeof body.device_label === 'string'

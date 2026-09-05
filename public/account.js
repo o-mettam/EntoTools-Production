@@ -162,11 +162,11 @@
   }
 
   // ── Step-up re-authentication ──────────────────────────────────
-  // Sensitive actions (add/remove a passkey, delete the account) are refused
-  // by the server with { error: 'reauth_required' } unless this session has
-  // completed a fresh passkey assertion in the last few minutes. withReauth()
-  // runs the action, and on that exact error performs the assertion and
-  // retries once — so a freshly signed-in user is never prompted twice.
+  // Every sensitive action (add / rename / remove a passkey, delete the
+  // account) is refused by the server with { error: 'reauth_required' }
+  // unless it is preceded by its own fresh passkey assertion — one prompt per
+  // action, no grace period after login. withReauth() runs the action, and
+  // on that exact error performs the assertion and retries once.
   async function reauthenticate() {
     console.log('[EntoAccount] reauth: requesting options');
     await webauthnBrowserReady;
@@ -251,8 +251,10 @@
   }
 
   async function renameCredential(credentialId, name) {
-    await api('/api/account/credentials/' + encodeURIComponent(credentialId), {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_label: name }),
+    await withReauth(function () {
+      return api('/api/account/credentials/' + encodeURIComponent(credentialId), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_label: name }),
+      });
     });
     await Promise.all([refreshCredentials(), refreshSessions()]);
   }
@@ -356,7 +358,8 @@
       body.innerHTML = `
         <p class="text-sm text-slate-600 mb-3">Signed in as <span class="font-medium">${esc(state.user.label)}</span></p>
 
-        <h3 class="text-sm font-semibold text-slate-700 mb-2">Passkeys</h3>
+        <h3 class="text-sm font-semibold text-slate-700 mb-1">Passkeys</h3>
+        <p class="text-xs text-slate-500 mb-2">Any change to your passkeys, and deleting your account, asks you to confirm with a passkey first.</p>
         <div id="ento-account-credentials" class="space-y-1.5 mb-2"></div>
         <button id="ento-account-add-passkey" class="w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition mb-4">Add a passkey on this device</button>
 

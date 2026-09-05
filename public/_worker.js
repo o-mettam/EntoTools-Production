@@ -19193,8 +19193,8 @@ async function deleteAllUserCredentials(env, userId) {
 async function createSession(env, { id, userId, expiresAt, credentialId }) {
   const now = nowIso();
   await env.DB.prepare(
-    "INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, credential_id, reauth_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-  ).bind(id, userId, now, expiresAt, now, credentialId || null, now).run();
+    "INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, credential_id, reauth_at) VALUES (?, ?, ?, ?, ?, ?, NULL)"
+  ).bind(id, userId, now, expiresAt, now, credentialId || null).run();
 }
 async function getSession(env, id) {
   return env.DB.prepare("SELECT * FROM sessions WHERE id = ?").bind(id).first();
@@ -19204,6 +19204,10 @@ async function touchSession(env, id) {
 }
 async function markSessionReauth(env, id) {
   await env.DB.prepare("UPDATE sessions SET reauth_at = ? WHERE id = ?").bind(nowIso(), id).run();
+}
+async function consumeSessionReauth(env, id, notBeforeIso) {
+  const res = await env.DB.prepare("UPDATE sessions SET reauth_at = NULL WHERE id = ? AND reauth_at IS NOT NULL AND reauth_at >= ?").bind(id, notBeforeIso).run();
+  return res && res.meta ? res.meta.changes || 0 : 0;
 }
 async function listOwnSessions(env, userId) {
   const { results } = await env.DB.prepare(
@@ -19369,10 +19373,10 @@ var REREGISTER_TOKEN_TTL_SECONDS = 15 * 60;
 var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 var SESSION_IDLE_SECONDS = 60 * 60 * 24 * 7;
 var SESSION_TOUCH_SECONDS = 60 * 60;
-var REAUTH_WINDOW_SECONDS = 5 * 60;
-function recentlyReauthed(session) {
-  const t = session && session.reauth_at ? Date.parse(session.reauth_at) : 0;
-  return t && Date.now() - t < REAUTH_WINDOW_SECONDS * 1e3;
+var REAUTH_WINDOW_SECONDS = 2 * 60;
+async function consumeReauth(env, session) {
+  const notBefore = new Date(Date.now() - REAUTH_WINDOW_SECONDS * 1e3).toISOString();
+  return await consumeSessionReauth(env, session.id, notBefore) > 0;
 }
 var reauthRequired = () => jsonResponse({ error: "reauth_required" }, 403);
 function jsonResponse(data, status = 200, extraHeaders = {}) {
@@ -19453,7 +19457,7 @@ async function handleRegisterOptions(request, env) {
   let userId, label, isNewUser, viaToken = false;
   const session = await requireSession(request, env);
   if (session) {
-    if (!recentlyReauthed(session)) return reauthRequired();
+    if (!await consumeReauth(env, session)) return reauthRequired();
     const existing = await getUser(env, session.user_id);
     if (!existing) return jsonResponse({ error: "Account not found." }, 404);
     userId = existing.id;
@@ -19635,7 +19639,7 @@ async function handleListCredentials(request, env) {
 async function handleDeleteCredential(request, env, credentialId) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: "Not logged in." }, 401);
-  if (!recentlyReauthed(session)) return reauthRequired();
+  if (!await consumeReauth(env, session)) return reauthRequired();
   const count = await countUserCredentials(env, session.user_id);
   if (count <= 1) {
     return jsonResponse({ error: "This is your only passkey \u2014 add another before removing it, or you\u2019ll be locked out." }, 400);
@@ -19739,7 +19743,7 @@ async function handleExport(request, env) {
 async function handleDeleteAccount(request, env) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: "Not logged in." }, 401);
-  if (!recentlyReauthed(session)) return reauthRequired();
+  if (!await consumeReauth(env, session)) return reauthRequired();
   const url = new URL(request.url);
   await deleteUser(env, session.user_id);
   console.log("[Worker:account] account deleted by its owner");
@@ -19749,6 +19753,7 @@ var DEVICE_LABEL_MAX = 60;
 async function handleRenameCredential(request, env, credentialId) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  if (!await consumeReauth(env, session)) return reauthRequired();
   let body;
   try {
     body = await request.json();
@@ -19886,7 +19891,7 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-09-05T04:04:55.372Z",
+  generated: "2026-09-05T04:19:10.350Z",
   tailwindHash: "ddfd1b16b20b",
   routes: {
     "/404.html": [],
