@@ -172,6 +172,11 @@
     var overlay = document.getElementById('ento-account-overlay');
     if (overlay) { overlay.classList.add('hidden'); overlay.classList.remove('flex'); }
   }
+  // A brief pause (not an instant vanish) so the "Account created."/"Signed
+  // in." confirmation is actually visible before the window disappears.
+  function closeModalSoon() {
+    setTimeout(closeModal, 700);
+  }
   function setStatus(msg, isError) {
     var el = document.getElementById('ento-account-status');
     if (!el) return;
@@ -215,12 +220,12 @@
         var label = document.getElementById('ento-account-label').value.trim();
         if (!label) { setStatus('Enter an email or name first.', true); return; }
         setStatus('Follow your browser/device prompt…');
-        try { await signUp(label); setStatus('Account created.'); renderModalBody(); }
+        try { await signUp(label); setStatus('Account created.'); closeModalSoon(); }
         catch (err) { setStatus(err.message, true); }
       });
       document.getElementById('ento-account-login').addEventListener('click', async function () {
         setStatus('Follow your browser/device prompt…');
-        try { await logIn(); setStatus('Signed in.'); renderModalBody(); }
+        try { await logIn(); setStatus('Signed in.'); closeModalSoon(); }
         catch (err) { setStatus(err.message, true); }
       });
     }
@@ -266,17 +271,24 @@
     if (state.user) {
       section.innerHTML = `
         <hr class="my-2 border-slate-100">
-        <button id="ento-account-open" class="w-full text-left py-2 text-sm text-slate-700 hover:text-slate-900 transition">
-          Signed in as <span class="font-medium">${esc(state.user.label)}</span> — manage
-        </button>
+        <p class="text-xs text-slate-500 pt-1">Signed in as</p>
+        <p class="text-sm font-medium text-slate-800 truncate">${esc(state.user.label)}</p>
+        <div class="flex items-center justify-between mt-2 pb-1">
+          <button id="ento-account-manage" class="text-xs text-slate-500 hover:text-slate-700 underline">Manage passkeys</button>
+          <button id="ento-account-signout" class="text-xs text-red-600 hover:text-red-700 font-medium">Sign out</button>
+        </div>
       `;
+      document.getElementById('ento-account-manage').addEventListener('click', openModal);
+      document.getElementById('ento-account-signout').addEventListener('click', async function () {
+        await logOut();
+      });
     } else {
       section.innerHTML = `
         <hr class="my-2 border-slate-100">
         <button id="ento-account-open" class="w-full text-left py-2 text-sm text-lime-700 hover:text-lime-800 font-medium transition">Sign in / Create account</button>
       `;
+      document.getElementById('ento-account-open').addEventListener('click', openModal);
     }
-    document.getElementById('ento-account-open').addEventListener('click', openModal);
   }
 
   window.EntoAccount = {
