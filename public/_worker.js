@@ -34,6 +34,10 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const ALLOWED_ORIGINS = new Set([
   'https://entotools.com',
   'https://www.entotools.com',
+  // Second custom domain on the same Pages deployment (see issue #33) — also
+  // live and publicly reachable, so it needs the same allowance as .com.
+  'https://entotools.org',
+  'https://www.entotools.org',
   // Cloudflare Pages' default *.pages.dev domain stays live and publicly
   // reachable alongside the custom domain — visitors landing there (bookmarks,
   // shared links, before DNS propagates) were getting 403'd on feedback.

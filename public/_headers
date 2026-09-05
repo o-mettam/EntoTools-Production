@@ -1,0 +1,22 @@
+# Cloudflare Pages headers config: https://developers.cloudflare.com/pages/configuration/headers/
+#
+# Without this file, Cloudflare Pages applies its own default edge cache to
+# static JS/CSS (observed: `Cache-Control: public, max-age=14400, must-revalidate`,
+# ~4 hours). That cache is keyed per-hostname, so entotools.com and
+# entotools.org — two separate custom domains on this same Pages deployment —
+# each fill and expire their edge cache independently. Right after a deploy,
+# whichever domain still has an unexpired cached copy of theme.js keeps
+# serving the OLD APP_VERSION for up to 4 hours, while the other domain (cache
+# already expired) picks up the new version immediately. That's the version
+# drift reported in issue #33.
+#
+# `no-cache` (not `no-store`) still lets browsers/edge cache these files, but
+# forces a revalidation (conditional If-None-Match request) on every fetch —
+# an unchanged file gets a cheap 304, a changed one is served immediately, so
+# a deploy is visible everywhere on the next request instead of after a
+# multi-hour cache window.
+/*.js
+  Cache-Control: no-cache
+
+/*.css
+  Cache-Control: no-cache
