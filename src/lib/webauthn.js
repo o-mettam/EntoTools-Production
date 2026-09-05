@@ -3,14 +3,17 @@
  *
  * A passkey's RP ID is bound to the exact domain it was registered under —
  * this is a WebAuthn spec constraint, not a config choice (see issue #35,
- * "Open decision #1"). entotools.com is the canonical account domain; a
- * credential registered there cannot be used to log in on entotools.org.
- * Both apex and www resolve under RP ID "entotools.com" since both are valid
- * origins for that RP ID.
+ * "Open decision #1"). entotools.org is the canonical account domain:
+ * entotools.com/www.entotools.com now 301-redirect every path to the bare
+ * https://entotools.org/ root (verified live — not just the homepage, every
+ * path), so nobody ever actually loads a page with the browser at .com
+ * anymore. A credential registered under RP ID "entotools.org" cannot be
+ * used to log in on .com, but that's moot given .com never renders a page to
+ * register or log in from in the first place.
  *
  * Local dev is a genuine WebAuthn exception (the spec allows http://localhost
  * for testing), so it gets its own RP ID rather than trying to force
- * "entotools.com" to work over plain HTTP.
+ * "entotools.org" to work over plain HTTP.
  */
 export function rpConfigFor(url) {
   const host = url.hostname;
@@ -18,8 +21,8 @@ export function rpConfigFor(url) {
     return { rpID: 'localhost', origin: 'http://localhost:8788' };
   }
   return {
-    rpID: 'entotools.com',
-    origin: ['https://entotools.com', 'https://www.entotools.com'],
+    rpID: 'entotools.org',
+    origin: ['https://entotools.org', 'https://www.entotools.org'],
   };
 }
 

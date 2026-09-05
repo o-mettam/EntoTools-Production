@@ -24,6 +24,31 @@ export async function handleAdminRoute(request, env, path) {
   const url = new URL(request.url);
   const method = request.method;
 
+  // Confirms the Access → JWT-verification chain actually worked, since
+  // there's no admin frontend yet (#36 is backend-only, same phasing as
+  // #35) — without this, a successful Access login just bounces back to a
+  // bare "Not found" with nothing to distinguish "you're not authorized"
+  // from "you're in, there's just no UI here yet."
+  if (path === '/frost/admin' && method === 'GET') {
+    return jsonResponse({
+      ok: true,
+      admin: adminEmail,
+      routes: [
+        'GET    /frost/admin/users?q=',
+        'GET    /frost/admin/users/:id',
+        'DELETE /frost/admin/users/:id/credentials',
+        'DELETE /frost/admin/users/:id/sessions',
+        'POST   /frost/admin/users/:id/reregister-token',
+        'GET    /frost/admin/audit-log',
+        'GET    /frost/admin/flags',
+        'POST   /frost/admin/flags',
+        'GET    /frost/admin/flags/:key/users',
+        'PUT    /frost/admin/users/:id/flags/:key',
+        'DELETE /frost/admin/users/:id/flags/:key',
+      ],
+    });
+  }
+
   // ── #36: user lookup + passkey/session reset ──────────────────
   if (path === '/frost/admin/users' && method === 'GET') {
     const users = await db.searchUsers(env, url.searchParams.get('q') || '');

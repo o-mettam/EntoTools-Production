@@ -37,7 +37,9 @@ the new routes until step 1 runs.
 
 3. **Create a Cloudflare Access application for the admin portal (#36).**
    In the Cloudflare Zero Trust dashboard: Access → Applications → Add an
-   application, path `entotools.com/frost/admin*`, with a policy scoped to
+   application, path `entotools.org/frost/admin*` — entotools.org, not .com;
+   .com now redirects every path to the bare entotools.org root, so it's
+   entotools.org that actually needs to be gated — with a policy scoped to
    your own email only. Free for up to 50 users.
 
 4. **Set two Pages environment variables** (dashboard → this Pages project →

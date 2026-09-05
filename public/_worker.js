@@ -18750,8 +18750,8 @@ function rpConfigFor(url) {
     return { rpID: "localhost", origin: "http://localhost:8788" };
   }
   return {
-    rpID: "entotools.com",
-    origin: ["https://entotools.com", "https://www.entotools.com"]
+    rpID: "entotools.org",
+    origin: ["https://entotools.org", "https://www.entotools.org"]
   };
 }
 function decodeClientDataChallenge(credential) {
@@ -19142,6 +19142,25 @@ async function handleAdminRoute(request, env, path) {
   const adminEmail = identity.email;
   const url = new URL(request.url);
   const method = request.method;
+  if (path === "/frost/admin" && method === "GET") {
+    return jsonResponse3({
+      ok: true,
+      admin: adminEmail,
+      routes: [
+        "GET    /frost/admin/users?q=",
+        "GET    /frost/admin/users/:id",
+        "DELETE /frost/admin/users/:id/credentials",
+        "DELETE /frost/admin/users/:id/sessions",
+        "POST   /frost/admin/users/:id/reregister-token",
+        "GET    /frost/admin/audit-log",
+        "GET    /frost/admin/flags",
+        "POST   /frost/admin/flags",
+        "GET    /frost/admin/flags/:key/users",
+        "PUT    /frost/admin/users/:id/flags/:key",
+        "DELETE /frost/admin/users/:id/flags/:key"
+      ]
+    });
+  }
   if (path === "/frost/admin/users" && method === "GET") {
     const users = await searchUsers(env, url.searchParams.get("q") || "");
     return jsonResponse3({ users });
