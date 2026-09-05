@@ -19128,9 +19128,35 @@ async function getUserDetail(env, userId) {
     "SELECT credential_id, device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at DESC"
   ).bind(userId).all();
   const { results: sessions } = await env.DB.prepare(
-    "SELECT id, created_at, expires_at FROM sessions WHERE user_id = ? ORDER BY created_at DESC"
+    "SELECT s.id, s.created_at, s.expires_at, s.last_seen_at, c.device_label FROM sessions s LEFT JOIN credentials c ON c.credential_id = s.credential_id WHERE s.user_id = ? ORDER BY s.created_at DESC"
   ).bind(userId).all();
   return { user, credentials, sessions };
+}
+async function exportUserData(env, userId) {
+  const user = await getUser(env, userId);
+  if (!user) return null;
+  const { results: credentials } = await env.DB.prepare(
+    "SELECT device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at"
+  ).bind(userId).all();
+  const { results: flags } = await env.DB.prepare(
+    "SELECT flag_key, enabled_at FROM user_feature_flags WHERE user_id = ?"
+  ).bind(userId).all();
+  const collectionRow = await getCollection(env, userId);
+  let collection = null;
+  if (collectionRow) {
+    try {
+      collection = JSON.parse(collectionRow.envelope);
+    } catch (e) {
+      collection = { unparseable: true };
+    }
+  }
+  return {
+    account: { id: user.id, email: user.label, created_at: user.created_at },
+    passkeys: credentials,
+    feature_flags: flags,
+    collection,
+    collection_updated_at: collectionRow ? collectionRow.updated_at : null
+  };
 }
 async function deleteUser(env, userId) {
   await env.DB.batch([
@@ -19161,11 +19187,32 @@ async function updateCredentialCounter(env, credentialId, newCounter) {
 async function deleteAllUserCredentials(env, userId) {
   await env.DB.prepare("DELETE FROM credentials WHERE user_id = ?").bind(userId).run();
 }
-async function createSession(env, { id, userId, expiresAt }) {
-  await env.DB.prepare("INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)").bind(id, userId, nowIso(), expiresAt).run();
+async function createSession(env, { id, userId, expiresAt, credentialId }) {
+  const now = nowIso();
+  await env.DB.prepare(
+    "INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, credential_id, reauth_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, userId, now, expiresAt, now, credentialId || null, now).run();
 }
 async function getSession(env, id) {
   return env.DB.prepare("SELECT * FROM sessions WHERE id = ?").bind(id).first();
+}
+async function touchSession(env, id) {
+  await env.DB.prepare("UPDATE sessions SET last_seen_at = ? WHERE id = ?").bind(nowIso(), id).run();
+}
+async function markSessionReauth(env, id) {
+  await env.DB.prepare("UPDATE sessions SET reauth_at = ? WHERE id = ?").bind(nowIso(), id).run();
+}
+async function listOwnSessions(env, userId) {
+  const { results } = await env.DB.prepare(
+    "SELECT s.id, s.created_at, s.last_seen_at, s.expires_at, c.device_label FROM sessions s LEFT JOIN credentials c ON c.credential_id = s.credential_id WHERE s.user_id = ? AND s.expires_at > ? ORDER BY COALESCE(s.last_seen_at, s.created_at) DESC"
+  ).bind(userId, nowIso()).all();
+  return results;
+}
+async function deleteOtherSessions(env, userId, keepId) {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?").bind(userId, keepId).run();
+}
+async function deleteSessionsForCredential(env, userId, credentialId, keepId) {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND credential_id = ? AND id != ?").bind(userId, credentialId, keepId).run();
 }
 async function deleteSession(env, id) {
   await env.DB.prepare("DELETE FROM sessions WHERE id = ?").bind(id).run();
@@ -19251,6 +19298,14 @@ var CHALLENGE_TTL_SECONDS = 300;
 var SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 var REREGISTER_TOKEN_TTL_SECONDS = 15 * 60;
 var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+var SESSION_IDLE_SECONDS = 60 * 60 * 24 * 7;
+var SESSION_TOUCH_SECONDS = 60 * 60;
+var REAUTH_WINDOW_SECONDS = 5 * 60;
+function recentlyReauthed(session) {
+  const t = session && session.reauth_at ? Date.parse(session.reauth_at) : 0;
+  return t && Date.now() - t < REAUTH_WINDOW_SECONDS * 1e3;
+}
+var reauthRequired = () => jsonResponse({ error: "reauth_required" }, 403);
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   const headers = new Headers({ "Content-Type": "application/json" });
   for (const [name, value] of Object.entries(extraHeaders)) {
@@ -19294,9 +19349,26 @@ async function consumeChallenge(env, challenge) {
   return value;
 }
 async function requireSession(request, env) {
+  const now = Date.now();
   for (const sessionId of getSessionIdsFromCookie(request)) {
     const session = await getSession(env, sessionId);
-    if (session && new Date(session.expires_at).getTime() >= Date.now()) return session;
+    if (!session) continue;
+    if (Date.parse(session.expires_at) < now) continue;
+    const lastSeen = Date.parse(session.last_seen_at || session.created_at) || 0;
+    if (now - lastSeen > SESSION_IDLE_SECONDS * 1e3) {
+      try {
+        await deleteSession(env, sessionId);
+      } catch (e) {
+      }
+      continue;
+    }
+    if (now - lastSeen > SESSION_TOUCH_SECONDS * 1e3) {
+      try {
+        await touchSession(env, sessionId);
+      } catch (e) {
+      }
+    }
+    return session;
   }
   return null;
 }
@@ -19309,9 +19381,10 @@ async function handleRegisterOptions(request, env) {
   } catch (e) {
     return jsonResponse({ error: "Invalid request body." }, 400);
   }
-  let userId, label, isNewUser;
+  let userId, label, isNewUser, viaToken = false;
   const session = await requireSession(request, env);
   if (session) {
+    if (!recentlyReauthed(session)) return reauthRequired();
     const existing = await getUser(env, session.user_id);
     if (!existing) return jsonResponse({ error: "Account not found." }, 404);
     userId = existing.id;
@@ -19328,6 +19401,7 @@ async function handleRegisterOptions(request, env) {
     userId = existing.id;
     label = existing.label;
     isNewUser = false;
+    viaToken = true;
   } else {
     label = (body.label || "").trim().slice(0, 200);
     if (!EMAIL_RE.test(label)) return jsonResponse({ error: "A valid email address is required." }, 400);
@@ -19341,11 +19415,13 @@ async function handleRegisterOptions(request, env) {
     userName: label,
     userID: new TextEncoder().encode(userId),
     attestationType: "none",
-    authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+    // userVerification 'required' (R3): possession of the authenticator alone
+    // is not enough — the platform must have checked biometrics/PIN.
+    authenticatorSelection: { residentKey: "required", userVerification: "required" },
     // Stop the same physical authenticator being registered twice for one account.
     excludeCredentials: (existingCredentials || []).map((c) => ({ id: c.credential_id }))
   });
-  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser }));
+  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken }));
   return jsonResponse(options);
 }
 async function handleRegisterVerify(request, env) {
@@ -19368,7 +19444,8 @@ async function handleRegisterVerify(request, env) {
       response: credential,
       expectedChallenge: challenge,
       expectedOrigin: origin,
-      expectedRPID: rpID
+      expectedRPID: rpID,
+      requireUserVerification: true
     });
   } catch (err) {
     console.error("[Worker:account] registration verify failed:", err.message);
@@ -19388,15 +19465,18 @@ async function handleRegisterVerify(request, env) {
     signCount: regCred.counter,
     deviceLabel: "Unnamed device"
   });
+  if (!pending.isNewUser && !pending.viaToken) {
+    return jsonResponse({ success: true });
+  }
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
-  await createSession(env, { id: sessionId, userId: pending.userId, expiresAt });
+  await createSession(env, { id: sessionId, userId: pending.userId, expiresAt, credentialId: regCred.id });
   return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
 }
 async function handleLoginOptions(request, env) {
   const url = new URL(request.url);
   const { rpID } = rpConfigFor(url);
-  const options = await generateAuthenticationOptions({ rpID, userVerification: "preferred" });
+  const options = await generateAuthenticationOptions({ rpID, userVerification: "required" });
   await storeChallenge(env, options.challenge, "1");
   return jsonResponse(options);
 }
@@ -19412,7 +19492,7 @@ async function handleLoginVerify(request, env) {
   const challenge = decodeClientDataChallenge(credential);
   if (!challenge) return jsonResponse({ error: "Malformed passkey response." }, 400);
   const pending = await consumeChallenge(env, challenge);
-  if (!pending) return jsonResponse({ error: "Login expired. Please try again." }, 400);
+  if (pending !== "1") return jsonResponse({ error: "Login expired. Please try again." }, 400);
   const credentialId = credential.id;
   const stored = credentialId ? await getCredential(env, credentialId) : null;
   if (!stored) return jsonResponse({ error: "Unknown passkey." }, 400);
@@ -19423,6 +19503,7 @@ async function handleLoginVerify(request, env) {
       expectedChallenge: challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
+      requireUserVerification: true,
       credential: {
         id: stored.credential_id,
         publicKey: new Uint8Array(stored.public_key),
@@ -19437,7 +19518,7 @@ async function handleLoginVerify(request, env) {
   await updateCredentialCounter(env, stored.credential_id, verification.authenticationInfo.newCounter);
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
-  await createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
+  await createSession(env, { id: sessionId, userId: stored.user_id, expiresAt, credentialId: stored.credential_id });
   try {
     await purgeExpiredSessions(env);
   } catch (e) {
@@ -19466,12 +19547,115 @@ async function handleListCredentials(request, env) {
 async function handleDeleteCredential(request, env, credentialId) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  if (!recentlyReauthed(session)) return reauthRequired();
   const count = await countUserCredentials(env, session.user_id);
   if (count <= 1) {
     return jsonResponse({ error: "This is your only passkey \u2014 add another before removing it, or you\u2019ll be locked out." }, 400);
   }
   await deleteOwnCredential(env, session.user_id, credentialId);
+  await deleteSessionsForCredential(env, session.user_id, credentialId, session.id);
   return jsonResponse({ success: true });
+}
+async function handleReauthOptions(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  const url = new URL(request.url);
+  const { rpID } = rpConfigFor(url);
+  const creds = await getUserCredentials(env, session.user_id);
+  const options = await generateAuthenticationOptions({
+    rpID,
+    userVerification: "required",
+    allowCredentials: creds.map((c) => ({ id: c.credential_id }))
+  });
+  await storeChallenge(env, options.challenge, JSON.stringify({ reauth: true, userId: session.user_id, sessionId: session.id }));
+  return jsonResponse(options);
+}
+async function handleReauthVerify(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  const url = new URL(request.url);
+  const { rpID, origin } = rpConfigFor(url);
+  let credential;
+  try {
+    credential = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "Invalid request body." }, 400);
+  }
+  const challenge = decodeClientDataChallenge(credential);
+  if (!challenge) return jsonResponse({ error: "Malformed passkey response." }, 400);
+  const pendingRaw = await consumeChallenge(env, challenge);
+  let pending = null;
+  try {
+    pending = pendingRaw && pendingRaw !== "1" ? JSON.parse(pendingRaw) : null;
+  } catch (e) {
+    pending = null;
+  }
+  if (!pending || !pending.reauth || pending.userId !== session.user_id || pending.sessionId !== session.id) {
+    return jsonResponse({ error: "Confirmation expired. Please try again." }, 400);
+  }
+  const stored = credential.id ? await getCredential(env, credential.id) : null;
+  if (!stored || stored.user_id !== session.user_id) return jsonResponse({ error: "Unknown passkey." }, 400);
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: credential,
+      expectedChallenge: challenge,
+      expectedOrigin: origin,
+      expectedRPID: rpID,
+      requireUserVerification: true,
+      credential: { id: stored.credential_id, publicKey: new Uint8Array(stored.public_key), counter: stored.sign_count }
+    });
+  } catch (err) {
+    console.error("[Worker:account] reauth verify failed:", err.message);
+    return jsonResponse({ error: "Could not verify passkey." }, 400);
+  }
+  if (!verification.verified) return jsonResponse({ error: "Passkey verification failed." }, 400);
+  await updateCredentialCounter(env, stored.credential_id, verification.authenticationInfo.newCounter);
+  await markSessionReauth(env, session.id);
+  return jsonResponse({ success: true, validForSeconds: REAUTH_WINDOW_SECONDS });
+}
+async function handleListSessions(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401, NO_STORE);
+  const rows = await listOwnSessions(env, session.user_id);
+  const sessions = rows.map((r) => ({
+    current: r.id === session.id,
+    device_label: r.device_label || null,
+    created_at: r.created_at,
+    last_seen_at: r.last_seen_at || r.created_at,
+    expires_at: r.expires_at
+  }));
+  return jsonResponse({ sessions }, 200, NO_STORE);
+}
+async function handleRevokeOtherSessions(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  await deleteOtherSessions(env, session.user_id, session.id);
+  return jsonResponse({ success: true });
+}
+async function handleExport(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  const data = await exportUserData(env, session.user_id);
+  if (!data) return jsonResponse({ error: "Account not found." }, 404);
+  const body = JSON.stringify({ exported_at: (/* @__PURE__ */ new Date()).toISOString(), source: "entotools.org", ...data }, null, 2);
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Disposition": 'attachment; filename="entotools-account-export.json"',
+      "Cache-Control": "no-store"
+    }
+  });
+}
+async function handleDeleteAccount(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  if (!recentlyReauthed(session)) return reauthRequired();
+  const url = new URL(request.url);
+  await deleteUser(env, session.user_id);
+  console.log("[Worker:account] account deleted by its owner");
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": clearSessionCookies(url) });
 }
 var DEVICE_LABEL_MAX = 60;
 async function handleRenameCredential(request, env, credentialId) {
@@ -19925,9 +20109,9 @@ var admin_default = `<!DOCTYPE html>
 
             document.getElementById('ud-sessions').innerHTML = sessions.length
                 ? sessions.map((s) => \`
-                    <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                        <div class="text-xs text-slate-500">Since \${fmtDate(s.created_at)}</div>
-                        <div class="text-xs text-slate-400">Expires \${fmtDate(s.expires_at)}</div>
+                    <div class="bg-slate-50 rounded-lg px-3 py-2">
+                        <div class="text-slate-700">\${esc(s.device_label || 'Passkey')}</div>
+                        <div class="text-xs text-slate-400">Since \${fmtDate(s.created_at)} \xB7 Last active \${fmtDate(s.last_seen_at || s.created_at)} \xB7 Expires \${fmtDate(s.expires_at)}</div>
                     </div>
                 \`).join('')
                 : '<p class="text-slate-400 text-sm">No active sessions.</p>';
@@ -21248,10 +21432,15 @@ var index_default = {
       "/api/account/register/verify",
       "/api/account/login/options",
       "/api/account/login/verify",
+      "/api/account/reauth/options",
+      "/api/account/reauth/verify",
       "/api/account/logout",
       "/api/account/session",
       "/api/account/credentials",
-      "/api/account/collection"
+      "/api/account/collection",
+      "/api/account/sessions",
+      "/api/account/export",
+      "/api/account"
     ]);
     const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
     if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
@@ -21282,6 +21471,12 @@ var index_default = {
         if (credentialDeleteMatch && request.method === "PATCH") return await handleRenameCredential(request, env, credentialDeleteMatch[1]);
         if (url.pathname === "/api/account/collection" && request.method === "GET") return await handleGetCollection(request, env);
         if (url.pathname === "/api/account/collection" && request.method === "PUT") return await handlePutCollection(request, env);
+        if (url.pathname === "/api/account/reauth/options" && request.method === "POST") return await handleReauthOptions(request, env);
+        if (url.pathname === "/api/account/reauth/verify" && request.method === "POST") return await handleReauthVerify(request, env);
+        if (url.pathname === "/api/account/sessions" && request.method === "GET") return await handleListSessions(request, env);
+        if (url.pathname === "/api/account/sessions" && request.method === "DELETE") return await handleRevokeOtherSessions(request, env);
+        if (url.pathname === "/api/account/export" && request.method === "GET") return await handleExport(request, env);
+        if (url.pathname === "/api/account" && request.method === "DELETE") return await handleDeleteAccount(request, env);
       } catch (err) {
         console.error("[Worker:account] unexpected error:", err.message, err.stack);
         return privateJson({ error: "An unexpected server error occurred. Please try again." }, 500);

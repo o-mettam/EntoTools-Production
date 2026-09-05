@@ -23,6 +23,9 @@ import {
   handleSession, handleLogout,
   handleListCredentials, handleDeleteCredential, handleRenameCredential,
   handleGetCollection, handlePutCollection,
+  handleReauthOptions, handleReauthVerify,
+  handleListSessions, handleRevokeOtherSessions,
+  handleExport, handleDeleteAccount,
 } from './routes/account.js';
 import { handleMyFlags } from './routes/flags.js';
 import { handleAdminRoute } from './routes/admin.js';
@@ -1227,8 +1230,10 @@ export default {
     const ACCOUNT_ROUTES = new Set([
       '/api/account/register/options', '/api/account/register/verify',
       '/api/account/login/options', '/api/account/login/verify',
+      '/api/account/reauth/options', '/api/account/reauth/verify',
       '/api/account/logout', '/api/account/session',
       '/api/account/credentials', '/api/account/collection',
+      '/api/account/sessions', '/api/account/export', '/api/account',
     ]);
     const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
     if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
@@ -1259,6 +1264,12 @@ export default {
         if (credentialDeleteMatch && request.method === 'PATCH') return await handleRenameCredential(request, env, credentialDeleteMatch[1]);
         if (url.pathname === '/api/account/collection' && request.method === 'GET') return await handleGetCollection(request, env);
         if (url.pathname === '/api/account/collection' && request.method === 'PUT') return await handlePutCollection(request, env);
+        if (url.pathname === '/api/account/reauth/options' && request.method === 'POST') return await handleReauthOptions(request, env);
+        if (url.pathname === '/api/account/reauth/verify' && request.method === 'POST') return await handleReauthVerify(request, env);
+        if (url.pathname === '/api/account/sessions' && request.method === 'GET') return await handleListSessions(request, env);
+        if (url.pathname === '/api/account/sessions' && request.method === 'DELETE') return await handleRevokeOtherSessions(request, env);
+        if (url.pathname === '/api/account/export' && request.method === 'GET') return await handleExport(request, env);
+        if (url.pathname === '/api/account' && request.method === 'DELETE') return await handleDeleteAccount(request, env);
       } catch (err) {
         console.error('[Worker:account] unexpected error:', err.message, err.stack);
         return privateJson({ error: 'An unexpected server error occurred. Please try again.' }, 500);

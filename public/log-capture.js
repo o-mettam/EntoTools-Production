@@ -117,16 +117,16 @@
   // ── Startup diagnostics ───────────────────────────────────────────
   // Deferred to DOMContentLoaded so /theme.js (loaded right after this
   // script) has already set window.APP_VERSION and applied the theme class.
+  // Deliberately minimal (security assessment 2026-09, R7): these lines end
+  // up in public bug reports, so only what's needed to reproduce a problem —
+  // version, page, theme, browser. Timezone/language/platform/viewport were
+  // dropped: together they're a fingerprint and rarely explain a bug.
   function logStartup() {
     console.log('[EntoLog] page loaded', {
       version: window.APP_VERSION || 'unknown',
       page: location.pathname,
       theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
       userAgent: navigator.userAgent,
-      language: navigator.language,
-      platform: navigator.platform,
-      viewport: window.innerWidth + 'x' + window.innerHeight,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   }
 

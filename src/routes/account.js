@@ -22,6 +22,21 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 const REREGISTER_TOKEN_TTL_SECONDS = 15 * 60;  // matches #36's "short-lived" requirement
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // same check used in public/feedback.js, public/account.js
 
+// Session policy (security assessment 2026-09, R2/R3). SESSION_TTL_SECONDS
+// above is the absolute lifetime; a session unused for SESSION_IDLE_SECONDS
+// is rejected before that. last_seen_at is refreshed at most once per
+// SESSION_TOUCH_SECONDS so a busy page doesn't write D1 on every request.
+// Sensitive actions need a passkey assertion within REAUTH_WINDOW_SECONDS.
+const SESSION_IDLE_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_TOUCH_SECONDS = 60 * 60;
+const REAUTH_WINDOW_SECONDS = 5 * 60;
+
+function recentlyReauthed(session) {
+  const t = session && session.reauth_at ? Date.parse(session.reauth_at) : 0;
+  return t && Date.now() - t < REAUTH_WINDOW_SECONDS * 1000;
+}
+const reauthRequired = () => jsonResponse({ error: 'reauth_required' }, 403);
+
 // extraHeaders values may be arrays — needed for multiple Set-Cookie headers
 // on one response, which a plain object literal can't express.
 function jsonResponse(data, status = 200, extraHeaders = {}) {
@@ -95,9 +110,22 @@ async function consumeChallenge(env, challenge) {
 
 // Used by both the account session endpoint and #37's flags endpoint.
 export async function requireSession(request, env) {
+  const now = Date.now();
   for (const sessionId of getSessionIdsFromCookie(request)) {
     const session = await db.getSession(env, sessionId);
-    if (session && new Date(session.expires_at).getTime() >= Date.now()) return session;
+    if (!session) continue;
+    if (Date.parse(session.expires_at) < now) continue;
+    // Idle timeout — sessions from before migration 0006 have no
+    // last_seen_at yet; their creation time stands in for it.
+    const lastSeen = Date.parse(session.last_seen_at || session.created_at) || 0;
+    if (now - lastSeen > SESSION_IDLE_SECONDS * 1000) {
+      try { await db.deleteSession(env, sessionId); } catch (e) { /* best effort */ }
+      continue;
+    }
+    if (now - lastSeen > SESSION_TOUCH_SECONDS * 1000) {
+      try { await db.touchSession(env, sessionId); } catch (e) { /* never fail a request over this */ }
+    }
+    return session;
   }
   return null;
 }
@@ -111,12 +139,15 @@ export async function handleRegisterOptions(request, env) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
 
-  let userId, label, isNewUser;
+  let userId, label, isNewUser, viaToken = false;
   const session = await requireSession(request, env);
   if (session) {
     // Already logged in — this is "add another passkey to my account," not a
     // new signup. Ignores any label/reregisterToken in the body; the target
-    // account is always the session's own, never client-supplied.
+    // account is always the session's own, never client-supplied. Adding a
+    // passkey is how a hijacked session would make itself permanent, so it
+    // needs a fresh assertion first (R3).
+    if (!recentlyReauthed(session)) return reauthRequired();
     const existing = await db.getUser(env, session.user_id);
     if (!existing) return jsonResponse({ error: 'Account not found.' }, 404);
     userId = existing.id;
@@ -133,6 +164,7 @@ export async function handleRegisterOptions(request, env) {
     userId = existing.id;
     label = existing.label;
     isNewUser = false;
+    viaToken = true;
   } else {
     label = (body.label || '').trim().slice(0, 200);
     // Never trust client-side validation alone — accounts require an email,
@@ -149,12 +181,14 @@ export async function handleRegisterOptions(request, env) {
     userName: label,
     userID: new TextEncoder().encode(userId),
     attestationType: 'none',
-    authenticatorSelection: { residentKey: 'required', userVerification: 'preferred' },
+    // userVerification 'required' (R3): possession of the authenticator alone
+    // is not enough — the platform must have checked biometrics/PIN.
+    authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
     // Stop the same physical authenticator being registered twice for one account.
     excludeCredentials: (existingCredentials || []).map((c) => ({ id: c.credential_id })),
   });
 
-  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser }));
+  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken }));
   return jsonResponse(options);
 }
 
@@ -177,6 +211,7 @@ export async function handleRegisterVerify(request, env) {
       expectedChallenge: challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
+      requireUserVerification: true,
     });
   } catch (err) {
     console.error('[Worker:account] registration verify failed:', err.message);
@@ -198,9 +233,14 @@ export async function handleRegisterVerify(request, env) {
     deviceLabel: 'Unnamed device',
   });
 
+  // "Add a passkey" while logged in keeps the existing session — only a
+  // brand-new account or a token-based re-registration starts a new one.
+  if (!pending.isNewUser && !pending.viaToken) {
+    return jsonResponse({ success: true });
+  }
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
-  await db.createSession(env, { id: sessionId, userId: pending.userId, expiresAt });
+  await db.createSession(env, { id: sessionId, userId: pending.userId, expiresAt, credentialId: regCred.id });
 
   return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
 }
@@ -211,7 +251,7 @@ export async function handleRegisterVerify(request, env) {
 export async function handleLoginOptions(request, env) {
   const url = new URL(request.url);
   const { rpID } = rpConfigFor(url);
-  const options = await generateAuthenticationOptions({ rpID, userVerification: 'preferred' });
+  const options = await generateAuthenticationOptions({ rpID, userVerification: 'required' });
   await storeChallenge(env, options.challenge, '1');
   return jsonResponse(options);
 }
@@ -225,7 +265,9 @@ export async function handleLoginVerify(request, env) {
   const challenge = decodeClientDataChallenge(credential);
   if (!challenge) return jsonResponse({ error: 'Malformed passkey response.' }, 400);
   const pending = await consumeChallenge(env, challenge);
-  if (!pending) return jsonResponse({ error: 'Login expired. Please try again.' }, 400);
+  // '1' is the login marker; a re-auth challenge (JSON) must never be
+  // redeemable as a login.
+  if (pending !== '1') return jsonResponse({ error: 'Login expired. Please try again.' }, 400);
 
   const credentialId = credential.id;
   const stored = credentialId ? await db.getCredential(env, credentialId) : null;
@@ -238,6 +280,7 @@ export async function handleLoginVerify(request, env) {
       expectedChallenge: challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
+      requireUserVerification: true,
       credential: {
         id: stored.credential_id,
         publicKey: new Uint8Array(stored.public_key),
@@ -257,7 +300,7 @@ export async function handleLoginVerify(request, env) {
 
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
-  await db.createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
+  await db.createSession(env, { id: sessionId, userId: stored.user_id, expiresAt, credentialId: stored.credential_id });
   // Best-effort housekeeping; never let it fail a login.
   try { await db.purgeExpiredSessions(env); } catch (e) { console.warn('[Worker:account] session purge failed:', e.message); }
 
@@ -299,12 +342,123 @@ export async function handleListCredentials(request, env) {
 export async function handleDeleteCredential(request, env, credentialId) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  if (!recentlyReauthed(session)) return reauthRequired();
   const count = await db.countUserCredentials(env, session.user_id);
   if (count <= 1) {
     return jsonResponse({ error: 'This is your only passkey — add another before removing it, or you’ll be locked out.' }, 400);
   }
   await db.deleteOwnCredential(env, session.user_id, credentialId);
+  // R2: a removed passkey takes the sessions it opened with it (a lost or
+  // stolen device stays logged out), except the session doing the removing.
+  await db.deleteSessionsForCredential(env, session.user_id, credentialId, session.id);
   return jsonResponse({ success: true });
+}
+
+// ── Step-up re-authentication (R3) ───────────────────────────────
+// A fresh passkey assertion on the CURRENT session, required within
+// REAUTH_WINDOW_SECONDS before anything that could lock the user out or
+// entrench an attacker: removing/adding a passkey, deleting the account.
+export async function handleReauthOptions(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  const url = new URL(request.url);
+  const { rpID } = rpConfigFor(url);
+  const creds = await db.getUserCredentials(env, session.user_id);
+  const options = await generateAuthenticationOptions({
+    rpID,
+    userVerification: 'required',
+    allowCredentials: creds.map((c) => ({ id: c.credential_id })),
+  });
+  await storeChallenge(env, options.challenge, JSON.stringify({ reauth: true, userId: session.user_id, sessionId: session.id }));
+  return jsonResponse(options);
+}
+
+export async function handleReauthVerify(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  const url = new URL(request.url);
+  const { rpID, origin } = rpConfigFor(url);
+  let credential;
+  try { credential = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
+  const challenge = decodeClientDataChallenge(credential);
+  if (!challenge) return jsonResponse({ error: 'Malformed passkey response.' }, 400);
+  const pendingRaw = await consumeChallenge(env, challenge);
+  let pending = null;
+  try { pending = pendingRaw && pendingRaw !== '1' ? JSON.parse(pendingRaw) : null; } catch (e) { pending = null; }
+  // The challenge must be a re-auth challenge issued to THIS session for
+  // THIS user — a login challenge, or another session's, is rejected.
+  if (!pending || !pending.reauth || pending.userId !== session.user_id || pending.sessionId !== session.id) {
+    return jsonResponse({ error: 'Confirmation expired. Please try again.' }, 400);
+  }
+  const stored = credential.id ? await db.getCredential(env, credential.id) : null;
+  if (!stored || stored.user_id !== session.user_id) return jsonResponse({ error: 'Unknown passkey.' }, 400);
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: credential, expectedChallenge: challenge, expectedOrigin: origin, expectedRPID: rpID,
+      requireUserVerification: true,
+      credential: { id: stored.credential_id, publicKey: new Uint8Array(stored.public_key), counter: stored.sign_count },
+    });
+  } catch (err) {
+    console.error('[Worker:account] reauth verify failed:', err.message);
+    return jsonResponse({ error: 'Could not verify passkey.' }, 400);
+  }
+  if (!verification.verified) return jsonResponse({ error: 'Passkey verification failed.' }, 400);
+  await db.updateCredentialCounter(env, stored.credential_id, verification.authenticationInfo.newCounter);
+  await db.markSessionReauth(env, session.id);
+  return jsonResponse({ success: true, validForSeconds: REAUTH_WINDOW_SECONDS });
+}
+
+// ── Sessions (R2) ────────────────────────────────────────────────
+export async function handleListSessions(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401, NO_STORE);
+  const rows = await db.listOwnSessions(env, session.user_id);
+  // Ids are never sent to the client (see db.listOwnSessions); "current"
+  // is the only per-row identity the UI needs.
+  const sessions = rows.map((r) => ({
+    current: r.id === session.id,
+    device_label: r.device_label || null,
+    created_at: r.created_at,
+    last_seen_at: r.last_seen_at || r.created_at,
+    expires_at: r.expires_at,
+  }));
+  return jsonResponse({ sessions }, 200, NO_STORE);
+}
+
+// "Sign out everywhere else" — protective, so no re-auth needed.
+export async function handleRevokeOtherSessions(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  await db.deleteOtherSessions(env, session.user_id, session.id);
+  return jsonResponse({ success: true });
+}
+
+// ── Data export + account deletion (R7) ──────────────────────────
+export async function handleExport(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  const data = await db.exportUserData(env, session.user_id);
+  if (!data) return jsonResponse({ error: 'Account not found.' }, 404);
+  const body = JSON.stringify({ exported_at: new Date().toISOString(), source: 'entotools.org', ...data }, null, 2);
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Disposition': 'attachment; filename="entotools-account-export.json"',
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+export async function handleDeleteAccount(request, env) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  if (!recentlyReauthed(session)) return reauthRequired();
+  const url = new URL(request.url);
+  await db.deleteUser(env, session.user_id); // passkeys, sessions, flags, collection, then the user row
+  console.log('[Worker:account] account deleted by its owner');
+  return jsonResponse({ success: true }, 200, { 'Set-Cookie': clearSessionCookies(url) });
 }
 
 // PATCH /api/account/credentials/:id  body: { device_label } — lets a user

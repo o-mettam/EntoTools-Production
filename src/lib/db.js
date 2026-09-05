@@ -37,9 +37,36 @@ export async function getUserDetail(env, userId) {
     'SELECT credential_id, device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at DESC'
   ).bind(userId).all();
   const { results: sessions } = await env.DB.prepare(
-    'SELECT id, created_at, expires_at FROM sessions WHERE user_id = ? ORDER BY created_at DESC'
+    'SELECT s.id, s.created_at, s.expires_at, s.last_seen_at, c.device_label FROM sessions s ' +
+    'LEFT JOIN credentials c ON c.credential_id = s.credential_id WHERE s.user_id = ? ORDER BY s.created_at DESC'
   ).bind(userId).all();
   return { user, credentials, sessions };
+}
+
+// Everything the account holds about a user, for the self-service data
+// export (R7). Public keys and session ids are deliberately left out — they
+// aren't the user's data in any meaningful sense and one of them is a secret.
+export async function exportUserData(env, userId) {
+  const user = await getUser(env, userId);
+  if (!user) return null;
+  const { results: credentials } = await env.DB.prepare(
+    'SELECT device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at'
+  ).bind(userId).all();
+  const { results: flags } = await env.DB.prepare(
+    'SELECT flag_key, enabled_at FROM user_feature_flags WHERE user_id = ?'
+  ).bind(userId).all();
+  const collectionRow = await getCollection(env, userId);
+  let collection = null;
+  if (collectionRow) {
+    try { collection = JSON.parse(collectionRow.envelope); } catch (e) { collection = { unparseable: true }; }
+  }
+  return {
+    account: { id: user.id, email: user.label, created_at: user.created_at },
+    passkeys: credentials,
+    feature_flags: flags,
+    collection,
+    collection_updated_at: collectionRow ? collectionRow.updated_at : null,
+  };
 }
 
 // Deletes a user and everything referencing them — D1 doesn't enforce the
@@ -84,13 +111,48 @@ export async function deleteAllUserCredentials(env, userId) {
 }
 
 // ── Sessions ────────────────────────────────────────────────────
-export async function createSession(env, { id, userId, expiresAt }) {
-  await env.DB.prepare('INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
-    .bind(id, userId, nowIso(), expiresAt).run();
+// A fresh login counts as a recent re-authentication (reauth_at = now), so
+// adding a second passkey right after signing up doesn't prompt twice.
+export async function createSession(env, { id, userId, expiresAt, credentialId }) {
+  const now = nowIso();
+  await env.DB.prepare(
+    'INSERT INTO sessions (id, user_id, created_at, expires_at, last_seen_at, credential_id, reauth_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, userId, now, expiresAt, now, credentialId || null, now).run();
 }
 
 export async function getSession(env, id) {
   return env.DB.prepare('SELECT * FROM sessions WHERE id = ?').bind(id).first();
+}
+
+export async function touchSession(env, id) {
+  await env.DB.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').bind(nowIso(), id).run();
+}
+
+export async function markSessionReauth(env, id) {
+  await env.DB.prepare('UPDATE sessions SET reauth_at = ? WHERE id = ?').bind(nowIso(), id).run();
+}
+
+// The user's own view of their sessions. Never returns session ids — the id
+// IS the cookie, and listing it would turn any XSS into full session theft.
+export async function listOwnSessions(env, userId) {
+  const { results } = await env.DB.prepare(
+    'SELECT s.id, s.created_at, s.last_seen_at, s.expires_at, c.device_label FROM sessions s ' +
+    'LEFT JOIN credentials c ON c.credential_id = s.credential_id ' +
+    'WHERE s.user_id = ? AND s.expires_at > ? ORDER BY COALESCE(s.last_seen_at, s.created_at) DESC'
+  ).bind(userId, nowIso()).all();
+  return results;
+}
+
+export async function deleteOtherSessions(env, userId, keepId) {
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').bind(userId, keepId).run();
+}
+
+// Sessions opened by one passkey, except the one doing the removing (that
+// device just proved presence via re-auth; the passkey being removed is on
+// some other, possibly lost, device).
+export async function deleteSessionsForCredential(env, userId, credentialId, keepId) {
+  await env.DB.prepare('DELETE FROM sessions WHERE user_id = ? AND credential_id = ? AND id != ?')
+    .bind(userId, credentialId, keepId).run();
 }
 
 export async function deleteSession(env, id) {

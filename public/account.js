@@ -27,7 +27,7 @@
   // below — a bug here can only ever hide a gated feature, never show one.
   window.EntoFlags = new Set();
 
-  var state = { user: null, credentials: [] };
+  var state = { user: null, credentials: [], sessions: [] };
 
   // Same simple check used elsewhere in this codebase (public/feedback.js,
   // src/index.js) — accounts require an email, not an arbitrary display name.
@@ -102,6 +102,16 @@
     }
   }
 
+  async function refreshSessions() {
+    if (!state.user) { state.sessions = []; return; }
+    try {
+      const { sessions } = await api('/api/account/sessions');
+      state.sessions = sessions;
+    } catch (e) {
+      state.sessions = [];
+    }
+  }
+
   async function checkSession() {
     try {
       const { user } = await api('/api/account/session');
@@ -114,10 +124,11 @@
       state.user = null;
     }
     if (state.user) {
-      await Promise.all([refreshFlags(), refreshCredentials()]);
+      await Promise.all([refreshFlags(), refreshCredentials(), refreshSessions()]);
     } else {
       window.EntoFlags = new Set();
       state.credentials = [];
+      state.sessions = [];
       document.dispatchEvent(new CustomEvent('entoflags:updated'));
     }
     // A throw in here (e.g. settings-panel markup not matching what this
@@ -150,18 +161,48 @@
     await checkSession();
   }
 
-  async function addPasskey() {
-    console.log('[EntoAccount] addPasskey: requesting registration options');
+  // ── Step-up re-authentication ──────────────────────────────────
+  // Sensitive actions (add/remove a passkey, delete the account) are refused
+  // by the server with { error: 'reauth_required' } unless this session has
+  // completed a fresh passkey assertion in the last few minutes. withReauth()
+  // runs the action, and on that exact error performs the assertion and
+  // retries once — so a freshly signed-in user is never prompted twice.
+  async function reauthenticate() {
+    console.log('[EntoAccount] reauth: requesting options');
     await webauthnBrowserReady;
-    const options = await api('/api/account/register/options', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+    const options = await api('/api/account/reauth/options', { method: 'POST' });
+    const authResp = await SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: options });
+    await api('/api/account/reauth/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(authResp),
     });
-    const attResp = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options });
-    await api('/api/account/register/verify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attResp),
+    console.log('[EntoAccount] reauth: confirmed');
+  }
+
+  async function withReauth(action) {
+    try {
+      return await action();
+    } catch (err) {
+      if (err.message !== 'reauth_required') throw err;
+      setStatus('Confirm it’s you — follow your browser/device prompt…');
+      await reauthenticate();
+      return await action();
+    }
+  }
+
+  async function addPasskey() {
+    await withReauth(async function () {
+      console.log('[EntoAccount] addPasskey: requesting registration options');
+      await webauthnBrowserReady;
+      const options = await api('/api/account/register/options', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      const attResp = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options });
+      await api('/api/account/register/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attResp),
+      });
+      console.log('[EntoAccount] addPasskey: verified and added');
     });
-    console.log('[EntoAccount] addPasskey: verified and added');
-    await refreshCredentials();
+    await Promise.all([refreshCredentials(), refreshSessions()]);
     renderSettingsSection();
   }
 
@@ -202,8 +243,10 @@
   }
 
   async function removeCredential(credentialId) {
-    await api('/api/account/credentials/' + encodeURIComponent(credentialId), { method: 'DELETE' });
-    await refreshCredentials();
+    await withReauth(function () {
+      return api('/api/account/credentials/' + encodeURIComponent(credentialId), { method: 'DELETE' });
+    });
+    await Promise.all([refreshCredentials(), refreshSessions()]);
     renderSettingsSection();
   }
 
@@ -211,7 +254,33 @@
     await api('/api/account/credentials/' + encodeURIComponent(credentialId), {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_label: name }),
     });
-    await refreshCredentials();
+    await Promise.all([refreshCredentials(), refreshSessions()]);
+  }
+
+  async function signOutOtherDevices() {
+    await api('/api/account/sessions', { method: 'DELETE' });
+    await refreshSessions();
+  }
+
+  // The export is a real file download (Content-Disposition on the server),
+  // fetched with credentials and handed to the browser as a blob.
+  async function downloadExport() {
+    const resp = await fetch('/api/account/export', { cache: 'no-store' });
+    if (!resp.ok) throw new Error('Export failed (HTTP ' + resp.status + ').');
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'entotools-account-export.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+  }
+
+  async function deleteAccount() {
+    await withReauth(function () { return api('/api/account', { method: 'DELETE' }); });
+    console.log('[EntoAccount] account deleted');
+    await checkSession();
   }
 
   // ── Modal (sign up / log in / manage passkeys) ────────────────────
@@ -222,7 +291,7 @@
     var wrapper = document.createElement('div');
     wrapper.innerHTML = `
       <div id="ento-account-overlay" class="fixed inset-0 z-[9999] bg-black/40 hidden items-center justify-center p-4">
-        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm p-6 max-h-[88vh] overflow-y-auto">
           <div class="flex items-center justify-between mb-4">
             <h2 id="ento-account-title" class="text-lg font-semibold text-slate-800">Account</h2>
             <button id="ento-account-close" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
@@ -286,16 +355,45 @@
       title.textContent = 'Manage account';
       body.innerHTML = `
         <p class="text-sm text-slate-600 mb-3">Signed in as <span class="font-medium">${esc(state.user.label)}</span></p>
+
         <h3 class="text-sm font-semibold text-slate-700 mb-2">Passkeys</h3>
-        <div id="ento-account-credentials" class="space-y-1.5 mb-3"></div>
-        <button id="ento-account-add-passkey" class="w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition mb-2">Add a passkey on this device</button>
+        <div id="ento-account-credentials" class="space-y-1.5 mb-2"></div>
+        <button id="ento-account-add-passkey" class="w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition mb-4">Add a passkey on this device</button>
+
+        <h3 class="text-sm font-semibold text-slate-700 mb-2">Signed-in devices</h3>
+        <div id="ento-account-sessions" class="space-y-1.5 mb-2"></div>
+        <button id="ento-account-signout-others" class="w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition mb-4">Sign out everywhere else</button>
+
+        <h3 class="text-sm font-semibold text-slate-700 mb-2">Your data</h3>
+        <p class="text-xs text-slate-500 mb-2">Sessions expire after 30 days, or 7 days without use. Removing a passkey signs out the devices that used it.</p>
+        <button id="ento-account-export" class="w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition mb-2">Download my data (JSON)</button>
+        <button id="ento-account-delete" class="w-full px-3 py-2 rounded-lg bg-white border border-red-200 hover:bg-red-50 text-red-600 text-sm font-medium transition mb-4">Delete my account</button>
+
         <button id="ento-account-logout" class="w-full px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium transition">Log out</button>
       `;
       renderCredentialList();
+      renderSessionList();
       document.getElementById('ento-account-add-passkey').addEventListener('click', async function () {
         setStatus('Follow your browser/device prompt…');
-        try { await addPasskey(); setStatus('Passkey added.'); renderCredentialList(); }
+        try { await addPasskey(); setStatus('Passkey added.'); renderCredentialList(); renderSessionList(); }
         catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
+      });
+      document.getElementById('ento-account-signout-others').addEventListener('click', async function () {
+        try { await signOutOtherDevices(); renderSessionList(); setStatus('Signed out everywhere else.'); }
+        catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
+      });
+      document.getElementById('ento-account-export').addEventListener('click', async function () {
+        setStatus('Preparing your export…');
+        try { await downloadExport(); setStatus('Export downloaded.'); }
+        catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
+      });
+      document.getElementById('ento-account-delete').addEventListener('click', async function () {
+        if (!confirm('Delete your EntoTools account? This permanently removes your passkeys, signed-in devices, and any collection data synced to your account. Data stored only in this browser or in your own Google Drive is not affected. This cannot be undone.')) return;
+        try {
+          await deleteAccount();
+          setStatus('Account deleted.');
+          closeModalSoon();
+        } catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
       document.getElementById('ento-account-logout').addEventListener('click', async function () {
         await logOut();
@@ -345,12 +443,31 @@
     el.querySelectorAll('.ento-cred-row').forEach(function (row) {
       var id = row.dataset.id;
       row.querySelector('.ento-remove-cred').addEventListener('click', async function () {
-        if (!confirm('Remove this passkey? You will no longer be able to log in with that device.')) return;
-        try { await removeCredential(id); renderCredentialList(); }
+        if (!confirm('Remove this passkey? You will no longer be able to log in with that device, and any devices signed in with it will be signed out.')) return;
+        try { await removeCredential(id); setStatus('Passkey removed.'); renderCredentialList(); renderSessionList(); }
         catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
       row.querySelector('.ento-rename-cred').addEventListener('click', function () { startRename(row, id); });
     });
+  }
+
+  function fmtWhen(iso) {
+    try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return ''; }
+  }
+
+  function renderSessionList() {
+    var el = document.getElementById('ento-account-sessions');
+    if (!el) return;
+    el.innerHTML = state.sessions.length
+      ? state.sessions.map(function (s) {
+          return `
+            <div class="bg-slate-50 rounded-lg px-3 py-2 text-sm">
+              <span class="block text-slate-700 truncate">${esc(s.device_label || 'Passkey')}${s.current ? ' <span class="text-xs text-lime-700 font-medium">· this device</span>' : ''}</span>
+              <span class="block text-xs text-slate-400">Last active ${esc(fmtWhen(s.last_seen_at))}</span>
+            </div>
+          `;
+        }).join('')
+      : '<p class="text-slate-400 text-sm">No signed-in devices.</p>';
   }
 
   // Inline rename: the row turns into an input + Save/Cancel; Enter saves,
@@ -408,7 +525,7 @@
         <p class="text-xs text-slate-500 pt-1">Signed in as</p>
         <p class="text-sm font-medium text-slate-800 truncate">${esc(state.user.label)}</p>
         <div class="flex items-center justify-between mt-2 pb-1">
-          <button id="ento-account-manage" class="text-xs text-slate-500 hover:text-slate-700 underline">Manage passkeys</button>
+          <button id="ento-account-manage" class="text-xs text-slate-500 hover:text-slate-700 underline">Manage account</button>
           <button id="ento-account-signout" class="text-xs text-red-600 hover:text-red-700 font-medium">Sign out</button>
         </div>
       `;

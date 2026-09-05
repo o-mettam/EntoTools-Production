@@ -310,9 +310,9 @@
 
             document.getElementById('ud-sessions').innerHTML = sessions.length
                 ? sessions.map((s) => `
-                    <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                        <div class="text-xs text-slate-500">Since ${fmtDate(s.created_at)}</div>
-                        <div class="text-xs text-slate-400">Expires ${fmtDate(s.expires_at)}</div>
+                    <div class="bg-slate-50 rounded-lg px-3 py-2">
+                        <div class="text-slate-700">${esc(s.device_label || 'Passkey')}</div>
+                        <div class="text-xs text-slate-400">Since ${fmtDate(s.created_at)} · Last active ${fmtDate(s.last_seen_at || s.created_at)} · Expires ${fmtDate(s.expires_at)}</div>
                     </div>
                 `).join('')
                 : '<p class="text-slate-400 text-sm">No active sessions.</p>';
