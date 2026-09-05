@@ -39,10 +39,31 @@ function jsonResponse(data, status = 200) {
 }
 function notFound() { return new Response('Not found', { status: 404, headers: SECURITY_HEADERS }); }
 
+// CSRF guard for state-changing admin calls (security assessment 2026-09).
+// The Access session cookie rides along on any request the browser makes to
+// this origin, so without this a page elsewhere could try to POST/DELETE
+// here on a signed-in admin's behalf. Browsers always send Sec-Fetch-Site
+// (and Origin on non-GET), so a request from a browser that isn't
+// same-origin is rejected; a request with neither header (curl, a script
+// using an Access service token) isn't a CSRF vector and passes through.
+const ADMIN_ORIGINS = new Set(['https://entotools.org', 'https://www.entotools.org']);
+function crossSiteWrite(request) {
+  if (request.method === 'GET' || request.method === 'HEAD') return false;
+  const site = request.headers.get('Sec-Fetch-Site');
+  if (site && site !== 'same-origin' && site !== 'none') return true;
+  const origin = request.headers.get('Origin');
+  if (origin && !ADMIN_ORIGINS.has(origin) && !origin.startsWith('http://localhost:')) return true;
+  return false;
+}
+
 export async function handleAdminRoute(request, env, path) {
   const identity = await verifyAccessRequest(request, env);
   if (!identity || !identity.email) return notFound();
   const adminEmail = identity.email;
+  if (crossSiteWrite(request)) {
+    console.warn('[Worker:admin] rejected cross-site write for', adminEmail);
+    return notFound();
+  }
 
   const url = new URL(request.url);
   const method = request.method;

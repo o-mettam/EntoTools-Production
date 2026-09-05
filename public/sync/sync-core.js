@@ -311,77 +311,147 @@
 
   const EntoCsv = { headers: CSV_HEADERS, rowFromData, buildCsv };
 
-  // ── Sync orchestration (provider-agnostic) ─────────────────────
-  // A provider implements: isConfigured(), isConnected(), connect(),
+  // ── Sync orchestration (multi-provider) ────────────────────────
+  // A provider implements: id, isConfigured(), isConnected(), connect(),
   // silentConnect(), disconnect(), pull(), push(snapshot), lastSynced().
-  let _provider = null;
+  //
+  // Several providers can be registered at once (the EntoTools account
+  // provider and Google Drive both, for a flagged user). A full sync pulls
+  // from every connected provider, folds each remote copy into the local
+  // store with the same last-write-wins merge, then pushes the single merged
+  // result back to every provider — so all backends converge on one dataset.
+  // Every event carries `provider: <id>` so per-backend UI can filter.
+  //
+  // Every public function takes an optional provider id; omitting it means
+  // "all registered providers" (or, for connect(), the only one registered).
+  const _providers = new Map(); // id -> provider, in registration order
   let _syncing = false;
   let _pushTimer = null;
 
-  function setProvider(p) { _provider = p; }
-  function hasProvider() { return !!_provider; }
-  function isConnected() { return !!_provider && _provider.isConnected(); }
-  function isConfigured() { return !!_provider && _provider.isConfigured(); }
-  function lastSynced() { return _provider && _provider.lastSynced ? _provider.lastSynced() : null; }
+  function addProvider(p) {
+    if (!p || !p.id) throw new Error('A sync provider needs an id.');
+    _providers.set(p.id, p); // idempotent — re-registering replaces by id
+  }
+  // Back-compat alias: earlier callers "set" a single provider; that now just
+  // registers it alongside any others rather than replacing them (#35/#37 —
+  // the Drive UI used to silently unregister account sync this way).
+  function setProvider(p) { addProvider(p); }
+  function removeProvider(id) { _providers.delete(id); }
+  function getProvider(id) { return _providers.get(id) || null; }
+  function providersFor(id) {
+    if (id == null) return Array.from(_providers.values());
+    const p = _providers.get(id);
+    return p ? [p] : [];
+  }
+
+  function hasProvider(id) { return providersFor(id).length > 0; }
+  function isConnected(id) { return providersFor(id).some((p) => p.isConnected()); }
+  function isConfigured(id) { return providersFor(id).some((p) => p.isConfigured()); }
+  // Most recent sync time across the selected providers.
+  function lastSynced(id) {
+    let best = null;
+    for (const p of providersFor(id)) {
+      const t = p.lastSynced ? p.lastSynced() : null;
+      if (t && (!best || ts(t) > ts(best))) best = t;
+    }
+    return best;
+  }
 
   // interactive=true means the call came from a user gesture (Connect / Sync now)
-  // and is allowed to trigger the provider's auth UI. Background syncs (load,
-  // auto-push) pass false and silently defer if no valid token is held.
-  async function fullSync(interactive) {
-    if (!_provider) throw new Error('No sync provider configured.');
+  // and is allowed to trigger a provider's auth UI. Background syncs (load,
+  // auto-push) pass false and silently defer any provider without a valid token.
+  async function fullSync(interactive, id) {
+    if (_providers.size === 0) throw new Error('No sync provider configured.');
     if (_syncing) return;
-    if (!interactive && _provider.hasToken && !_provider.hasToken()) {
-      notify({ type: 'sync-deferred' });
-      return;
-    }
-    if (_provider.setInteractive) _provider.setInteractive(!!interactive);
+    const targets = providersFor(id).filter((p) => {
+      if (!p.isConnected()) return false;
+      if (!interactive && p.hasToken && !p.hasToken()) { notify({ type: 'sync-deferred', provider: p.id }); return false; }
+      return true;
+    });
+    if (targets.length === 0) return;
+
     _syncing = true;
-    notify({ type: 'sync-start' });
+    const pulled = [];   // providers whose pull succeeded — only these get the push
+    const failures = []; // { provider, error }
     try {
-      const remote = await _provider.pull();          // { json, meta }
-      const localEnv = getEnvelope();
-      let merged;
-      if (remote && remote.json && Array.isArray(remote.json.entries)) {
-        merged = mergeEnvelopes(localEnv, remote.json);
-        replaceEnvelope(merged);
-      } else {
-        merged = localEnv;
+      for (const p of targets) if (p.setInteractive) p.setInteractive(!!interactive);
+
+      // Phase 1: pull from every target and fold it into one merged envelope.
+      let merged = getEnvelope();
+      let hadRemote = false;
+      for (const p of targets) {
+        notify({ type: 'sync-start', provider: p.id });
+        try {
+          const remote = await p.pull(); // { json, meta }
+          if (remote && remote.json && Array.isArray(remote.json.entries)) {
+            merged = mergeEnvelopes(merged, remote.json);
+            hadRemote = true;
+          }
+          pulled.push(p);
+        } catch (e) {
+          failures.push({ provider: p, error: e });
+        }
       }
-      await _provider.push(merged);
-      notify({ type: 'sync-success', at: lastSynced() });
+      if (hadRemote) replaceEnvelope(merged);
+
+      // Phase 2: push the single merged result to every provider that pulled.
+      for (const p of pulled) {
+        try {
+          await p.push(merged);
+          notify({ type: 'sync-success', provider: p.id, at: p.lastSynced ? p.lastSynced() : null });
+        } catch (e) {
+          failures.push({ provider: p, error: e });
+        }
+      }
+
+      for (const f of failures) {
+        if (f.error && f.error.code === 'TOKEN_UNAVAILABLE') { notify({ type: 'sync-deferred', provider: f.provider.id }); continue; }
+        console.error('[EntoSync] sync failed (' + f.provider.id + '):', f.error);
+        notify({ type: 'sync-error', provider: f.provider.id, error: f.error && f.error.message });
+      }
+      const hard = failures.find((f) => !(f.error && f.error.code === 'TOKEN_UNAVAILABLE'));
+      if (hard) throw hard.error;
       return merged;
-    } catch (e) {
-      if (e && e.code === 'TOKEN_UNAVAILABLE') { notify({ type: 'sync-deferred' }); return; }
-      console.error('[EntoSync] sync failed:', e);
-      notify({ type: 'sync-error', error: e.message });
-      throw e;
     } finally {
       _syncing = false;
-      if (_provider.setInteractive) _provider.setInteractive(false);
+      for (const p of targets) if (p.setInteractive) p.setInteractive(false);
     }
   }
 
-  async function connect() {
-    if (!_provider) throw new Error('No sync provider configured.');
-    await _provider.connect();
-    notify({ type: 'connected' });
-    return fullSync(true);
+  // Interactive connect for one provider (the id is required once more than
+  // one is registered — connecting is inherently a per-backend user action).
+  async function connect(id) {
+    const list = providersFor(id);
+    if (list.length === 0) throw new Error('No sync provider configured.');
+    if (list.length > 1) throw new Error('connect() needs a provider id when several are registered.');
+    const p = list[0];
+    await p.connect();
+    notify({ type: 'connected', provider: p.id });
+    return fullSync(true, p.id);
   }
 
-  async function tryResume() {
-    if (!_provider) return false;
-    let ok = false;
-    try { ok = await _provider.silentConnect(); } catch (e) { ok = false; }
-    if (ok) { notify({ type: 'connected' }); fullSync().catch(() => {}); }
-    return ok;
+  // Silent resume for the selected providers (no auth UI), then one combined
+  // background sync across everything that is connected. Resolves true if at
+  // least one of the selected providers resumed.
+  async function tryResume(id) {
+    let any = false;
+    for (const p of providersFor(id)) {
+      let ok = false;
+      try { ok = await p.silentConnect(); } catch (e) { ok = false; }
+      if (ok) { any = true; notify({ type: 'connected', provider: p.id }); }
+    }
+    if (any) fullSync(false).catch(() => {});
+    return any;
   }
 
-  function disconnect() {
-    if (_provider) _provider.disconnect();
-    notify({ type: 'disconnected' });
+  function disconnect(id) {
+    for (const p of providersFor(id)) {
+      try { p.disconnect(); } catch (e) { console.warn('[EntoSync] disconnect failed (' + p.id + '):', e); }
+      notify({ type: 'disconnected', provider: p.id });
+    }
   }
 
-  // Debounced auto-push after local edits (only while connected).
+  // Debounced auto-push after local edits (only while something is connected).
   function scheduleAutoSync(delayMs) {
     if (!isConnected()) return;
     clearTimeout(_pushTimer);
@@ -389,7 +459,8 @@
   }
 
   const EntoSync = {
-    setProvider, hasProvider, isConnected, isConfigured, lastSynced,
+    addProvider, setProvider, removeProvider, getProvider, hasProvider,
+    isConnected, isConfigured, lastSynced,
     connect, disconnect, tryResume, fullSync, scheduleAutoSync, subscribe,
   };
 

@@ -1,6 +1,6 @@
 {
   "name": "entotools-production",
-  "version": "1.7.4",
+  "version": "1.8.0",
   "private": true,
   "scripts": {
     "dev": "wrangler pages dev public/",
@@ -8,7 +8,7 @@
     "build-worker": "esbuild src/index.js --bundle --format=esm --platform=browser --loader:.html=text --outfile=public/_worker.js"
   },
   "dependencies": {
-    "@simplewebauthn/server": "^14.0.0"
+    "@simplewebauthn/server": "^14.0.1"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",

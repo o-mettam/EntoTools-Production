@@ -26,8 +26,8 @@ let jwksCache = null;
 let jwksCachedAt = 0;
 const JWKS_CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function getJwks(env) {
-  if (jwksCache && Date.now() - jwksCachedAt < JWKS_CACHE_TTL_MS) return jwksCache;
+async function getJwks(env, force) {
+  if (!force && jwksCache && Date.now() - jwksCachedAt < JWKS_CACHE_TTL_MS) return jwksCache;
   const resp = await fetch(`https://${env.CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`);
   if (!resp.ok) throw new Error('Failed to fetch Access JWKS: ' + resp.status);
   const jwks = await resp.json();
@@ -73,8 +73,14 @@ export async function verifyAccessRequest(request, env) {
     const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!aud.includes(env.CF_ACCESS_AUD)) return null;
 
-    const jwks = await getJwks(env);
-    const jwk = (jwks.keys || []).find((k) => k.kid === header.kid);
+    let jwks = await getJwks(env);
+    let jwk = (jwks.keys || []).find((k) => k.kid === header.kid);
+    if (!jwk) {
+      // Key rotation: an unknown kid with a still-fresh cache would otherwise
+      // lock every admin out for up to JWKS_CACHE_TTL_MS. Refetch once.
+      jwks = await getJwks(env, true);
+      jwk = (jwks.keys || []).find((k) => k.kid === header.kid);
+    }
     if (!jwk) return null;
 
     const publicKey = await crypto.subtle.importKey(

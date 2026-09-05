@@ -21,7 +21,7 @@ import {
   handleRegisterOptions, handleRegisterVerify,
   handleLoginOptions, handleLoginVerify,
   handleSession, handleLogout,
-  handleListCredentials, handleDeleteCredential,
+  handleListCredentials, handleDeleteCredential, handleRenameCredential,
   handleGetCollection, handlePutCollection,
 } from './routes/account.js';
 import { handleMyFlags } from './routes/flags.js';
@@ -105,6 +105,8 @@ let _stationsCache = null;
 
 // ── Utility helpers ────────────────────────────────────────────────
 
+// For the PUBLIC, unauthenticated endpoints (/api/search, /api/status/*):
+// readable cross-origin by design.
 function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -114,6 +116,12 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
       ...extraHeaders,
     },
   });
+}
+
+// For everything that is same-origin only (account, flags, generic /api 404s):
+// no CORS grant at all, so a cross-origin page can't even read an error body.
+function privateJson(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
 function toRad(deg) {
@@ -1138,13 +1146,21 @@ export default {
     const url = new URL(request.url);
     console.log('[Worker] incoming', request.method, url.pathname);
 
-    // Handle CORS preflight
+    // CORS preflight. Only the genuinely public, unauthenticated endpoints
+    // (/api/search, /api/status/*) get a cross-origin grant; every other path
+    // (account, feedback, admin) is same-origin only and answers preflight
+    // with a bare 204 — no Allow-Origin, so the browser refuses the real
+    // request. Previously this granted "*" for every path on the site.
     if (request.method === 'OPTIONS') {
+      const isPublicApi = url.pathname === '/api/search' || url.pathname.startsWith('/api/status/');
+      if (!isPublicApi) return new Response(null, { status: 204 });
       return new Response(null, {
+        status: 204,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Max-Age': '86400',
         },
       });
     }
@@ -1221,14 +1237,14 @@ export default {
       const origin = request.headers.get('Origin');
       if (!isReadOnly && !allowedOrigins.has(origin)) {
         console.warn('[Worker:account] rejected disallowed/missing origin:', origin);
-        return jsonResponse({ error: 'Forbidden.' }, 403);
+        return privateJson({ error: 'Forbidden.' }, 403);
       }
       const isCeremonyStart = url.pathname.endsWith('/options');
       if (isCeremonyStart) {
         const ip = request.headers.get('CF-Connecting-IP') || '';
         if (await accountRateLimited(env, ip)) {
           console.warn('[Worker:account] rate limit exceeded for IP:', maskIp(ip));
-          return jsonResponse({ error: 'Too many attempts. Please try again later.' }, 429);
+          return privateJson({ error: 'Too many attempts. Please try again later.' }, 429);
         }
       }
       try {
@@ -1240,11 +1256,12 @@ export default {
         if (url.pathname === '/api/account/session' && request.method === 'GET') return await handleSession(request, env);
         if (url.pathname === '/api/account/credentials' && request.method === 'GET') return await handleListCredentials(request, env);
         if (credentialDeleteMatch && request.method === 'DELETE') return await handleDeleteCredential(request, env, credentialDeleteMatch[1]);
+        if (credentialDeleteMatch && request.method === 'PATCH') return await handleRenameCredential(request, env, credentialDeleteMatch[1]);
         if (url.pathname === '/api/account/collection' && request.method === 'GET') return await handleGetCollection(request, env);
         if (url.pathname === '/api/account/collection' && request.method === 'PUT') return await handlePutCollection(request, env);
       } catch (err) {
         console.error('[Worker:account] unexpected error:', err.message, err.stack);
-        return jsonResponse({ error: 'An unexpected server error occurred. Please try again.' }, 500);
+        return privateJson({ error: 'An unexpected server error occurred. Please try again.' }, 500);
       }
     }
 
@@ -1254,12 +1271,12 @@ export default {
         return await handleMyFlags(request, env);
       } catch (err) {
         console.error('[Worker:flags] unexpected error:', err.message, err.stack);
-        return jsonResponse({ flags: [] }); // fail safe — never block the page over this
+        return privateJson({ flags: [] }); // fail safe — never block the page over this
       }
     }
 
     if (url.pathname.startsWith('/api/')) {
-      return jsonResponse({ error: 'Not found' }, 404);
+      return privateJson({ error: 'Not found' }, 404);
     }
 
     // ── Admin portal (#36) ──────────────────────────────────────────

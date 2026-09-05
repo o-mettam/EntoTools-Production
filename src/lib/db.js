@@ -197,7 +197,16 @@ export async function countUserCredentials(env, userId) {
   return row ? row.n : 0;
 }
 
+// Returns the number of rows changed — 0 means the credential doesn't exist
+// or doesn't belong to this user (deliberately indistinguishable).
 export async function renameCredential(env, userId, credentialId, deviceLabel) {
-  await env.DB.prepare('UPDATE credentials SET device_label = ? WHERE user_id = ? AND credential_id = ?')
+  const res = await env.DB.prepare('UPDATE credentials SET device_label = ? WHERE user_id = ? AND credential_id = ?')
     .bind(deviceLabel, userId, credentialId).run();
+  return res && res.meta ? (res.meta.changes || 0) : 0;
+}
+
+// Housekeeping: expired sessions are useless but were never removed, so the
+// table only ever grew. Called opportunistically on each successful login.
+export async function purgeExpiredSessions(env) {
+  await env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(nowIso()).run();
 }

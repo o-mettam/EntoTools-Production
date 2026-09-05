@@ -2121,6 +2121,9 @@ var COSEALG;
 function isCOSEAlg(alg) {
   return Object.values(COSEALG).indexOf(alg) >= 0;
 }
+function isPQCCOSEAlg(alg) {
+  return [COSEALG.ML_DSA_44, COSEALG.ML_DSA_65, COSEALG.ML_DSA_87].indexOf(alg) >= 0;
+}
 
 // node_modules/@simplewebauthn/server/esm/helpers/iso/isoCrypto/mapCoseAlgToWebCryptoHashAlgName.js
 function mapCoseAlgToWebCryptoHashAlgName(alg) {
@@ -8749,10 +8752,10 @@ Extensions = Extensions_1 = __decorate([
 
 // node_modules/@peculiar/asn1-x509/build/es2015/types.js
 var Version;
-(function(Version4) {
-  Version4[Version4["v1"] = 0] = "v1";
-  Version4[Version4["v2"] = 1] = "v2";
-  Version4[Version4["v3"] = 2] = "v3";
+(function(Version5) {
+  Version5[Version5["v1"] = 0] = "v1";
+  Version5[Version5["v2"] = 1] = "v2";
+  Version5[Version5["v3"] = 2] = "v3";
 })(Version || (Version = {}));
 
 // node_modules/@peculiar/asn1-x509/build/es2015/tbs_certificate.js
@@ -9005,8 +9008,10 @@ function issuerSubjectToString(input) {
   return parts.join(" : ");
 }
 
+// node_modules/@simplewebauthn/server/esm/helpers/isCertRevoked.js
+var import_reflect_metadata = __toESM(require_Reflect(), 1);
+
 // node_modules/@peculiar/x509/build/x509.es.js
-var import_reflect_metadata = __toESM(require_Reflect());
 var import_pvtsutils = __toESM(require_build());
 
 // node_modules/@peculiar/asn1-cms/build/es2015/issuer_and_serial_number.js
@@ -11848,8 +11853,8 @@ __decorate([
 // node_modules/@peculiar/asn1-pkcs8/build/es2015/private_key_info.js
 var Attributes_1;
 var Version2;
-(function(Version4) {
-  Version4[Version4["v1"] = 0] = "v1";
+(function(Version5) {
+  Version5[Version5["v1"] = 0] = "v1";
 })(Version2 || (Version2 = {}));
 var PrivateKey = class extends OctetString2 {
 };
@@ -12265,6 +12270,150 @@ SMIMECapabilities = SMIMECapabilities_1 = __decorate([
   })
 ], SMIMECapabilities);
 
+// node_modules/@peculiar/asn1-x509-post-quantum/build/es2015/composite_signatures.js
+var CompositeParams_1;
+var CompositeSignatureValue_1;
+var CompositeParams = CompositeParams_1 = class CompositeParams2 extends AsnArray {
+  constructor(items) {
+    super(items);
+    Object.setPrototypeOf(this, CompositeParams_1.prototype);
+  }
+};
+CompositeParams = CompositeParams_1 = __decorate([
+  AsnType({
+    type: AsnTypeTypes.Sequence,
+    itemType: AlgorithmIdentifier
+  })
+], CompositeParams);
+var CompositeSignatureValue = CompositeSignatureValue_1 = class CompositeSignatureValue2 extends AsnArray {
+  constructor(items) {
+    super(items);
+    Object.setPrototypeOf(this, CompositeSignatureValue_1.prototype);
+  }
+};
+CompositeSignatureValue = CompositeSignatureValue_1 = __decorate([
+  AsnType({
+    type: AsnTypeTypes.Sequence,
+    itemType: AsnPropTypes.BitString
+  })
+], CompositeSignatureValue);
+
+// node_modules/@peculiar/asn1-asym-key/build/es2015/index.js
+var AsymmetricKeyPackage_1;
+var Version3;
+(function(Version5) {
+  Version5[Version5["v1"] = 0] = "v1";
+  Version5[Version5["v2"] = 1] = "v2";
+})(Version3 || (Version3 = {}));
+var PrivateKeyAlgorithmIdentifier = class PrivateKeyAlgorithmIdentifier2 extends AlgorithmIdentifier {
+};
+PrivateKeyAlgorithmIdentifier = __decorate([
+  AsnType({ type: AsnTypeTypes.Sequence })
+], PrivateKeyAlgorithmIdentifier);
+var OneAsymmetricKey = class OneAsymmetricKey2 {
+  version = Version3.v1;
+  privateKeyAlgorithm = new AlgorithmIdentifier();
+  privateKey = new ArrayBuffer(0);
+  attributes;
+  publicKey;
+};
+__decorate([
+  AsnProp({ type: AsnPropTypes.Integer })
+], OneAsymmetricKey.prototype, "version", void 0);
+__decorate([
+  AsnProp({ type: AlgorithmIdentifier })
+], OneAsymmetricKey.prototype, "privateKeyAlgorithm", void 0);
+__decorate([
+  AsnProp({ type: AsnPropTypes.OctetString })
+], OneAsymmetricKey.prototype, "privateKey", void 0);
+__decorate([
+  AsnProp({
+    type: Attributes,
+    context: 0,
+    implicit: true,
+    optional: true
+  })
+], OneAsymmetricKey.prototype, "attributes", void 0);
+__decorate([
+  AsnProp({
+    type: AsnPropTypes.BitString,
+    context: 1,
+    implicit: true,
+    optional: true
+  })
+], OneAsymmetricKey.prototype, "publicKey", void 0);
+OneAsymmetricKey = __decorate([
+  AsnType({ type: AsnTypeTypes.Sequence })
+], OneAsymmetricKey);
+var PrivateKeyInfo2 = class PrivateKeyInfo3 extends OneAsymmetricKey {
+};
+PrivateKeyInfo2 = __decorate([
+  AsnType({ type: AsnTypeTypes.Sequence })
+], PrivateKeyInfo2);
+var AsymmetricKeyPackage = AsymmetricKeyPackage_1 = class AsymmetricKeyPackage2 extends AsnArray {
+  constructor(items) {
+    super(items);
+    Object.setPrototypeOf(this, AsymmetricKeyPackage_1.prototype);
+  }
+};
+AsymmetricKeyPackage = AsymmetricKeyPackage_1 = __decorate([
+  AsnType({
+    type: AsnTypeTypes.Sequence,
+    itemType: OneAsymmetricKey
+  })
+], AsymmetricKeyPackage);
+
+// node_modules/@peculiar/asn1-x509-post-quantum/build/es2015/composite_keys.js
+var CompositePublicKey_1;
+var CompositePrivateKey_1;
+var CompositeAlgorithmIdentifier = class CompositeAlgorithmIdentifier2 extends AlgorithmIdentifier {
+};
+CompositeAlgorithmIdentifier = __decorate([
+  AsnType({ type: AsnTypeTypes.Sequence })
+], CompositeAlgorithmIdentifier);
+var CompositePublicKey = CompositePublicKey_1 = class CompositePublicKey2 extends AsnArray {
+  constructor(items) {
+    super(items);
+    Object.setPrototypeOf(this, CompositePublicKey_1.prototype);
+  }
+};
+CompositePublicKey = CompositePublicKey_1 = __decorate([
+  AsnType({
+    type: AsnTypeTypes.Sequence,
+    itemType: SubjectPublicKeyInfo
+  })
+], CompositePublicKey);
+var CompositePrivateKey = CompositePrivateKey_1 = class CompositePrivateKey2 extends AsnArray {
+  constructor(items) {
+    super(items);
+    Object.setPrototypeOf(this, CompositePrivateKey_1.prototype);
+  }
+};
+CompositePrivateKey = CompositePrivateKey_1 = __decorate([
+  AsnType({
+    type: AsnTypeTypes.Sequence,
+    itemType: OneAsymmetricKey
+  })
+], CompositePrivateKey);
+
+// node_modules/@peculiar/asn1-x509-post-quantum/build/es2015/object_identifiers.js
+var id_sigAlgs = "2.16.840.1.101.3.4.3";
+var id_ml_dsa_44 = `${id_sigAlgs}.17`;
+var id_ml_dsa_65 = `${id_sigAlgs}.18`;
+var id_ml_dsa_87 = `${id_sigAlgs}.19`;
+var id_slh_dsa_sha2_128s = `${id_sigAlgs}.20`;
+var id_slh_dsa_sha2_128f = `${id_sigAlgs}.21`;
+var id_slh_dsa_sha2_192s = `${id_sigAlgs}.22`;
+var id_slh_dsa_sha2_192f = `${id_sigAlgs}.23`;
+var id_slh_dsa_sha2_256s = `${id_sigAlgs}.24`;
+var id_slh_dsa_sha2_256f = `${id_sigAlgs}.25`;
+var id_slh_dsa_shake_128s = `${id_sigAlgs}.26`;
+var id_slh_dsa_shake_128f = `${id_sigAlgs}.27`;
+var id_slh_dsa_shake_192s = `${id_sigAlgs}.28`;
+var id_slh_dsa_shake_192f = `${id_sigAlgs}.29`;
+var id_slh_dsa_shake_256s = `${id_sigAlgs}.30`;
+var id_slh_dsa_shake_256f = `${id_sigAlgs}.31`;
+
 // node_modules/@peculiar/asn1-csr/build/es2015/attributes.js
 var Attributes_12;
 var Attributes3 = Attributes_12 = class Attributes4 extends AsnArray {
@@ -12338,9 +12487,12 @@ var AlgorithmProvider = class {
     return instance.resolveAll(diAlgorithm);
   }
   toAsnAlgorithm(alg) {
-    ({ ...alg });
+    const algCopy = { ...alg };
+    if (algCopy.hash && typeof algCopy.hash === "string") {
+      algCopy.hash = { name: algCopy.hash };
+    }
     for (const algorithm of this.getAlgorithms()) {
-      const res = algorithm.toAsnAlgorithm(alg);
+      const res = algorithm.toAsnAlgorithm(algCopy);
       if (res) {
         return res;
       }
@@ -12760,7 +12912,11 @@ var TextConverter = class {
 TextConverter.oidSerializer = OidSerializer;
 TextConverter.algorithmSerializer = DefaultAlgorithmSerializer;
 var _AsnData_rawData;
+var _AsnData_options;
 var AsnData = class _AsnData {
+  get parseOptions() {
+    return __classPrivateFieldGet(this, _AsnData_options, "f");
+  }
   get rawData() {
     if (!__classPrivateFieldGet(this, _AsnData_rawData, "f")) {
       __classPrivateFieldSet(this, _AsnData_rawData, AsnConvert.serialize(this.asn), "f");
@@ -12769,11 +12925,14 @@ var AsnData = class _AsnData {
   }
   constructor(...args) {
     _AsnData_rawData.set(this, void 0);
+    _AsnData_options.set(this, void 0);
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      this.asn = AsnConvert.parse(args[0], args[1]);
+      __classPrivateFieldSet(this, _AsnData_options, args[2], "f");
+      this.asn = AsnConvert.parse(args[0], args[1], args[2]);
       __classPrivateFieldSet(this, _AsnData_rawData, import_pvtsutils.BufferSourceConverter.toArrayBuffer(args[0]), "f");
       this.onInit(this.asn);
     } else {
+      __classPrivateFieldSet(this, _AsnData_options, args[1], "f");
       this.asn = args[0];
       this.onInit(this.asn);
     }
@@ -12787,7 +12946,7 @@ var AsnData = class _AsnData {
   toString(format4 = "text") {
     switch (format4) {
       case "asn":
-        return AsnConvert.toString(this.rawData);
+        return AsnConvert.toString(this.rawData, __classPrivateFieldGet(this, _AsnData_options, "f"));
       case "text":
         return TextConverter.serialize(this.toTextObject());
       case "hex":
@@ -12813,13 +12972,15 @@ var AsnData = class _AsnData {
     return new TextObject(this.getTextName(), {}, value);
   }
 };
-_AsnData_rawData = /* @__PURE__ */ new WeakMap();
+_AsnData_rawData = /* @__PURE__ */ new WeakMap(), _AsnData_options = /* @__PURE__ */ new WeakMap();
 AsnData.NAME = "ASN";
 var Extension2 = class _Extension extends AsnData {
   constructor(...args) {
     let raw;
+    let options;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
       raw = import_pvtsutils.BufferSourceConverter.toArrayBuffer(args[0]);
+      options = args[1];
     } else {
       raw = AsnConvert.serialize(new Extension({
         extnID: args[0],
@@ -12827,7 +12988,7 @@ var Extension2 = class _Extension extends AsnData {
         extnValue: new OctetString2(import_pvtsutils.BufferSourceConverter.toArrayBuffer(args[2]))
       }));
     }
-    super(raw, Extension);
+    super(raw, Extension, options);
   }
   onInit(asn) {
     this.type = asn.extnID;
@@ -13117,21 +13278,23 @@ var Name3 = class _Name {
     if (quotedMatches) {
       value = quotedMatches[1];
     }
-    return value.replace(/\\0a/ig, "\n").replace(/\\0d/ig, "\r").replace(/\\0g/ig, "	").replace(/\\(.)/g, "$1");
+    return value.replace(/\\0a/gi, "\n").replace(/\\0d/gi, "\r").replace(/\\0g/gi, "	").replace(/\\(.)/g, "$1");
   }
   toArrayBuffer() {
     return AsnConvert.serialize(this.asn);
   }
-  async getThumbprint(...args) {
-    var _a3;
+  async getThumbprint(arg1, arg2) {
     let crypto2;
     let algorithm = "SHA-1";
-    if (args.length >= 1 && !((_a3 = args[0]) === null || _a3 === void 0 ? void 0 : _a3.subtle)) {
-      algorithm = args[0] || algorithm;
-      crypto2 = args[1] || cryptoProvider.get();
-    } else {
-      crypto2 = args[0] || cryptoProvider.get();
+    if (arg1) {
+      if (typeof arg1 === "object" && "subtle" in arg1) {
+        crypto2 = arg1;
+      } else {
+        algorithm = arg1;
+        crypto2 = arg2;
+      }
     }
+    crypto2 !== null && crypto2 !== void 0 ? crypto2 : crypto2 = cryptoProvider.get();
     return await crypto2.subtle.digest(algorithm, this.toArrayBuffer());
   }
 };
@@ -13352,6 +13515,7 @@ var rHeaderValue = `(?:[^${rEolChars}]+${rEolGroup}(?: +[^${rEolChars}]+${rEolGr
 var rBase64Chars = "[a-zA-Z0-9=+/]+";
 var rBase64 = `(?:${rBase64Chars}${rEolGroup})+`;
 var rPem = `${rBeginTag}${rEolGroup}(?:((?:${rHeaderKey}: ${rHeaderValue})+))?${rEolGroup}?(${rBase64})${rEndTag}`;
+var rEolPattern = new RegExp(`[${rEolChars}]+`, "g");
 var PemConverter = class {
   static isPem(data) {
     return typeof data === "string" && new RegExp(rPem, "g").test(data.replace(/\r/g, ""));
@@ -13362,7 +13526,7 @@ var PemConverter = class {
     const res = [];
     let matches = null;
     while (matches = pattern.exec(pem2)) {
-      const base643 = matches[3].replace(new RegExp(`[${rEolChars}]+`, "g"), "");
+      const base643 = matches[3].replace(rEolPattern, "");
       const pemStruct = {
         type: matches[1],
         headers: [],
@@ -13452,26 +13616,9 @@ var PemConverter = class {
       res.push("");
     }
     const base643 = import_pvtsutils.Convert.ToBase64(pem2.rawData);
-    let sliced;
-    let offset = 0;
-    const rows = Array();
-    while (offset < base643.length) {
-      if (base643.length - offset < 64) {
-        sliced = base643.substring(offset);
-      } else {
-        sliced = base643.substring(offset, offset + 64);
-        offset += 64;
-      }
-      if (sliced.length !== 0) {
-        rows.push(sliced);
-        if (sliced.length < 64) {
-          break;
-        }
-      } else {
-        break;
-      }
+    for (let i = 0; i < base643.length; i += 64) {
+      res.push(base643.substring(i, i + 64));
     }
-    res.push(...rows);
     res.push(`-----END ${upperCaseType}-----`);
     return res.join("\n");
   }
@@ -13518,9 +13665,9 @@ var PemData = class _PemData extends AsnData {
   }
   constructor(...args) {
     if (_PemData.isAsnEncoded(args[0])) {
-      super(_PemData.toArrayBuffer(args[0]), args[1]);
+      super(_PemData.toArrayBuffer(args[0]), args[1], args[2]);
     } else {
-      super(args[0]);
+      super(args[0], args[1]);
     }
   }
   toString(format4 = "pem") {
@@ -13550,30 +13697,31 @@ var PublicKey = class _PublicKey extends PemData {
       throw new TypeError("Unsupported PublicKeyType");
     }
   }
-  constructor(param) {
+  constructor(param, options) {
     if (PemData.isAsnEncoded(param)) {
-      super(param, SubjectPublicKeyInfo);
+      super(param, SubjectPublicKeyInfo, options);
     } else {
-      super(param);
+      super(param, options);
     }
     this.tag = PemConverter.PublicKeyTag;
   }
-  async export(...args) {
+  async export(arg1, arg2, arg3) {
     let crypto2;
     let keyUsages = ["verify"];
     let algorithm = {
       hash: "SHA-256",
       ...this.algorithm
     };
-    if (args.length > 1) {
-      algorithm = args[0] || algorithm;
-      keyUsages = args[1] || keyUsages;
-      crypto2 = args[2] || cryptoProvider.get();
+    if (arg2) {
+      algorithm = arg1;
+      keyUsages = arg2;
+      crypto2 = arg3;
     } else {
-      crypto2 = args[0] || cryptoProvider.get();
+      crypto2 = arg1;
     }
+    crypto2 !== null && crypto2 !== void 0 ? crypto2 : crypto2 = cryptoProvider.get();
     let raw = this.rawData;
-    const asnSpki = AsnConvert.parse(this.rawData, SubjectPublicKeyInfo);
+    const asnSpki = AsnConvert.parse(this.rawData, SubjectPublicKeyInfo, this.parseOptions);
     if (asnSpki.algorithm.algorithm === id_RSASSA_PSS) {
       raw = convertSpkiToRsaPkcs1(asnSpki, raw);
     }
@@ -13584,7 +13732,7 @@ var PublicKey = class _PublicKey extends PemData {
     const algorithm = this.algorithm = algProv.toWebAlgorithm(asn.algorithm);
     switch (asn.algorithm.algorithm) {
       case id_rsaEncryption: {
-        const rsaPublicKey = AsnConvert.parse(asn.subjectPublicKey, RSAPublicKey);
+        const rsaPublicKey = AsnConvert.parse(asn.subjectPublicKey, RSAPublicKey, this.parseOptions);
         const modulus = import_pvtsutils.BufferSourceConverter.toUint8Array(rsaPublicKey.modulus);
         algorithm.publicExponent = import_pvtsutils.BufferSourceConverter.toUint8Array(rsaPublicKey.publicExponent);
         algorithm.modulusLength = (!modulus[0] ? modulus.slice(1) : modulus).byteLength << 3;
@@ -13592,40 +13740,38 @@ var PublicKey = class _PublicKey extends PemData {
       }
     }
   }
-  async getThumbprint(...args) {
-    var _a3;
+  async getThumbprint(arg1, arg2) {
     let crypto2;
     let algorithm = "SHA-1";
-    if (args.length >= 1 && !((_a3 = args[0]) === null || _a3 === void 0 ? void 0 : _a3.subtle)) {
-      algorithm = args[0] || algorithm;
-      crypto2 = args[1] || cryptoProvider.get();
-    } else {
-      crypto2 = args[0] || cryptoProvider.get();
+    if (arg1) {
+      if (typeof arg1 === "object" && "subtle" in arg1) {
+        crypto2 = arg1;
+      } else {
+        algorithm = arg1;
+        crypto2 = arg2;
+      }
     }
+    crypto2 !== null && crypto2 !== void 0 ? crypto2 : crypto2 = cryptoProvider.get();
     return await crypto2.subtle.digest(algorithm, this.rawData);
   }
-  async getKeyIdentifier(...args) {
+  async getKeyIdentifier(arg1, arg2) {
     let crypto2;
     let algorithm = "SHA-1";
-    if (args.length === 1) {
-      if (typeof args[0] === "string") {
-        algorithm = args[0];
-        crypto2 = cryptoProvider.get();
+    if (arg1) {
+      if (typeof arg1 === "object" && "subtle" in arg1) {
+        crypto2 = arg1;
       } else {
-        crypto2 = args[0];
+        algorithm = arg1;
+        crypto2 = arg2;
       }
-    } else if (args.length === 2) {
-      algorithm = args[0];
-      crypto2 = args[1];
-    } else {
-      crypto2 = cryptoProvider.get();
     }
-    const asn = AsnConvert.parse(this.rawData, SubjectPublicKeyInfo);
+    crypto2 !== null && crypto2 !== void 0 ? crypto2 : crypto2 = cryptoProvider.get();
+    const asn = AsnConvert.parse(this.rawData, SubjectPublicKeyInfo, this.parseOptions);
     return await crypto2.subtle.digest(algorithm, asn.subjectPublicKey);
   }
   toTextObject() {
     const obj = this.toTextObjectEmpty();
-    const asn = AsnConvert.parse(this.rawData, SubjectPublicKeyInfo);
+    const asn = AsnConvert.parse(this.rawData, SubjectPublicKeyInfo, this.parseOptions);
     obj["Algorithm"] = TextConverter.serializeAlgorithm(asn.algorithm);
     switch (asn.algorithm.algorithm) {
       case id_ecPublicKey:
@@ -13657,9 +13803,11 @@ var AuthorityKeyIdentifierExtension = class _AuthorityKeyIdentifierExtension ext
   }
   constructor(...args) {
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
+      super(args[0], args[1]);
     } else if (typeof args[0] === "string") {
-      const value = new AuthorityKeyIdentifier({ keyIdentifier: new KeyIdentifier(import_pvtsutils.Convert.FromHex(args[0])) });
+      const value = new AuthorityKeyIdentifier({
+        keyIdentifier: new KeyIdentifier(import_pvtsutils.Convert.FromHex(args[0]))
+      });
       super(id_ce_authorityKeyIdentifier, args[1], AsnConvert.serialize(value));
     } else {
       const certId = args[0];
@@ -13673,7 +13821,7 @@ var AuthorityKeyIdentifierExtension = class _AuthorityKeyIdentifierExtension ext
   }
   onInit(asn) {
     super.onInit(asn);
-    const aki = AsnConvert.parse(asn.extnValue, AuthorityKeyIdentifier);
+    const aki = AsnConvert.parse(asn.extnValue, AuthorityKeyIdentifier, this.parseOptions);
     if (aki.keyIdentifier) {
       this.keyId = import_pvtsutils.Convert.ToHex(aki.keyIdentifier);
     }
@@ -13686,7 +13834,7 @@ var AuthorityKeyIdentifierExtension = class _AuthorityKeyIdentifierExtension ext
   }
   toTextObject() {
     const obj = this.toTextObjectWithoutValue();
-    const asn = AsnConvert.parse(this.value, AuthorityKeyIdentifier);
+    const asn = AsnConvert.parse(this.value, AuthorityKeyIdentifier, this.parseOptions);
     if (asn.authorityCertIssuer) {
       obj["Authority Issuer"] = new GeneralNames3(asn.authorityCertIssuer).toTextObject();
     }
@@ -13703,8 +13851,8 @@ AuthorityKeyIdentifierExtension.NAME = "Authority Key Identifier";
 var BasicConstraintsExtension = class extends Extension2 {
   constructor(...args) {
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
-      const value = AsnConvert.parse(this.value, BasicConstraints);
+      super(args[0], args[1]);
+      const value = AsnConvert.parse(this.value, BasicConstraints, this.parseOptions);
       this.ca = value.cA;
       this.pathLength = value.pathLenConstraint;
     } else {
@@ -13741,8 +13889,8 @@ var ExtendedKeyUsage3;
 var ExtendedKeyUsageExtension = class extends Extension2 {
   constructor(...args) {
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
-      const value = AsnConvert.parse(this.value, ExtendedKeyUsage);
+      super(args[0], args[1]);
+      const value = AsnConvert.parse(this.value, ExtendedKeyUsage, this.parseOptions);
       this.usages = value.map((o) => o);
     } else {
       const value = new ExtendedKeyUsage(args[0]);
@@ -13772,8 +13920,8 @@ var KeyUsageFlags2;
 var KeyUsagesExtension = class extends Extension2 {
   constructor(...args) {
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
-      const value = AsnConvert.parse(this.value, KeyUsage);
+      super(args[0], args[1]);
+      const value = AsnConvert.parse(this.value, KeyUsage, this.parseOptions);
       this.usages = value.toNumber();
     } else {
       const value = new KeyUsage(args[0]);
@@ -13783,7 +13931,7 @@ var KeyUsagesExtension = class extends Extension2 {
   }
   toTextObject() {
     const obj = this.toTextObjectWithoutValue();
-    const asn = AsnConvert.parse(this.value, KeyUsage);
+    const asn = AsnConvert.parse(this.value, KeyUsage, this.parseOptions);
     obj[""] = asn.toJSON().join(", ");
     return obj;
   }
@@ -13797,8 +13945,8 @@ var SubjectKeyIdentifierExtension = class _SubjectKeyIdentifierExtension extends
   }
   constructor(...args) {
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
-      const value = AsnConvert.parse(this.value, SubjectKeyIdentifier);
+      super(args[0], args[1]);
+      const value = AsnConvert.parse(this.value, SubjectKeyIdentifier, this.parseOptions);
       this.keyId = import_pvtsutils.Convert.ToHex(value);
     } else {
       const identifier = typeof args[0] === "string" ? import_pvtsutils.Convert.FromHex(args[0]) : args[0];
@@ -13809,7 +13957,7 @@ var SubjectKeyIdentifierExtension = class _SubjectKeyIdentifierExtension extends
   }
   toTextObject() {
     const obj = this.toTextObjectWithoutValue();
-    const asn = AsnConvert.parse(this.value, SubjectKeyIdentifier);
+    const asn = AsnConvert.parse(this.value, SubjectKeyIdentifier, this.parseOptions);
     obj[""] = asn;
     return obj;
   }
@@ -13818,14 +13966,14 @@ SubjectKeyIdentifierExtension.NAME = "Subject Key Identifier";
 var SubjectAlternativeNameExtension = class extends Extension2 {
   constructor(...args) {
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
+      super(args[0], args[1]);
     } else {
       super(id_ce_subjectAltName, args[1], new GeneralNames3(args[0] || []).rawData);
     }
   }
   onInit(asn) {
     super.onInit(asn);
-    const value = AsnConvert.parse(asn.extnValue, SubjectAlternativeName);
+    const value = AsnConvert.parse(asn.extnValue, SubjectAlternativeName, this.parseOptions);
     this.names = new GeneralNames3(value);
   }
   toTextObject() {
@@ -13842,11 +13990,11 @@ var ExtensionFactory = class {
   static register(id, type) {
     this.items.set(id, type);
   }
-  static create(data) {
-    const extension = new Extension2(data);
+  static create(data, options) {
+    const extension = new Extension2(data, options);
     const Type = this.items.get(extension.type);
     if (Type) {
-      return new Type(data);
+      return new Type(data, options);
     }
     return extension;
   }
@@ -13856,8 +14004,8 @@ var CertificatePolicyExtension = class extends Extension2 {
   constructor(...args) {
     var _a3;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
-      const asnPolicies = AsnConvert.parse(this.value, CertificatePolicies);
+      super(args[0], args[1]);
+      const asnPolicies = AsnConvert.parse(this.value, CertificatePolicies, this.parseOptions);
       this.policies = asnPolicies.map((o) => o.policyIdentifier);
     } else {
       const policies = args[0];
@@ -13879,12 +14027,14 @@ var CRLDistributionPointsExtension = class extends Extension2 {
   constructor(...args) {
     var _a3;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
+      super(args[0], args[1]);
     } else if (Array.isArray(args[0]) && typeof args[0][0] === "string") {
       const urls = args[0];
       const dps = urls.map((url) => {
         return new DistributionPoint({
-          distributionPoint: new DistributionPointName({ fullName: [new GeneralName({ uniformResourceIdentifier: url })] })
+          distributionPoint: new DistributionPointName({
+            fullName: [new GeneralName({ uniformResourceIdentifier: url })]
+          })
         });
       });
       const value = new CRLDistributionPoints(dps);
@@ -13897,16 +14047,16 @@ var CRLDistributionPointsExtension = class extends Extension2 {
   }
   onInit(asn) {
     super.onInit(asn);
-    const crlExt = AsnConvert.parse(asn.extnValue, CRLDistributionPoints);
+    const crlExt = AsnConvert.parse(asn.extnValue, CRLDistributionPoints, this.parseOptions);
     this.distributionPoints = crlExt;
   }
   toTextObject() {
     const obj = this.toTextObjectWithoutValue();
     obj["Distribution Point"] = this.distributionPoints.map((dp) => {
       var _a3;
-      const dpObj = {};
-      if (dp.distributionPoint) {
-        dpObj[""] = (_a3 = dp.distributionPoint.fullName) === null || _a3 === void 0 ? void 0 : _a3.map((name) => new GeneralName3(name).toString()).join(", ");
+      const dpObj = new TextObject("");
+      if ((_a3 = dp.distributionPoint) === null || _a3 === void 0 ? void 0 : _a3.fullName) {
+        dpObj[""] = dp.distributionPoint.fullName.map((name) => new GeneralName3(name).toString()).join(", ");
       }
       if (dp.reasons) {
         dpObj["Reasons"] = dp.reasons.toString();
@@ -13924,7 +14074,7 @@ var AuthorityInfoAccessExtension = class extends Extension2 {
   constructor(...args) {
     var _a3, _b, _c, _d;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
+      super(args[0], args[1]);
     } else if (args[0] instanceof AuthorityInfoAccessSyntax) {
       const value = new AuthorityInfoAccessSyntax(args[0]);
       super(id_pe_authorityInfoAccess, args[1], AsnConvert.serialize(value));
@@ -13948,7 +14098,7 @@ var AuthorityInfoAccessExtension = class extends Extension2 {
     this.caIssuers = [];
     this.timeStamping = [];
     this.caRepository = [];
-    const aia = AsnConvert.parse(asn.extnValue, AuthorityInfoAccessSyntax);
+    const aia = AsnConvert.parse(asn.extnValue, AuthorityInfoAccessSyntax, this.parseOptions);
     aia.forEach((accessDescription) => {
       switch (accessDescription.accessMethod) {
         case id_ad_ocsp:
@@ -14020,14 +14170,14 @@ function addAccessDescriptions(value, params, method, key) {
 var IssuerAlternativeNameExtension = class extends Extension2 {
   constructor(...args) {
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
+      super(args[0], args[1]);
     } else {
       super(id_ce_issuerAltName, args[1], new GeneralNames3(args[0] || []).rawData);
     }
   }
   onInit(asn) {
     super.onInit(asn);
-    const value = AsnConvert.parse(asn.extnValue, GeneralNames);
+    const value = AsnConvert.parse(asn.extnValue, GeneralNames, this.parseOptions);
     this.names = new GeneralNames3(value);
   }
   toTextObject() {
@@ -14043,8 +14193,10 @@ IssuerAlternativeNameExtension.NAME = "Issuer Alternative Name";
 var Attribute3 = class _Attribute extends AsnData {
   constructor(...args) {
     let raw;
+    let options;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
       raw = import_pvtsutils.BufferSourceConverter.toArrayBuffer(args[0]);
+      options = args[1];
     } else {
       const type = args[0];
       const values = Array.isArray(args[1]) ? args[1].map((o) => import_pvtsutils.BufferSourceConverter.toArrayBuffer(o)) : [];
@@ -14053,7 +14205,7 @@ var Attribute3 = class _Attribute extends AsnData {
         values
       }));
     }
-    super(raw, Attribute);
+    super(raw, Attribute, options);
   }
   onInit(asn) {
     this.type = asn.type;
@@ -14077,7 +14229,7 @@ var ChallengePasswordAttribute = class extends Attribute3 {
   constructor(...args) {
     var _a3;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
+      super(args[0], args[1]);
     } else {
       const value = new ChallengePassword({ printableString: args[0] });
       super(id_pkcs9_at_challengePassword, [AsnConvert.serialize(value)]);
@@ -14087,7 +14239,7 @@ var ChallengePasswordAttribute = class extends Attribute3 {
   onInit(asn) {
     super.onInit(asn);
     if (this.values[0]) {
-      const value = AsnConvert.parse(this.values[0], ChallengePassword);
+      const value = AsnConvert.parse(this.values[0], ChallengePassword, this.parseOptions);
       this.password = value.toString();
     }
   }
@@ -14102,7 +14254,7 @@ var ExtensionsAttribute = class extends Attribute3 {
   constructor(...args) {
     var _a3;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
-      super(args[0]);
+      super(args[0], args[1]);
     } else {
       const extensions = args[0];
       const value = new Extensions();
@@ -14116,8 +14268,8 @@ var ExtensionsAttribute = class extends Attribute3 {
   onInit(asn) {
     super.onInit(asn);
     if (this.values[0]) {
-      const value = AsnConvert.parse(this.values[0], Extensions);
-      this.items = value.map((o) => ExtensionFactory.create(AsnConvert.serialize(o)));
+      const value = AsnConvert.parse(this.values[0], Extensions, this.parseOptions);
+      this.items = value.map((o) => ExtensionFactory.create(AsnConvert.serialize(o), this.parseOptions));
     }
   }
   toTextObject() {
@@ -14134,11 +14286,11 @@ var AttributeFactory = class {
   static register(id, type) {
     this.items.set(id, type);
   }
-  static create(data) {
-    const attribute = new Attribute3(data);
+  static create(data, options) {
+    const attribute = new Attribute3(data, options);
     const Type = this.items.get(attribute.type);
     if (Type) {
-      return new Type(data);
+      return new Type(data, options);
     }
     return attribute;
   }
@@ -14431,6 +14583,121 @@ EdAlgorithm = __decorate([
   injectable_default()
 ], EdAlgorithm);
 instance.registerSingleton(diAlgorithm, EdAlgorithm);
+var MlDsaAlgorithm = class MlDsaAlgorithm2 {
+  toAsnAlgorithm(alg) {
+    let algorithm = null;
+    switch (alg.name.toLowerCase()) {
+      case "ml-dsa-44":
+        algorithm = id_ml_dsa_44;
+        break;
+      case "ml-dsa-65":
+        algorithm = id_ml_dsa_65;
+        break;
+      case "ml-dsa-87":
+        algorithm = id_ml_dsa_87;
+        break;
+    }
+    if (algorithm) {
+      return new AlgorithmIdentifier({ algorithm });
+    }
+    return null;
+  }
+  toWebAlgorithm(alg) {
+    switch (alg.algorithm) {
+      case id_ml_dsa_44:
+        return { name: "ML-DSA-44" };
+      case id_ml_dsa_65:
+        return { name: "ML-DSA-65" };
+      case id_ml_dsa_87:
+        return { name: "ML-DSA-87" };
+    }
+    return null;
+  }
+};
+MlDsaAlgorithm = __decorate([
+  injectable_default()
+], MlDsaAlgorithm);
+instance.registerSingleton(diAlgorithm, MlDsaAlgorithm);
+var SlhDsaAlgorithm = class SlhDsaAlgorithm2 {
+  toAsnAlgorithm(alg) {
+    let algorithm = null;
+    switch (alg.name.toLowerCase()) {
+      case "slh-dsa-sha2-128s":
+        algorithm = id_slh_dsa_sha2_128s;
+        break;
+      case "slh-dsa-sha2-128f":
+        algorithm = id_slh_dsa_sha2_128f;
+        break;
+      case "slh-dsa-sha2-192s":
+        algorithm = id_slh_dsa_sha2_192s;
+        break;
+      case "slh-dsa-sha2-192f":
+        algorithm = id_slh_dsa_sha2_192f;
+        break;
+      case "slh-dsa-sha2-256s":
+        algorithm = id_slh_dsa_sha2_256s;
+        break;
+      case "slh-dsa-sha2-256f":
+        algorithm = id_slh_dsa_sha2_256f;
+        break;
+      case "slh-dsa-shake-128s":
+        algorithm = id_slh_dsa_shake_128s;
+        break;
+      case "slh-dsa-shake-128f":
+        algorithm = id_slh_dsa_shake_128f;
+        break;
+      case "slh-dsa-shake-192s":
+        algorithm = id_slh_dsa_shake_192s;
+        break;
+      case "slh-dsa-shake-192f":
+        algorithm = id_slh_dsa_shake_192f;
+        break;
+      case "slh-dsa-shake-256s":
+        algorithm = id_slh_dsa_shake_256s;
+        break;
+      case "slh-dsa-shake-256f":
+        algorithm = id_slh_dsa_shake_256f;
+        break;
+    }
+    if (algorithm) {
+      return new AlgorithmIdentifier({ algorithm });
+    }
+    return null;
+  }
+  toWebAlgorithm(alg) {
+    switch (alg.algorithm) {
+      case id_slh_dsa_sha2_128s:
+        return { name: "SLH-DSA-SHA2-128s" };
+      case id_slh_dsa_sha2_128f:
+        return { name: "SLH-DSA-SHA2-128f" };
+      case id_slh_dsa_sha2_192s:
+        return { name: "SLH-DSA-SHA2-192s" };
+      case id_slh_dsa_sha2_192f:
+        return { name: "SLH-DSA-SHA2-192f" };
+      case id_slh_dsa_sha2_256s:
+        return { name: "SLH-DSA-SHA2-256s" };
+      case id_slh_dsa_sha2_256f:
+        return { name: "SLH-DSA-SHA2-256f" };
+      case id_slh_dsa_shake_128s:
+        return { name: "SLH-DSA-SHAKE-128s" };
+      case id_slh_dsa_shake_128f:
+        return { name: "SLH-DSA-SHAKE-128f" };
+      case id_slh_dsa_shake_192s:
+        return { name: "SLH-DSA-SHAKE-192s" };
+      case id_slh_dsa_shake_192f:
+        return { name: "SLH-DSA-SHAKE-192f" };
+      case id_slh_dsa_shake_256s:
+        return { name: "SLH-DSA-SHAKE-256s" };
+      case id_slh_dsa_shake_256f:
+        return { name: "SLH-DSA-SHAKE-256f" };
+    }
+    return null;
+  }
+};
+SlhDsaAlgorithm = __decorate([
+  injectable_default()
+], SlhDsaAlgorithm);
+instance.registerSingleton(diAlgorithm, SlhDsaAlgorithm);
 var _Pkcs10CertificateRequest_tbs;
 var _Pkcs10CertificateRequest_subjectName;
 var _Pkcs10CertificateRequest_subject;
@@ -14467,13 +14734,13 @@ var Pkcs10CertificateRequest = class extends PemData {
   }
   get publicKey() {
     if (!__classPrivateFieldGet(this, _Pkcs10CertificateRequest_publicKey, "f")) {
-      __classPrivateFieldSet(this, _Pkcs10CertificateRequest_publicKey, new PublicKey(this.asn.certificationRequestInfo.subjectPKInfo), "f");
+      __classPrivateFieldSet(this, _Pkcs10CertificateRequest_publicKey, new PublicKey(this.asn.certificationRequestInfo.subjectPKInfo, this.parseOptions), "f");
     }
     return __classPrivateFieldGet(this, _Pkcs10CertificateRequest_publicKey, "f");
   }
   get attributes() {
     if (!__classPrivateFieldGet(this, _Pkcs10CertificateRequest_attributes, "f")) {
-      __classPrivateFieldSet(this, _Pkcs10CertificateRequest_attributes, this.asn.certificationRequestInfo.attributes.map((o) => AttributeFactory.create(AsnConvert.serialize(o))), "f");
+      __classPrivateFieldSet(this, _Pkcs10CertificateRequest_attributes, this.asn.certificationRequestInfo.attributes.map((o) => AttributeFactory.create(AsnConvert.serialize(o), this.parseOptions)), "f");
     }
     return __classPrivateFieldGet(this, _Pkcs10CertificateRequest_attributes, "f");
   }
@@ -14493,9 +14760,9 @@ var Pkcs10CertificateRequest = class extends PemData {
     }
     return __classPrivateFieldGet(this, _Pkcs10CertificateRequest_tbs, "f");
   }
-  constructor(param) {
-    const args = PemData.isAsnEncoded(param) ? [param, CertificationRequest] : [param];
-    super(args[0], args[1]);
+  constructor(param, options) {
+    const args = PemData.isAsnEncoded(param) ? [param, CertificationRequest, options] : [param, options];
+    super(args[0], args[1], args[2]);
     _Pkcs10CertificateRequest_tbs.set(this, void 0);
     _Pkcs10CertificateRequest_subjectName.set(this, void 0);
     _Pkcs10CertificateRequest_subject.set(this, void 0);
@@ -14552,7 +14819,7 @@ var Pkcs10CertificateRequest = class extends PemData {
   }
   toTextObject() {
     const obj = this.toTextObjectEmpty();
-    const req = AsnConvert.parse(this.rawData, CertificationRequest);
+    const req = AsnConvert.parse(this.rawData, CertificationRequest, this.parseOptions);
     const tbs = req.certificationRequestInfo;
     const data = new TextObject("", {
       Version: `${Version[tbs.version]} (${tbs.version})`,
@@ -14577,6 +14844,33 @@ var Pkcs10CertificateRequest = class extends PemData {
 };
 _Pkcs10CertificateRequest_tbs = /* @__PURE__ */ new WeakMap(), _Pkcs10CertificateRequest_subjectName = /* @__PURE__ */ new WeakMap(), _Pkcs10CertificateRequest_subject = /* @__PURE__ */ new WeakMap(), _Pkcs10CertificateRequest_signatureAlgorithm = /* @__PURE__ */ new WeakMap(), _Pkcs10CertificateRequest_signature = /* @__PURE__ */ new WeakMap(), _Pkcs10CertificateRequest_publicKey = /* @__PURE__ */ new WeakMap(), _Pkcs10CertificateRequest_attributes = /* @__PURE__ */ new WeakMap(), _Pkcs10CertificateRequest_extensions = /* @__PURE__ */ new WeakMap();
 Pkcs10CertificateRequest.NAME = "PKCS#10 Certificate Request";
+function toPositiveIntegerOctets(input) {
+  let firstNonZero = 0;
+  while (firstNonZero < input.length - 1 && input[firstNonZero] === 0) {
+    firstNonZero++;
+  }
+  let serialNumber = input.slice(firstNonZero);
+  if (!serialNumber.length) {
+    serialNumber = new Uint8Array([0]);
+  }
+  if (serialNumber[0] > 127) {
+    const newSerialNumber = new Uint8Array(serialNumber.length + 1);
+    newSerialNumber[0] = 0;
+    newSerialNumber.set(serialNumber, 1);
+    serialNumber = newSerialNumber;
+  }
+  return serialNumber.buffer;
+}
+function normalizeCertificateSerialNumber(input) {
+  return toPositiveIntegerOctets(import_pvtsutils.BufferSourceConverter.toUint8Array(import_pvtsutils.Convert.FromHex(input || "")));
+}
+function getCertificateSerialNumber(raw) {
+  let serialNumber = import_pvtsutils.BufferSourceConverter.toUint8Array(raw);
+  if (serialNumber.length > 1 && serialNumber[0] === 0 && serialNumber[1] > 127) {
+    serialNumber = serialNumber.slice(1);
+  }
+  return import_pvtsutils.Convert.ToHex(serialNumber);
+}
 var _X509Certificate_tbs;
 var _X509Certificate_serialNumber;
 var _X509Certificate_subjectName;
@@ -14592,18 +14886,13 @@ var _X509Certificate_publicKey;
 var X509Certificate = class extends PemData {
   get publicKey() {
     if (!__classPrivateFieldGet(this, _X509Certificate_publicKey, "f")) {
-      __classPrivateFieldSet(this, _X509Certificate_publicKey, new PublicKey(this.asn.tbsCertificate.subjectPublicKeyInfo), "f");
+      __classPrivateFieldSet(this, _X509Certificate_publicKey, new PublicKey(this.asn.tbsCertificate.subjectPublicKeyInfo, this.parseOptions), "f");
     }
     return __classPrivateFieldGet(this, _X509Certificate_publicKey, "f");
   }
   get serialNumber() {
     if (!__classPrivateFieldGet(this, _X509Certificate_serialNumber, "f")) {
-      const tbs = this.asn.tbsCertificate;
-      let serialNumberBytes = new Uint8Array(tbs.serialNumber);
-      if (serialNumberBytes.length > 1 && serialNumberBytes[0] === 0 && serialNumberBytes[1] > 127) {
-        serialNumberBytes = serialNumberBytes.slice(1);
-      }
-      __classPrivateFieldSet(this, _X509Certificate_serialNumber, import_pvtsutils.Convert.ToHex(serialNumberBytes), "f");
+      __classPrivateFieldSet(this, _X509Certificate_serialNumber, getCertificateSerialNumber(this.asn.tbsCertificate.serialNumber), "f");
     }
     return __classPrivateFieldGet(this, _X509Certificate_serialNumber, "f");
   }
@@ -14668,7 +14957,7 @@ var X509Certificate = class extends PemData {
     if (!__classPrivateFieldGet(this, _X509Certificate_extensions, "f")) {
       __classPrivateFieldSet(this, _X509Certificate_extensions, [], "f");
       if (this.asn.tbsCertificate.extensions) {
-        __classPrivateFieldSet(this, _X509Certificate_extensions, this.asn.tbsCertificate.extensions.map((o) => ExtensionFactory.create(AsnConvert.serialize(o))), "f");
+        __classPrivateFieldSet(this, _X509Certificate_extensions, this.asn.tbsCertificate.extensions.map((o) => ExtensionFactory.create(AsnConvert.serialize(o), this.parseOptions)), "f");
       }
     }
     return __classPrivateFieldGet(this, _X509Certificate_extensions, "f");
@@ -14679,9 +14968,9 @@ var X509Certificate = class extends PemData {
     }
     return __classPrivateFieldGet(this, _X509Certificate_tbs, "f");
   }
-  constructor(param) {
-    const args = PemData.isAsnEncoded(param) ? [param, Certificate] : [param];
-    super(args[0], args[1]);
+  constructor(param, options) {
+    const args = PemData.isAsnEncoded(param) ? [param, Certificate, options] : [param, options];
+    super(args[0], args[1], args[2]);
     _X509Certificate_tbs.set(this, void 0);
     _X509Certificate_serialNumber.set(this, void 0);
     _X509Certificate_subjectName.set(this, void 0);
@@ -14781,15 +15070,15 @@ var X509Certificate = class extends PemData {
       return ok && this.notBefore.getTime() < time && time < this.notAfter.getTime();
     }
   }
-  async getThumbprint(...args) {
+  async getThumbprint(arg1, arg2) {
     let crypto2;
     let algorithm = "SHA-1";
-    if (args[0]) {
-      if (!args[0].subtle) {
-        algorithm = args[0] || algorithm;
-        crypto2 = args[1];
+    if (arg1) {
+      if (typeof arg1 === "object" && "subtle" in arg1) {
+        crypto2 = arg1;
       } else {
-        crypto2 = args[0];
+        algorithm = arg1;
+        crypto2 = arg2;
       }
     }
     crypto2 !== null && crypto2 !== void 0 ? crypto2 : crypto2 = cryptoProvider.get();
@@ -14800,7 +15089,7 @@ var X509Certificate = class extends PemData {
   }
   toTextObject() {
     const obj = this.toTextObjectEmpty();
-    const cert = AsnConvert.parse(this.rawData, Certificate);
+    const cert = AsnConvert.parse(this.rawData, Certificate, this.parseOptions);
     const tbs = cert.tbsCertificate;
     const data = new TextObject("", {
       Version: `${Version[tbs.version]} (${tbs.version})`,
@@ -14838,11 +15127,13 @@ var X509Certificate = class extends PemData {
 };
 _X509Certificate_tbs = /* @__PURE__ */ new WeakMap(), _X509Certificate_serialNumber = /* @__PURE__ */ new WeakMap(), _X509Certificate_subjectName = /* @__PURE__ */ new WeakMap(), _X509Certificate_subject = /* @__PURE__ */ new WeakMap(), _X509Certificate_issuerName = /* @__PURE__ */ new WeakMap(), _X509Certificate_issuer = /* @__PURE__ */ new WeakMap(), _X509Certificate_notBefore = /* @__PURE__ */ new WeakMap(), _X509Certificate_notAfter = /* @__PURE__ */ new WeakMap(), _X509Certificate_signatureAlgorithm = /* @__PURE__ */ new WeakMap(), _X509Certificate_signature = /* @__PURE__ */ new WeakMap(), _X509Certificate_extensions = /* @__PURE__ */ new WeakMap(), _X509Certificate_publicKey = /* @__PURE__ */ new WeakMap();
 X509Certificate.NAME = "Certificate";
+var _X509Certificates_options;
 var X509Certificates = class extends Array {
-  constructor(param) {
+  constructor(param, options) {
     super();
+    _X509Certificates_options.set(this, void 0);
     if (PemData.isAsnEncoded(param)) {
-      this.import(param);
+      this.import(param, options);
     } else if (param instanceof X509Certificate) {
       this.push(param);
     } else if (Array.isArray(param)) {
@@ -14855,8 +15146,12 @@ var X509Certificates = class extends Array {
     const signedData = new SignedData();
     signedData.version = 1;
     signedData.encapContentInfo.eContentType = id_data;
-    signedData.encapContentInfo.eContent = new EncapsulatedContent({ single: new OctetString2() });
-    signedData.certificates = new CertificateSet(this.map((o) => new CertificateChoices({ certificate: AsnConvert.parse(o.rawData, Certificate) })));
+    signedData.encapContentInfo.eContent = new EncapsulatedContent({
+      single: new OctetString2()
+    });
+    signedData.certificates = new CertificateSet(this.map((o) => new CertificateChoices({
+      certificate: AsnConvert.parse(o.rawData, Certificate, __classPrivateFieldGet(this, _X509Certificates_options, "f"))
+    })));
     const cms = new ContentInfo({
       contentType: id_signedData,
       content: AsnConvert.serialize(signedData)
@@ -14867,19 +15162,24 @@ var X509Certificates = class extends Array {
     }
     return this.toString(format4);
   }
-  import(data) {
+  import(data, options) {
     const raw = PemData.toArrayBuffer(data);
-    const cms = AsnConvert.parse(raw, ContentInfo);
+    const cms = AsnConvert.parse(raw, ContentInfo, options);
     if (cms.contentType !== id_signedData) {
       throw new TypeError("Cannot parse CMS package. Incoming data is not a SignedData object.");
     }
-    const signedData = AsnConvert.parse(cms.content, SignedData);
-    this.clear();
+    const signedData = AsnConvert.parse(cms.content, SignedData, options);
+    const certificates = [];
     for (const item of signedData.certificates || []) {
       if (item.certificate) {
-        this.push(new X509Certificate(item.certificate));
+        certificates.push(new X509Certificate(item.certificate, options));
       }
     }
+    this.clear();
+    for (const certificate of certificates) {
+      this.push(certificate);
+    }
+    __classPrivateFieldSet(this, _X509Certificates_options, options, "f");
   }
   clear() {
     while (this.pop()) {
@@ -14893,7 +15193,7 @@ var X509Certificates = class extends Array {
       case "pem-chain":
         return this.map((o) => o.toString("pem")).join("\n");
       case "asn":
-        return AsnConvert.toString(raw);
+        return AsnConvert.toString(raw, __classPrivateFieldGet(this, _X509Certificates_options, "f"));
       case "hex":
         return import_pvtsutils.Convert.ToHex(raw);
       case "base64":
@@ -14907,8 +15207,8 @@ var X509Certificates = class extends Array {
     }
   }
   toTextObject() {
-    const contentInfo = AsnConvert.parse(this.export("raw"), ContentInfo);
-    const signedData = AsnConvert.parse(contentInfo.content, SignedData);
+    const contentInfo = AsnConvert.parse(this.export("raw"), ContentInfo, __classPrivateFieldGet(this, _X509Certificates_options, "f"));
+    const signedData = AsnConvert.parse(contentInfo.content, SignedData, __classPrivateFieldGet(this, _X509Certificates_options, "f"));
     const obj = new TextObject("X509Certificates", {
       "Content Type": OidSerializer.toString(contentInfo.contentType),
       Content: new TextObject("", {
@@ -14919,6 +15219,7 @@ var X509Certificates = class extends Array {
     return obj;
   }
 };
+_X509Certificates_options = /* @__PURE__ */ new WeakMap();
 var X509ChainBuilder = class {
   constructor(params = {}) {
     this.certificates = [];
@@ -14983,25 +15284,6 @@ var X509ChainBuilder = class {
     return null;
   }
 };
-function generateCertificateSerialNumber(input, crypto2 = cryptoProvider.get()) {
-  const inputView = import_pvtsutils.BufferSourceConverter.toUint8Array(import_pvtsutils.Convert.FromHex(input || ""));
-  let serialNumber = inputView && inputView.length && inputView.some((o) => o > 0) ? new Uint8Array(inputView) : void 0;
-  if (!serialNumber) {
-    serialNumber = crypto2.getRandomValues(new Uint8Array(16));
-  }
-  let firstNonZero = 0;
-  while (firstNonZero < serialNumber.length - 1 && serialNumber[firstNonZero] === 0) {
-    firstNonZero++;
-  }
-  serialNumber = serialNumber.slice(firstNonZero);
-  if (serialNumber[0] > 127) {
-    const newSerialNumber = new Uint8Array(serialNumber.length + 1);
-    newSerialNumber[0] = 0;
-    newSerialNumber.set(serialNumber, 1);
-    serialNumber = newSerialNumber;
-  }
-  return serialNumber.buffer;
-}
 var _X509CrlEntry_serialNumber;
 var _X509CrlEntry_revocationDate;
 var _X509CrlEntry_reason;
@@ -15023,7 +15305,7 @@ var X509CrlReason;
 var X509CrlEntry = class extends AsnData {
   get serialNumber() {
     if (!__classPrivateFieldGet(this, _X509CrlEntry_serialNumber, "f")) {
-      __classPrivateFieldSet(this, _X509CrlEntry_serialNumber, import_pvtsutils.Convert.ToHex(this.asn.userCertificate), "f");
+      __classPrivateFieldSet(this, _X509CrlEntry_serialNumber, getCertificateSerialNumber(this.asn.userCertificate), "f");
     }
     return __classPrivateFieldGet(this, _X509CrlEntry_serialNumber, "f");
   }
@@ -15050,16 +15332,16 @@ var X509CrlEntry = class extends AsnData {
       __classPrivateFieldSet(this, _X509CrlEntry_extensions, [], "f");
       if (this.asn.crlEntryExtensions) {
         __classPrivateFieldSet(this, _X509CrlEntry_extensions, this.asn.crlEntryExtensions.map((o) => {
-          const extension = ExtensionFactory.create(AsnConvert.serialize(o));
+          const extension = ExtensionFactory.create(AsnConvert.serialize(o), this.parseOptions);
           switch (extension.type) {
             case id_ce_cRLReasons:
               if (__classPrivateFieldGet(this, _X509CrlEntry_reason, "f") === void 0) {
-                __classPrivateFieldSet(this, _X509CrlEntry_reason, AsnConvert.parse(extension.value, CRLReason).reason, "f");
+                __classPrivateFieldSet(this, _X509CrlEntry_reason, AsnConvert.parse(extension.value, CRLReason, this.parseOptions).reason, "f");
               }
               break;
             case id_ce_invalidityDate:
               if (__classPrivateFieldGet(this, _X509CrlEntry_invalidity, "f") === void 0) {
-                __classPrivateFieldSet(this, _X509CrlEntry_invalidity, AsnConvert.parse(extension.value, InvalidityDate).value, "f");
+                __classPrivateFieldSet(this, _X509CrlEntry_invalidity, AsnConvert.parse(extension.value, InvalidityDate, this.parseOptions).value, "f");
               }
               break;
           }
@@ -15071,21 +15353,25 @@ var X509CrlEntry = class extends AsnData {
   }
   constructor(...args) {
     let raw;
+    let options;
     if (import_pvtsutils.BufferSourceConverter.isBufferSource(args[0])) {
       raw = import_pvtsutils.BufferSourceConverter.toArrayBuffer(args[0]);
+      options = args[1];
     } else if (typeof args[0] === "string") {
       raw = AsnConvert.serialize(new RevokedCertificate({
-        userCertificate: generateCertificateSerialNumber(args[0]),
+        userCertificate: normalizeCertificateSerialNumber(args[0]),
         revocationDate: new Time(args[1]),
         crlEntryExtensions: args[2]
       }));
     } else if (args[0] instanceof RevokedCertificate) {
       raw = args[0];
+      options = args[1];
     }
     if (!raw) {
       throw new TypeError("Cannot create X509CrlEntry instance. Wrong constructor arguments.");
     }
-    super(raw, RevokedCertificate);
+    const superArgs = raw instanceof RevokedCertificate ? [raw, options] : [raw, RevokedCertificate, options];
+    super(superArgs[0], superArgs[1], superArgs[2]);
     _X509CrlEntry_serialNumber.set(this, void 0);
     _X509CrlEntry_revocationDate.set(this, void 0);
     _X509CrlEntry_reason.set(this, void 0);
@@ -15146,7 +15432,7 @@ var X509Crl = class extends PemData {
   get entries() {
     var _a3;
     if (!__classPrivateFieldGet(this, _X509Crl_entries, "f")) {
-      __classPrivateFieldSet(this, _X509Crl_entries, ((_a3 = this.asn.tbsCertList.revokedCertificates) === null || _a3 === void 0 ? void 0 : _a3.map((o) => new X509CrlEntry(o))) || [], "f");
+      __classPrivateFieldSet(this, _X509Crl_entries, ((_a3 = this.asn.tbsCertList.revokedCertificates) === null || _a3 === void 0 ? void 0 : _a3.map((o) => new X509CrlEntry(o, this.parseOptions))) || [], "f");
     }
     return __classPrivateFieldGet(this, _X509Crl_entries, "f");
   }
@@ -15154,7 +15440,7 @@ var X509Crl = class extends PemData {
     if (!__classPrivateFieldGet(this, _X509Crl_extensions, "f")) {
       __classPrivateFieldSet(this, _X509Crl_extensions, [], "f");
       if (this.asn.tbsCertList.crlExtensions) {
-        __classPrivateFieldSet(this, _X509Crl_extensions, this.asn.tbsCertList.crlExtensions.map((o) => ExtensionFactory.create(AsnConvert.serialize(o))), "f");
+        __classPrivateFieldSet(this, _X509Crl_extensions, this.asn.tbsCertList.crlExtensions.map((o) => ExtensionFactory.create(AsnConvert.serialize(o), this.parseOptions)), "f");
       }
     }
     return __classPrivateFieldGet(this, _X509Crl_extensions, "f");
@@ -15171,8 +15457,9 @@ var X509Crl = class extends PemData {
   get certListSignatureAlgorithm() {
     return this.asn.signatureAlgorithm;
   }
-  constructor(param) {
-    super(param, PemData.isAsnEncoded(param) ? CertificateList : void 0);
+  constructor(param, options) {
+    const args = PemData.isAsnEncoded(param) ? [param, CertificateList, options] : [param, options];
+    super(args[0], args[1], args[2]);
     this.tag = PemConverter.CrlTag;
     _X509Crl_tbs.set(this, void 0);
     _X509Crl_signatureAlgorithm.set(this, void 0);
@@ -15250,15 +15537,15 @@ var X509Crl = class extends PemData {
     }
     return await crypto2.subtle.verify(this.signatureAlgorithm, publicKey, signature, this.tbs);
   }
-  async getThumbprint(...args) {
+  async getThumbprint(arg1, arg2) {
     let crypto2;
     let algorithm = "SHA-1";
-    if (args[0]) {
-      if (!args[0].subtle) {
-        algorithm = args[0] || algorithm;
-        crypto2 = args[1];
+    if (arg1) {
+      if (typeof arg1 === "object" && "subtle" in arg1) {
+        crypto2 = arg1;
       } else {
-        crypto2 = args[0];
+        algorithm = arg1;
+        crypto2 = arg2;
       }
     }
     crypto2 !== null && crypto2 !== void 0 ? crypto2 : crypto2 = cryptoProvider.get();
@@ -15266,10 +15553,10 @@ var X509Crl = class extends PemData {
   }
   findRevoked(certOrSerialNumber) {
     const serialNumber = typeof certOrSerialNumber === "string" ? certOrSerialNumber : certOrSerialNumber.serialNumber;
-    const serialBuffer = generateCertificateSerialNumber(serialNumber);
+    const serialBuffer = normalizeCertificateSerialNumber(serialNumber);
     for (const revoked of this.asn.tbsCertList.revokedCertificates || []) {
       if (import_pvtsutils.BufferSourceConverter.isEqual(revoked.userCertificate, serialBuffer)) {
-        return new X509CrlEntry(AsnConvert.serialize(revoked));
+        return new X509CrlEntry(AsnConvert.serialize(revoked), this.parseOptions);
       }
     }
     return null;
@@ -15496,6 +15783,7 @@ function toHash(data, algorithm = -7) {
 }
 
 // node_modules/@simplewebauthn/server/esm/helpers/validateCertificatePath.js
+var import_reflect_metadata2 = __toESM(require_Reflect(), 1);
 async function validateCertificatePath(x5cCertsPEM, trustAnchorsPEM = []) {
   if (trustAnchorsPEM.length === 0) {
     return true;
@@ -15607,20 +15895,26 @@ var InvalidCertificatePath = class extends Error {
 // node_modules/@simplewebauthn/server/esm/helpers/mapX509SignatureAlgToCOSEAlg.js
 function mapX509SignatureAlgToCOSEAlg(signatureAlgorithm) {
   let alg;
-  if (signatureAlgorithm === "1.2.840.10045.4.3.2") {
+  if (signatureAlgorithm === id_ecdsaWithSHA256) {
     alg = COSEALG.ES256;
-  } else if (signatureAlgorithm === "1.2.840.10045.4.3.3") {
+  } else if (signatureAlgorithm === id_ecdsaWithSHA384) {
     alg = COSEALG.ES384;
-  } else if (signatureAlgorithm === "1.2.840.10045.4.3.4") {
+  } else if (signatureAlgorithm === id_ecdsaWithSHA512) {
     alg = COSEALG.ES512;
-  } else if (signatureAlgorithm === "1.2.840.113549.1.1.11") {
+  } else if (signatureAlgorithm === id_sha256WithRSAEncryption) {
     alg = COSEALG.RS256;
-  } else if (signatureAlgorithm === "1.2.840.113549.1.1.12") {
+  } else if (signatureAlgorithm === id_sha384WithRSAEncryption) {
     alg = COSEALG.RS384;
-  } else if (signatureAlgorithm === "1.2.840.113549.1.1.13") {
+  } else if (signatureAlgorithm === id_sha512WithRSAEncryption) {
     alg = COSEALG.RS512;
-  } else if (signatureAlgorithm === "1.2.840.113549.1.1.5") {
+  } else if (signatureAlgorithm === id_sha1WithRSAEncryption) {
     alg = COSEALG.RS1;
+  } else if (signatureAlgorithm === id_ml_dsa_44) {
+    alg = COSEALG.ML_DSA_44;
+  } else if (signatureAlgorithm === id_ml_dsa_65) {
+    alg = COSEALG.ML_DSA_65;
+  } else if (signatureAlgorithm === id_ml_dsa_87) {
+    alg = COSEALG.ML_DSA_87;
   } else {
     throw new Error(`Unable to map X.509 signature algorithm ${signatureAlgorithm} to a COSE algorithm`);
   }
@@ -15632,19 +15926,21 @@ function convertX509PublicKeyToCOSE(x509Certificate) {
   let cosePublicKey = /* @__PURE__ */ new Map();
   const x509 = AsnParser.parse(x509Certificate, Certificate);
   const { tbsCertificate } = x509;
-  const { subjectPublicKeyInfo, signature: _tbsSignature } = tbsCertificate;
-  const signatureAlgorithm = _tbsSignature.algorithm;
+  const { subjectPublicKeyInfo } = tbsCertificate;
   const publicKeyAlgorithmID = subjectPublicKeyInfo.algorithm.algorithm;
   if (publicKeyAlgorithmID === id_ecPublicKey) {
     if (!subjectPublicKeyInfo.algorithm.parameters) {
       throw new Error("Certificate public key was missing parameters (EC2)");
     }
     const ecParameters = AsnParser.parse(new Uint8Array(subjectPublicKeyInfo.algorithm.parameters), ECParameters);
-    let crv = -999;
+    let alg;
+    let crv;
     const { namedCurve } = ecParameters;
     if (namedCurve === id_secp256r1) {
+      alg = COSEALG.ES256;
       crv = COSECRV.P256;
     } else if (namedCurve === id_secp384r1) {
+      alg = COSEALG.ES384;
       crv = COSECRV.P384;
     } else {
       throw new Error(`Certificate public key contained unexpected namedCurve ${namedCurve} (EC2)`);
@@ -15662,7 +15958,7 @@ function convertX509PublicKeyToCOSE(x509Certificate) {
     }
     const coseEC2PubKey = /* @__PURE__ */ new Map();
     coseEC2PubKey.set(COSEKEYS.kty, COSEKTY.EC2);
-    coseEC2PubKey.set(COSEKEYS.alg, mapX509SignatureAlgToCOSEAlg(signatureAlgorithm));
+    coseEC2PubKey.set(COSEKEYS.alg, alg);
     coseEC2PubKey.set(COSEKEYS.crv, crv);
     coseEC2PubKey.set(COSEKEYS.x, x);
     coseEC2PubKey.set(COSEKEYS.y, y);
@@ -15671,10 +15967,16 @@ function convertX509PublicKeyToCOSE(x509Certificate) {
     const rsaPublicKey = AsnParser.parse(subjectPublicKeyInfo.subjectPublicKey, RSAPublicKey);
     const coseRSAPubKey = /* @__PURE__ */ new Map();
     coseRSAPubKey.set(COSEKEYS.kty, COSEKTY.RSA);
-    coseRSAPubKey.set(COSEKEYS.alg, mapX509SignatureAlgToCOSEAlg(signatureAlgorithm));
+    coseRSAPubKey.set(COSEKEYS.alg, COSEALG.RS256);
     coseRSAPubKey.set(COSEKEYS.n, new Uint8Array(rsaPublicKey.modulus));
     coseRSAPubKey.set(COSEKEYS.e, new Uint8Array(rsaPublicKey.publicExponent));
     cosePublicKey = coseRSAPubKey;
+  } else if ([id_ml_dsa_44, id_ml_dsa_65, id_ml_dsa_87].indexOf(publicKeyAlgorithmID) >= 0) {
+    const coseAKPPubKey = /* @__PURE__ */ new Map();
+    coseAKPPubKey.set(COSEKEYS.kty, COSEKTY.AKP);
+    coseAKPPubKey.set(COSEKEYS.alg, mapX509SignatureAlgToCOSEAlg(publicKeyAlgorithmID));
+    coseAKPPubKey.set(COSEKEYS.pub, new Uint8Array(subjectPublicKeyInfo.subjectPublicKey));
+    cosePublicKey = coseAKPPubKey;
   } else {
     throw new Error(`Certificate public key contained unexpected algorithm ID ${publicKeyAlgorithmID}`);
   }
@@ -15963,6 +16265,28 @@ async function verifyMDSBlob(blob) {
   };
 }
 
+// node_modules/@simplewebauthn/server/esm/errors/index.js
+var SimpleWebAuthnError = class extends Error {
+  constructor({ message, code, cause }) {
+    super(message, { cause });
+    Object.defineProperty(this, "code", {
+      enumerable: true,
+      configurable: true,
+      writable: true,
+      value: void 0
+    });
+    this.name = "SimpleWebAuthnError";
+    this.code = code;
+  }
+};
+var PQCNotSupportedError = class extends SimpleWebAuthnError {
+  constructor(alg) {
+    const webCryptoAlg = mapCoseAlgToWebCryptoKeyAlgName(alg);
+    const message = `This runtime's WebCrypto.subtle does not support use of ${webCryptoAlg}`;
+    super({ message, code: "RUNTIME_NO_PQC_SUPPORT" });
+  }
+};
+
 // node_modules/@simplewebauthn/server/esm/helpers/iso/isoCrypto/verifyAKP.js
 async function verifyAKP(opts) {
   const { cosePublicKey, signature, data } = opts;
@@ -15991,7 +16315,7 @@ async function verifyAKP(opts) {
   } catch (err) {
     const _err = err;
     if (_err.name === "NotSupportedError") {
-      throw new Error(`This runtime's WebCrypto.subtle does not support use of ${webCryptoAlg}. See the \`cause\` property of this error for more info`, { cause: err });
+      throw new PQCNotSupportedError(alg);
     } else {
       throw err;
     }
@@ -17099,7 +17423,7 @@ async function verifyAttestationPacked(options) {
         await validateCertificatePath(x5c.map(convertCertBufferToPEM), rootCertificates);
       } catch (err) {
         const _err = err;
-        throw new Error(`${_err.message} (Packed|Full)`);
+        throw new Error(`${_err.message} (Packed|Full)`, { cause: _err });
       }
     }
     verified = await verifySignature({
@@ -18068,19 +18392,19 @@ var SecurityLevel;
   SecurityLevel2[SecurityLevel2["trustedEnvironment"] = 1] = "trustedEnvironment";
   SecurityLevel2[SecurityLevel2["strongBox"] = 2] = "strongBox";
 })(SecurityLevel || (SecurityLevel = {}));
-var Version3;
-(function(Version4) {
-  Version4[Version4["KM2"] = 1] = "KM2";
-  Version4[Version4["KM3"] = 2] = "KM3";
-  Version4[Version4["KM4"] = 3] = "KM4";
-  Version4[Version4["KM4_1"] = 4] = "KM4_1";
-  Version4[Version4["keyMint1"] = 100] = "keyMint1";
-  Version4[Version4["keyMint2"] = 200] = "keyMint2";
-  Version4[Version4["keyMint3"] = 300] = "keyMint3";
-  Version4[Version4["keyMint4"] = 400] = "keyMint4";
-})(Version3 || (Version3 = {}));
+var Version4;
+(function(Version5) {
+  Version5[Version5["KM2"] = 1] = "KM2";
+  Version5[Version5["KM3"] = 2] = "KM3";
+  Version5[Version5["KM4"] = 3] = "KM4";
+  Version5[Version5["KM4_1"] = 4] = "KM4_1";
+  Version5[Version5["keyMint1"] = 100] = "keyMint1";
+  Version5[Version5["keyMint2"] = 200] = "keyMint2";
+  Version5[Version5["keyMint3"] = 300] = "keyMint3";
+  Version5[Version5["keyMint4"] = 400] = "keyMint4";
+})(Version4 || (Version4 = {}));
 var KeyDescription = class {
-  attestationVersion = Version3.KM4;
+  attestationVersion = Version4.KM4;
   attestationSecurityLevel = SecurityLevel.software;
   keymasterVersion = 0;
   keymasterSecurityLevel = SecurityLevel.software;
@@ -18117,7 +18441,7 @@ __decorate([
   AsnProp({ type: AuthorizationList })
 ], KeyDescription.prototype, "teeEnforced", void 0);
 var KeyMintKeyDescription = class _KeyMintKeyDescription {
-  attestationVersion = Version3.keyMint4;
+  attestationVersion = Version4.keyMint4;
   attestationSecurityLevel = SecurityLevel.software;
   keyMintVersion = 0;
   keyMintSecurityLevel = SecurityLevel.software;
@@ -18205,7 +18529,7 @@ NonStandardAuthorizationList = NonStandardAuthorizationList_1 = __decorate([
   })
 ], NonStandardAuthorizationList);
 var NonStandardKeyDescription = class {
-  attestationVersion = Version3.KM4;
+  attestationVersion = Version4.KM4;
   attestationSecurityLevel = SecurityLevel.software;
   keymasterVersion = 0;
   keymasterSecurityLevel = SecurityLevel.software;
@@ -18505,18 +18829,19 @@ async function verifyRegistrationResponse(options) {
     throw new Error("No AAGUID was present during registration");
   }
   const decodedPublicKey = decodeCredentialPublicKey(credentialPublicKey);
-  const alg = decodedPublicKey.get(COSEKEYS.alg);
-  if (typeof alg !== "number") {
+  const pubKeyAlg = decodedPublicKey.get(COSEKEYS.alg);
+  if (typeof pubKeyAlg !== "number") {
     throw new Error("Credential public key was missing numeric alg");
   }
-  if (!supportedAlgorithmIDs.includes(alg)) {
+  if (!supportedAlgorithmIDs.includes(pubKeyAlg)) {
     const supported = supportedAlgorithmIDs.join(", ");
-    throw new Error(`Unexpected public key alg "${alg}", expected one of "${supported}"`);
+    throw new Error(`Unexpected public key alg "${pubKeyAlg}", expected one of "${supported}"`);
+  }
+  if (isPQCCOSEAlg(pubKeyAlg) && !SettingsService.runtimeSupportsPQC()) {
+    throw new PQCNotSupportedError(pubKeyAlg);
   }
   const clientDataHash = await toHash(isoBase64URL_exports.toBuffer(attestationResponse.clientDataJSON));
-  const rootCertificates = SettingsService.getRootCertificates({
-    identifier: fmt
-  });
+  const rootCertificates = SettingsService.getRootCertificates({ identifier: fmt });
   const verifierOpts = {
     aaguid,
     attStmt,
@@ -18722,6 +19047,14 @@ async function verifyAuthenticationResponse(options) {
   if ((counter > 0 || credential.counter > 0) && counter <= credential.counter) {
     throw new Error(`Response counter value ${counter} was lower than expected ${credential.counter}`);
   }
+  const decodedPublicKey = decodeCredentialPublicKey(credential.publicKey);
+  const pubKeyAlg = decodedPublicKey.get(COSEKEYS.alg);
+  if (typeof pubKeyAlg !== "number") {
+    throw new Error("Credential public key was missing numeric alg");
+  }
+  if (isPQCCOSEAlg(pubKeyAlg) && !SettingsService.runtimeSupportsPQC()) {
+    throw new PQCNotSupportedError(pubKeyAlg);
+  }
   const { credentialDeviceType, credentialBackedUp } = parseBackupFlags(flags);
   const toReturn = {
     verified: await verifySignature({
@@ -18904,6 +19237,13 @@ async function deleteOwnCredential(env, userId, credentialId) {
 async function countUserCredentials(env, userId) {
   const row = await env.DB.prepare("SELECT COUNT(*) as n FROM credentials WHERE user_id = ?").bind(userId).first();
   return row ? row.n : 0;
+}
+async function renameCredential(env, userId, credentialId, deviceLabel) {
+  const res = await env.DB.prepare("UPDATE credentials SET device_label = ? WHERE user_id = ? AND credential_id = ?").bind(deviceLabel, userId, credentialId).run();
+  return res && res.meta ? res.meta.changes || 0 : 0;
+}
+async function purgeExpiredSessions(env) {
+  await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(nowIso()).run();
 }
 
 // src/routes/account.js
@@ -19098,6 +19438,11 @@ async function handleLoginVerify(request, env) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
   await createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
+  try {
+    await purgeExpiredSessions(env);
+  } catch (e) {
+    console.warn("[Worker:account] session purge failed:", e.message);
+  }
   return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
 }
 var NO_STORE = { "Cache-Control": "no-store" };
@@ -19128,6 +19473,24 @@ async function handleDeleteCredential(request, env, credentialId) {
   await deleteOwnCredential(env, session.user_id, credentialId);
   return jsonResponse({ success: true });
 }
+var DEVICE_LABEL_MAX = 60;
+async function handleRenameCredential(request, env, credentialId) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "Invalid request body." }, 400);
+  }
+  const label = typeof body.device_label === "string" ? body.device_label.replace(/[\u0000-\u001f\u007f]/g, "").trim() : "";
+  if (!label || label.length > DEVICE_LABEL_MAX) {
+    return jsonResponse({ error: `A name between 1 and ${DEVICE_LABEL_MAX} characters is required.` }, 400);
+  }
+  const changed = await renameCredential(env, session.user_id, credentialId, label);
+  if (!changed) return jsonResponse({ error: "Passkey not found." }, 404);
+  return jsonResponse({ success: true, device_label: label });
+}
 async function handleGetCollection(request, env) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: "Not logged in." }, 401);
@@ -19141,18 +19504,31 @@ async function handleGetCollection(request, env) {
   }
   return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } });
 }
+var COLLECTION_MAX_BYTES = 1e6;
+var COLLECTION_MAX_ENTRIES = 2e4;
 async function handlePutCollection(request, env) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: "Not logged in." }, 401);
-  let snapshot;
+  const tooLarge = () => jsonResponse({ error: "Collection is too large to sync to your account (limit 1 MB / 20,000 entries)." }, 413);
+  const declared = Number(request.headers.get("Content-Length") || 0);
+  if (declared > COLLECTION_MAX_BYTES) return tooLarge();
+  let raw;
   try {
-    snapshot = await request.json();
+    raw = await request.text();
   } catch (e) {
     return jsonResponse({ error: "Invalid request body." }, 400);
   }
-  if (!snapshot || !Array.isArray(snapshot.entries)) {
+  if (new TextEncoder().encode(raw).length > COLLECTION_MAX_BYTES) return tooLarge();
+  let snapshot;
+  try {
+    snapshot = JSON.parse(raw);
+  } catch (e) {
+    return jsonResponse({ error: "Invalid request body." }, 400);
+  }
+  if (!snapshot || typeof snapshot !== "object" || !Array.isArray(snapshot.entries)) {
     return jsonResponse({ error: "Malformed snapshot." }, 400);
   }
+  if (snapshot.entries.length > COLLECTION_MAX_ENTRIES) return tooLarge();
   const revision = Number(snapshot.revision) || 1;
   await saveCollection(env, session.user_id, JSON.stringify(snapshot), revision);
   const updatedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -19174,8 +19550,8 @@ async function handleMyFlags(request, env) {
 var jwksCache = null;
 var jwksCachedAt = 0;
 var JWKS_CACHE_TTL_MS = 5 * 60 * 1e3;
-async function getJwks(env) {
-  if (jwksCache && Date.now() - jwksCachedAt < JWKS_CACHE_TTL_MS) return jwksCache;
+async function getJwks(env, force) {
+  if (!force && jwksCache && Date.now() - jwksCachedAt < JWKS_CACHE_TTL_MS) return jwksCache;
   const resp = await fetch(`https://${env.CF_ACCESS_TEAM_DOMAIN}/cdn-cgi/access/certs`);
   if (!resp.ok) throw new Error("Failed to fetch Access JWKS: " + resp.status);
   const jwks = await resp.json();
@@ -19211,8 +19587,12 @@ async function verifyAccessRequest(request, env) {
     if (typeof payload.iss !== "string" || payload.iss !== `https://${env.CF_ACCESS_TEAM_DOMAIN}`) return null;
     const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!aud.includes(env.CF_ACCESS_AUD)) return null;
-    const jwks = await getJwks(env);
-    const jwk = (jwks.keys || []).find((k) => k.kid === header.kid);
+    let jwks = await getJwks(env);
+    let jwk = (jwks.keys || []).find((k) => k.kid === header.kid);
+    if (!jwk) {
+      jwks = await getJwks(env, true);
+      jwk = (jwks.keys || []).find((k) => k.kid === header.kid);
+    }
     if (!jwk) return null;
     const publicKey = await crypto.subtle.importKey(
       "jwk",
@@ -19808,10 +20188,23 @@ function jsonResponse3(data, status = 200) {
 function notFound() {
   return new Response("Not found", { status: 404, headers: SECURITY_HEADERS });
 }
+var ADMIN_ORIGINS = /* @__PURE__ */ new Set(["https://entotools.org", "https://www.entotools.org"]);
+function crossSiteWrite(request) {
+  if (request.method === "GET" || request.method === "HEAD") return false;
+  const site = request.headers.get("Sec-Fetch-Site");
+  if (site && site !== "same-origin" && site !== "none") return true;
+  const origin = request.headers.get("Origin");
+  if (origin && !ADMIN_ORIGINS.has(origin) && !origin.startsWith("http://localhost:")) return true;
+  return false;
+}
 async function handleAdminRoute(request, env, path) {
   const identity = await verifyAccessRequest(request, env);
   if (!identity || !identity.email) return notFound();
   const adminEmail = identity.email;
+  if (crossSiteWrite(request)) {
+    console.warn("[Worker:admin] rejected cross-site write for", adminEmail);
+    return notFound();
+  }
   const url = new URL(request.url);
   const method = request.method;
   if ((path === "/frost/admin" || path === "/frost/admin/") && method === "GET") {
@@ -19992,6 +20385,9 @@ function jsonResponse4(data, status = 200, extraHeaders = {}) {
       ...extraHeaders
     }
   });
+}
+function privateJson(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 }
 function toRad(deg) {
   return deg * Math.PI / 180;
@@ -20798,11 +21194,15 @@ var index_default = {
     const url = new URL(request.url);
     console.log("[Worker] incoming", request.method, url.pathname);
     if (request.method === "OPTIONS") {
+      const isPublicApi = url.pathname === "/api/search" || url.pathname.startsWith("/api/status/");
+      if (!isPublicApi) return new Response(null, { status: 204 });
       return new Response(null, {
+        status: 204,
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type"
+          "Access-Control-Allow-Headers": "Content-Type",
+          "Access-Control-Max-Age": "86400"
         }
       });
     }
@@ -20860,14 +21260,14 @@ var index_default = {
       const origin = request.headers.get("Origin");
       if (!isReadOnly && !allowedOrigins.has(origin)) {
         console.warn("[Worker:account] rejected disallowed/missing origin:", origin);
-        return jsonResponse4({ error: "Forbidden." }, 403);
+        return privateJson({ error: "Forbidden." }, 403);
       }
       const isCeremonyStart = url.pathname.endsWith("/options");
       if (isCeremonyStart) {
         const ip = request.headers.get("CF-Connecting-IP") || "";
         if (await accountRateLimited(env, ip)) {
           console.warn("[Worker:account] rate limit exceeded for IP:", maskIp(ip));
-          return jsonResponse4({ error: "Too many attempts. Please try again later." }, 429);
+          return privateJson({ error: "Too many attempts. Please try again later." }, 429);
         }
       }
       try {
@@ -20879,11 +21279,12 @@ var index_default = {
         if (url.pathname === "/api/account/session" && request.method === "GET") return await handleSession(request, env);
         if (url.pathname === "/api/account/credentials" && request.method === "GET") return await handleListCredentials(request, env);
         if (credentialDeleteMatch && request.method === "DELETE") return await handleDeleteCredential(request, env, credentialDeleteMatch[1]);
+        if (credentialDeleteMatch && request.method === "PATCH") return await handleRenameCredential(request, env, credentialDeleteMatch[1]);
         if (url.pathname === "/api/account/collection" && request.method === "GET") return await handleGetCollection(request, env);
         if (url.pathname === "/api/account/collection" && request.method === "PUT") return await handlePutCollection(request, env);
       } catch (err) {
         console.error("[Worker:account] unexpected error:", err.message, err.stack);
-        return jsonResponse4({ error: "An unexpected server error occurred. Please try again." }, 500);
+        return privateJson({ error: "An unexpected server error occurred. Please try again." }, 500);
       }
     }
     if (url.pathname === "/api/account/flags" && request.method === "GET") {
@@ -20891,11 +21292,11 @@ var index_default = {
         return await handleMyFlags(request, env);
       } catch (err) {
         console.error("[Worker:flags] unexpected error:", err.message, err.stack);
-        return jsonResponse4({ flags: [] });
+        return privateJson({ flags: [] });
       }
     }
     if (url.pathname.startsWith("/api/")) {
-      return jsonResponse4({ error: "Not found" }, 404);
+      return privateJson({ error: "Not found" }, 404);
     }
     if (url.pathname === "/frost/admin" || url.pathname.startsWith("/frost/admin/")) {
       try {

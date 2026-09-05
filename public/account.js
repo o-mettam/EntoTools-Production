@@ -74,10 +74,11 @@
     return data;
   }
 
+  // Escapes quotes too, so it's safe inside attribute values as well as text.
   function esc(str) {
     var el = document.createElement('span');
     el.textContent = str == null ? '' : str;
-    return el.innerHTML;
+    return el.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   // ── Session + flags ──────────────────────────────────────────────
@@ -206,6 +207,13 @@
     renderSettingsSection();
   }
 
+  async function renameCredential(credentialId, name) {
+    await api('/api/account/credentials/' + encodeURIComponent(credentialId), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device_label: name }),
+    });
+    await refreshCredentials();
+  }
+
   // ── Modal (sign up / log in / manage passkeys) ────────────────────
   var modalInjected = false;
   function injectModal() {
@@ -324,19 +332,58 @@
     el.innerHTML = state.credentials.length
       ? state.credentials.map(function (c) {
           return `
-            <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm">
-              <span class="text-slate-700">${esc(c.device_label || 'Unnamed device')}</span>
-              <button class="ento-remove-cred text-xs text-red-600 hover:text-red-700 font-medium" data-id="${esc(c.credential_id)}">Remove</button>
+            <div class="ento-cred-row flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2 text-sm" data-id="${esc(c.credential_id)}">
+              <span class="ento-cred-label text-slate-700 truncate" title="${esc(c.device_label || 'Unnamed device')}">${esc(c.device_label || 'Unnamed device')}</span>
+              <span class="flex items-center gap-3 shrink-0">
+                <button class="ento-rename-cred text-xs text-slate-500 hover:text-slate-700 font-medium">Rename</button>
+                <button class="ento-remove-cred text-xs text-red-600 hover:text-red-700 font-medium">Remove</button>
+              </span>
             </div>
           `;
         }).join('')
       : '<p class="text-slate-400 text-sm">No passkeys found.</p>';
-    el.querySelectorAll('.ento-remove-cred').forEach(function (btn) {
-      btn.addEventListener('click', async function () {
+    el.querySelectorAll('.ento-cred-row').forEach(function (row) {
+      var id = row.dataset.id;
+      row.querySelector('.ento-remove-cred').addEventListener('click', async function () {
         if (!confirm('Remove this passkey? You will no longer be able to log in with that device.')) return;
-        try { await removeCredential(btn.dataset.id); renderCredentialList(); }
+        try { await removeCredential(id); renderCredentialList(); }
         catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
+      row.querySelector('.ento-rename-cred').addEventListener('click', function () { startRename(row, id); });
+    });
+  }
+
+  // Inline rename: the row turns into an input + Save/Cancel; Enter saves,
+  // Escape cancels. The current name is assigned via .value (not interpolated
+  // into the markup) so it can never break out of the attribute.
+  function startRename(row, credentialId) {
+    var current = row.querySelector('.ento-cred-label').textContent;
+    row.innerHTML = `
+      <input class="ento-rename-input flex-1 min-w-0 rounded-md border border-slate-300 px-2 py-1 text-sm focus:ring-2 focus:ring-lime-500 outline-none" maxlength="60" aria-label="Passkey name">
+      <span class="flex items-center gap-3 shrink-0">
+        <button class="ento-rename-save text-xs text-lime-700 hover:text-lime-800 font-medium">Save</button>
+        <button class="ento-rename-cancel text-xs text-slate-500 hover:text-slate-700">Cancel</button>
+      </span>
+    `;
+    var input = row.querySelector('.ento-rename-input');
+    input.value = current;
+    input.focus();
+    input.select();
+    var busy = false;
+    async function save() {
+      if (busy) return;
+      var name = input.value.trim();
+      if (!name) { setStatus('Enter a name for this passkey.', true); input.focus(); return; }
+      busy = true;
+      try { await renameCredential(credentialId, name); setStatus('Passkey renamed.'); }
+      catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
+      renderCredentialList();
+    }
+    row.querySelector('.ento-rename-save').addEventListener('click', save);
+    row.querySelector('.ento-rename-cancel').addEventListener('click', renderCredentialList);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      else if (e.key === 'Escape') { e.preventDefault(); renderCredentialList(); }
     });
   }
 

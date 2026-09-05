@@ -258,6 +258,8 @@ export async function handleLoginVerify(request, env) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   await db.createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
+  // Best-effort housekeeping; never let it fail a login.
+  try { await db.purgeExpiredSessions(env); } catch (e) { console.warn('[Worker:account] session purge failed:', e.message); }
 
   return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
 }
@@ -305,6 +307,27 @@ export async function handleDeleteCredential(request, env, credentialId) {
   return jsonResponse({ success: true });
 }
 
+// PATCH /api/account/credentials/:id  body: { device_label } — lets a user
+// give each passkey a recognisable name ("Work laptop") instead of the
+// "Unnamed device" default. Scoped to the caller's own credentials via the
+// user_id in the UPDATE's WHERE clause; a foreign id is a plain 404.
+const DEVICE_LABEL_MAX = 60;
+export async function handleRenameCredential(request, env, credentialId) {
+  const session = await requireSession(request, env);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
+  const label = typeof body.device_label === 'string'
+    ? body.device_label.replace(/[\u0000-\u001f\u007f]/g, '').trim() // strip control chars
+    : '';
+  if (!label || label.length > DEVICE_LABEL_MAX) {
+    return jsonResponse({ error: `A name between 1 and ${DEVICE_LABEL_MAX} characters is required.` }, 400);
+  }
+  const changed = await db.renameCredential(env, session.user_id, credentialId, label);
+  if (!changed) return jsonResponse({ error: 'Passkey not found.' }, 404);
+  return jsonResponse({ success: true, device_label: label });
+}
+
 // ── Account-backed collection sync (#35 phase 3) ─────────────────
 // Mirrors EntoDriveProvider's pull()/push() shape exactly (see
 // public/sync/provider-gdrive.js) so public/sync/provider-account.js can
@@ -321,14 +344,28 @@ export async function handleGetCollection(request, env) {
   return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } });
 }
 
+// Hard caps on what one account may store. A real collection of a few
+// thousand specimens serialises to a few hundred KB; anything near these
+// limits is either a bug or someone using the endpoint as free blob storage.
+// (Security assessment 2026-09: previously unbounded.)
+const COLLECTION_MAX_BYTES = 1_000_000;
+const COLLECTION_MAX_ENTRIES = 20_000;
+
 export async function handlePutCollection(request, env) {
   const session = await requireSession(request, env);
   if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  const tooLarge = () => jsonResponse({ error: 'Collection is too large to sync to your account (limit 1 MB / 20,000 entries).' }, 413);
+  const declared = Number(request.headers.get('Content-Length') || 0);
+  if (declared > COLLECTION_MAX_BYTES) return tooLarge();
+  let raw;
+  try { raw = await request.text(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
+  if (new TextEncoder().encode(raw).length > COLLECTION_MAX_BYTES) return tooLarge();
   let snapshot;
-  try { snapshot = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
-  if (!snapshot || !Array.isArray(snapshot.entries)) {
+  try { snapshot = JSON.parse(raw); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
+  if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.entries)) {
     return jsonResponse({ error: 'Malformed snapshot.' }, 400);
   }
+  if (snapshot.entries.length > COLLECTION_MAX_ENTRIES) return tooLarge();
   const revision = Number(snapshot.revision) || 1;
   await db.saveCollection(env, session.user_id, JSON.stringify(snapshot), revision);
   const updatedAt = new Date().toISOString();

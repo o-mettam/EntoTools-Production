@@ -12,11 +12,13 @@
     'use strict';
 
     // HTML-escape a value by round-tripping through a text node so any
-    // user/API-supplied string is safe to drop into innerHTML.
+    // user/API-supplied string is safe to drop into innerHTML. Quotes are
+    // escaped too, so the result is also safe inside an attribute value
+    // (e.g. data-description="…") — a text-node round-trip alone leaves them.
     function esc(str) {
         const el = document.createElement('span');
         el.textContent = str == null ? '' : str;
-        return el.innerHTML;
+        return el.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     // Modified Growing Degree Days.
