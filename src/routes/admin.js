@@ -10,6 +10,15 @@
 import { verifyAccessRequest } from '../lib/access.js';
 import * as db from '../lib/db.js';
 import { REREGISTER_TOKEN_TTL_SECONDS } from './account.js';
+// Bundled as a raw string (esbuild --loader:.html=text) and returned
+// directly, rather than served via env.ASSETS.fetch(). That was tried first
+// and caused an infinite redirect loop: requesting the exact index.html path
+// explicitly (to work around ASSETS.fetch not doing directory-index
+// resolution from in here) collided with Cloudflare Pages' own automatic
+// redirect of explicit /index.html requests back to the clean directory URL
+// — our code and Cloudflare's redirect kept bouncing off each other.
+// Embedding the HTML sidesteps Pages' static-asset routing entirely.
+import adminHtml from '../../templates/admin.html';
 
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
@@ -24,16 +33,11 @@ export async function handleAdminRoute(request, env, path) {
   const url = new URL(request.url);
   const method = request.method;
 
-  // The admin GUI itself (templates/admin.html → public/frost/admin/index.html)
-  // — served as a static asset once Access + the JWT check above have both
-  // passed, exactly like any other page on the site, just gated first.
-  // Explicit index.html path rather than relying on directory-index
-  // resolution — that implicit resolution only appeared to apply to the
-  // top-level fallthrough in src/index.js, not a fetch made from in here.
+  // The admin GUI itself — see the adminHtml import comment above for why
+  // this returns the bundled HTML directly instead of going through
+  // env.ASSETS.fetch().
   if ((path === '/frost/admin' || path === '/frost/admin/') && method === 'GET') {
-    const assetUrl = new URL(request.url);
-    assetUrl.pathname = '/frost/admin/index.html';
-    return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
+    return new Response(adminHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
   }
 
   // Machine-readable equivalent, used by the GUI's own init() to confirm the

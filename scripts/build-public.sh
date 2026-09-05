@@ -29,7 +29,6 @@ mkdir -p "$ROOT/public/documentation"
 mkdir -p "$ROOT/public/privacy"
 mkdir -p "$ROOT/public/terms"
 mkdir -p "$ROOT/public/status"
-mkdir -p "$ROOT/public/frost/admin"
 
 # Homepage → public/index.html (served at /)
 cp "$ROOT/templates/entotools.html" "$ROOT/public/index.html"
@@ -58,9 +57,12 @@ cp "$ROOT/templates/terms_of_use.html" "$ROOT/public/terms/index.html"
 # Service Status → public/status/index.html (served at /status)
 cp "$ROOT/templates/status.html" "$ROOT/public/status/index.html"
 
-# Admin portal GUI → public/frost/admin/index.html (served at /frost/admin,
-# but only past Cloudflare Access + the JWT check in src/routes/admin.js — see #36)
-cp "$ROOT/templates/admin.html" "$ROOT/public/frost/admin/index.html"
+# Admin portal GUI (templates/admin.html) is NOT copied into public/ — it's
+# bundled directly into the Worker as a string (src/routes/admin.js) and
+# returned from there, bypassing Cloudflare Pages' static-asset routing
+# entirely. That's deliberate: serving it as a static asset caused an
+# infinite redirect loop against Pages' own automatic /index.html -> clean-URL
+# redirect. See the import comment in src/routes/admin.js for the full story.
 
 # Error pages
 cp "$ROOT/templates/404.html" "$ROOT/public/404.html"
@@ -74,7 +76,7 @@ if [ ! -x "$ROOT/node_modules/.bin/esbuild" ]; then
   echo "✗ esbuild not found — run 'npm install' first (see README 'Account system setup')." >&2
   exit 1
 fi
-"$ROOT/node_modules/.bin/esbuild" "$ROOT/src/index.js" --bundle --format=esm --platform=browser --outfile="$ROOT/public/_worker.js"
+"$ROOT/node_modules/.bin/esbuild" "$ROOT/src/index.js" --bundle --format=esm --platform=browser --loader:.html=text --outfile="$ROOT/public/_worker.js"
 
 echo "✓ public/ directory built successfully."
 ls -lh "$ROOT/public/"

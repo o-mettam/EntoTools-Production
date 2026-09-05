@@ -19129,6 +19129,388 @@ async function verifyAccessRequest(request, env) {
   }
 }
 
+// templates/admin.html
+var admin_default = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>EntoTools Admin</title>
+    <script src="https://cdn.tailwindcss.com"><\/script>
+    <!-- Shared theme: brand palette, dark-mode handling and common styles \u2014
+         same as every public page, so the admin portal doesn't look/feel like
+         a different app. Deliberately NOT loading feedback.js/log-capture.js
+         though \u2014 no public feedback widget or console-capture here, this is
+         an internal tool gated entirely by Cloudflare Access. esc() is reused
+         since it's a plain, dependency-free XSS-safe escaping helper (#36
+         still has to escape admin-entered/user label data like any other page). -->
+    <script src="/theme.js"><\/script>
+    <link rel="stylesheet" href="/theme.css">
+    <script src="/ento-gdd.js"><\/script>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+        <header class="flex items-start justify-between mb-6">
+            <div>
+                <h1 class="text-xl font-semibold text-slate-800">EntoTools Admin</h1>
+                <p class="text-sm text-slate-500 mt-1">Signed in as <span id="admin-email" class="font-medium">\u2026</span></p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-sm text-slate-500">Dark Mode</span>
+                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                    <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
+                </button>
+            </div>
+        </header>
+
+        <nav class="flex gap-1 border-b border-slate-200 mb-6" role="tablist">
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-lime-600 text-lime-700" data-tab="users">Users</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-tab="flags">Feature Flags</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-700" data-tab="audit">Audit Log</button>
+        </nav>
+
+        <p id="global-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+
+        <!-- \u2500\u2500 Users tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+        <section id="tab-users" class="tab-panel">
+            <div class="flex gap-2 mb-4">
+                <input id="user-search-input" type="text" placeholder="Search by label (email or name)\u2026"
+                       class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                <button id="user-search-btn" class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Search</button>
+            </div>
+            <div id="user-results" class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-6"></div>
+
+            <div id="user-detail" class="hidden bg-white rounded-xl border border-slate-200 p-5">
+                <div class="flex items-start justify-between mb-4">
+                    <div>
+                        <h2 id="ud-label" class="text-base font-semibold text-slate-800"></h2>
+                        <p class="text-xs text-slate-400 mt-0.5">ID: <span id="ud-id"></span> \xB7 Created <span id="ud-created"></span></p>
+                    </div>
+                    <button id="ud-close" class="text-slate-400 hover:text-slate-600 text-sm">Close</button>
+                </div>
+
+                <div class="grid sm:grid-cols-2 gap-6">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-semibold text-slate-700">Passkeys</h3>
+                            <button id="ud-reset-credentials" class="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium transition">Reset all passkeys</button>
+                        </div>
+                        <div id="ud-credentials" class="text-sm space-y-1.5"></div>
+
+                        <div class="flex items-center justify-between mt-4 mb-2">
+                            <h3 class="text-sm font-semibold text-slate-700">Sessions</h3>
+                            <button id="ud-revoke-sessions" class="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium transition">Revoke all sessions</button>
+                        </div>
+                        <div id="ud-sessions" class="text-sm space-y-1.5"></div>
+
+                        <div class="mt-4">
+                            <button id="ud-issue-token" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition">Issue re-registration link</button>
+                            <p class="text-xs text-slate-400 mt-1.5">For a user who's lost their only device. There's no
+                                registration UI yet (#35) \u2014 hand them this token directly; single-use, expires in 15 minutes.</p>
+                            <div id="ud-token-result" class="hidden mt-2 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 font-mono break-all"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-700 mb-2">Feature Flags</h3>
+                        <div id="ud-flags" class="text-sm space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- \u2500\u2500 Feature Flags tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+        <section id="tab-flags" class="tab-panel hidden">
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr><th class="text-left px-4 py-2">Key</th><th class="text-left px-4 py-2">Description</th></tr>
+                    </thead>
+                    <tbody id="flags-table-body"></tbody>
+                </table>
+            </div>
+
+            <form id="new-flag-form" class="flex flex-wrap gap-2 items-end bg-white rounded-xl border border-slate-200 p-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Flag key</label>
+                    <input id="new-flag-key" type="text" placeholder="new-chart-ui" required
+                           class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                </div>
+                <div class="flex-1 min-w-[12rem]">
+                    <label class="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                    <input id="new-flag-desc" type="text" placeholder="What this turns on"
+                           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                </div>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Create flag</button>
+            </form>
+        </section>
+
+        <!-- \u2500\u2500 Audit Log tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 -->
+        <section id="tab-audit" class="tab-panel hidden">
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                        <tr>
+                            <th class="text-left px-4 py-2">When</th>
+                            <th class="text-left px-4 py-2">Admin</th>
+                            <th class="text-left px-4 py-2">Action</th>
+                            <th class="text-left px-4 py-2">Target user</th>
+                            <th class="text-left px-4 py-2">Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-table-body"></tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // \u2500\u2500 Fetch helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Cloudflare Access's own session cookie rides along automatically on
+        // same-origin fetches \u2014 nothing extra to attach here.
+        async function api(path, options) {
+            const resp = await fetch(path, options);
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.error) throw new Error(data.error || ('HTTP ' + resp.status));
+            return data;
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('global-error');
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 6000);
+        }
+
+        function fmtDate(iso) {
+            if (!iso) return '\u2014';
+            try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+        }
+
+        // \u2500\u2500 Tabs \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach((b) => {
+                    b.classList.remove('border-lime-600', 'text-lime-700');
+                    b.classList.add('border-transparent', 'text-slate-500');
+                });
+                btn.classList.add('border-lime-600', 'text-lime-700');
+                btn.classList.remove('border-transparent', 'text-slate-500');
+                document.querySelectorAll('.tab-panel').forEach((p) => p.classList.add('hidden'));
+                document.getElementById('tab-' + btn.dataset.tab).classList.remove('hidden');
+                if (btn.dataset.tab === 'flags') loadFlags();
+                if (btn.dataset.tab === 'audit') loadAuditLog();
+            });
+        });
+
+        // \u2500\u2500 Users \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        let allFlags = []; // cached for rendering the per-user flag checkboxes
+        let currentUserId = null;
+
+        async function searchUsers() {
+            const q = document.getElementById('user-search-input').value.trim();
+            const resultsEl = document.getElementById('user-results');
+            try {
+                const { users } = await api('/frost/admin/users?q=' + encodeURIComponent(q));
+                if (users.length === 0) {
+                    resultsEl.innerHTML = '<p class="px-4 py-3 text-sm text-slate-400">No users found.</p>';
+                    return;
+                }
+                resultsEl.innerHTML = users.map((u) => \`
+                    <button class="user-result-row w-full text-left px-4 py-2.5 hover:bg-slate-50 transition flex items-center justify-between" data-id="\${esc(u.id)}">
+                        <span class="text-sm text-slate-800">\${esc(u.label)}</span>
+                        <span class="text-xs text-slate-400">\${fmtDate(u.created_at)}</span>
+                    </button>
+                \`).join('');
+                resultsEl.querySelectorAll('.user-result-row').forEach((row) => {
+                    row.addEventListener('click', () => openUser(row.dataset.id));
+                });
+            } catch (err) { showError('Search failed: ' + err.message); }
+        }
+        document.getElementById('user-search-btn').addEventListener('click', searchUsers);
+        document.getElementById('user-search-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchUsers(); });
+
+        async function openUser(userId) {
+            try {
+                if (allFlags.length === 0) {
+                    const flagsData = await api('/frost/admin/flags');
+                    allFlags = flagsData.flags;
+                }
+                const detail = await api('/frost/admin/users/' + encodeURIComponent(userId));
+                currentUserId = userId;
+                renderUserDetail(detail);
+            } catch (err) { showError('Could not load user: ' + err.message); }
+        }
+
+        function renderUserDetail(detail) {
+            const { user, credentials, sessions } = detail;
+            document.getElementById('user-detail').classList.remove('hidden');
+            document.getElementById('ud-label').textContent = user.label;
+            document.getElementById('ud-id').textContent = user.id;
+            document.getElementById('ud-created').textContent = fmtDate(user.created_at);
+
+            document.getElementById('ud-credentials').innerHTML = credentials.length
+                ? credentials.map((c) => \`
+                    <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                        <div>
+                            <div class="text-slate-700">\${esc(c.device_label || 'Unnamed device')}</div>
+                            <div class="text-xs text-slate-400">Added \${fmtDate(c.created_at)}\${c.last_used_at ? ' \xB7 Last used ' + fmtDate(c.last_used_at) : ''}</div>
+                        </div>
+                    </div>
+                \`).join('')
+                : '<p class="text-slate-400 text-sm">No passkeys registered.</p>';
+
+            document.getElementById('ud-sessions').innerHTML = sessions.length
+                ? sessions.map((s) => \`
+                    <div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                        <div class="text-xs text-slate-500">Since \${fmtDate(s.created_at)}</div>
+                        <div class="text-xs text-slate-400">Expires \${fmtDate(s.expires_at)}</div>
+                    </div>
+                \`).join('')
+                : '<p class="text-slate-400 text-sm">No active sessions.</p>';
+
+            document.getElementById('ud-token-result').classList.add('hidden');
+            renderUserFlags(user.id);
+        }
+
+        async function renderUserFlags(userId) {
+            const container = document.getElementById('ud-flags');
+            if (allFlags.length === 0) {
+                container.innerHTML = '<p class="text-slate-400 text-sm">No flags defined yet \u2014 add one in the Feature Flags tab.</p>';
+                return;
+            }
+            container.innerHTML = allFlags.map((f) => \`
+                <label class="flex items-start gap-2 bg-slate-50 rounded-lg px-3 py-2 cursor-pointer">
+                    <input type="checkbox" class="user-flag-checkbox mt-0.5" data-key="\${esc(f.flag_key)}">
+                    <span>
+                        <span class="block text-slate-700 font-medium">\${esc(f.flag_key)}</span>
+                        \${f.description ? \`<span class="block text-xs text-slate-400">\${esc(f.description)}</span>\` : ''}
+                    </span>
+                </label>
+            \`).join('');
+            // Fill in current state without blocking the (fast) render above.
+            for (const f of allFlags) {
+                try {
+                    const { users } = await api('/frost/admin/flags/' + encodeURIComponent(f.flag_key) + '/users');
+                    const checkbox = container.querySelector(\`.user-flag-checkbox[data-key="\${CSS.escape(f.flag_key)}"]\`);
+                    if (checkbox) checkbox.checked = users.some((u) => u.id === userId);
+                } catch (e) { /* leave unchecked on error */ }
+            }
+            container.querySelectorAll('.user-flag-checkbox').forEach((cb) => {
+                cb.addEventListener('change', async () => {
+                    const key = cb.dataset.key;
+                    try {
+                        await api('/frost/admin/users/' + encodeURIComponent(currentUserId) + '/flags/' + encodeURIComponent(key), {
+                            method: cb.checked ? 'PUT' : 'DELETE',
+                        });
+                    } catch (err) {
+                        cb.checked = !cb.checked; // revert on failure
+                        showError('Could not update flag: ' + err.message);
+                    }
+                });
+            });
+        }
+
+        document.getElementById('ud-close').addEventListener('click', () => {
+            document.getElementById('user-detail').classList.add('hidden');
+            currentUserId = null;
+        });
+
+        document.getElementById('ud-reset-credentials').addEventListener('click', async () => {
+            if (!currentUserId) return;
+            if (!confirm('Reset ALL passkeys for this user? They will need to register a new one (via a re-registration link) to log in again.')) return;
+            try {
+                await api('/frost/admin/users/' + encodeURIComponent(currentUserId) + '/credentials', { method: 'DELETE' });
+                openUser(currentUserId);
+            } catch (err) { showError('Reset failed: ' + err.message); }
+        });
+
+        document.getElementById('ud-revoke-sessions').addEventListener('click', async () => {
+            if (!currentUserId) return;
+            if (!confirm('Revoke all active sessions for this user? They will be logged out everywhere immediately.')) return;
+            try {
+                await api('/frost/admin/users/' + encodeURIComponent(currentUserId) + '/sessions', { method: 'DELETE' });
+                openUser(currentUserId);
+            } catch (err) { showError('Revoke failed: ' + err.message); }
+        });
+
+        document.getElementById('ud-issue-token').addEventListener('click', async () => {
+            if (!currentUserId) return;
+            try {
+                const { token, expiresInSeconds } = await api('/frost/admin/users/' + encodeURIComponent(currentUserId) + '/reregister-token', { method: 'POST' });
+                const el = document.getElementById('ud-token-result');
+                el.textContent = 'Token: ' + token + '  (expires in ' + Math.round(expiresInSeconds / 60) + ' minutes)';
+                el.classList.remove('hidden');
+            } catch (err) { showError('Could not issue token: ' + err.message); }
+        });
+
+        // \u2500\u2500 Feature Flags tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        async function loadFlags() {
+            try {
+                const { flags } = await api('/frost/admin/flags');
+                allFlags = flags;
+                const tbody = document.getElementById('flags-table-body');
+                tbody.innerHTML = flags.length
+                    ? flags.map((f) => \`
+                        <tr class="border-t border-slate-100">
+                            <td class="px-4 py-2 font-mono text-xs">\${esc(f.flag_key)}</td>
+                            <td class="px-4 py-2 text-slate-600">\${esc(f.description || '\u2014')}</td>
+                        </tr>
+                    \`).join('')
+                    : '<tr><td colspan="2" class="px-4 py-4 text-center text-slate-400">No flags defined yet.</td></tr>';
+            } catch (err) { showError('Could not load flags: ' + err.message); }
+        }
+
+        document.getElementById('new-flag-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const key = document.getElementById('new-flag-key').value.trim();
+            const description = document.getElementById('new-flag-desc').value.trim();
+            if (!key) return;
+            try {
+                await api('/frost/admin/flags', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key, description }),
+                });
+                document.getElementById('new-flag-key').value = '';
+                document.getElementById('new-flag-desc').value = '';
+                allFlags = []; // force a refresh next time a user is opened
+                loadFlags();
+            } catch (err) { showError('Could not create flag: ' + err.message); }
+        });
+
+        // \u2500\u2500 Audit Log tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        async function loadAuditLog() {
+            try {
+                const { log } = await api('/frost/admin/audit-log');
+                const tbody = document.getElementById('audit-table-body');
+                tbody.innerHTML = log.length
+                    ? log.map((entry) => \`
+                        <tr class="border-t border-slate-100">
+                            <td class="px-4 py-2 text-xs text-slate-500 whitespace-nowrap">\${fmtDate(entry.created_at)}</td>
+                            <td class="px-4 py-2 text-slate-700">\${esc(entry.admin_identity)}</td>
+                            <td class="px-4 py-2 font-mono text-xs">\${esc(entry.action)}</td>
+                            <td class="px-4 py-2 text-xs text-slate-500">\${esc(entry.target_user_id || '\u2014')}</td>
+                            <td class="px-4 py-2 text-xs text-slate-500">\${esc(entry.detail || '\u2014')}</td>
+                        </tr>
+                    \`).join('')
+                    : '<tr><td colspan="5" class="px-4 py-4 text-center text-slate-400">No admin actions logged yet.</td></tr>';
+            } catch (err) { showError('Could not load audit log: ' + err.message); }
+        }
+
+        // \u2500\u2500 Init \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        (async function init() {
+            try {
+                const status = await api('/frost/admin/status');
+                document.getElementById('admin-email').textContent = status.admin;
+            } catch (err) { document.getElementById('admin-email').textContent = '(unknown)'; }
+        })();
+    <\/script>
+</body>
+</html>
+`;
+
 // src/routes/admin.js
 function jsonResponse3(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
@@ -19143,9 +19525,7 @@ async function handleAdminRoute(request, env, path) {
   const url = new URL(request.url);
   const method = request.method;
   if ((path === "/frost/admin" || path === "/frost/admin/") && method === "GET") {
-    const assetUrl = new URL(request.url);
-    assetUrl.pathname = "/frost/admin/index.html";
-    return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
+    return new Response(admin_default, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
   if (path === "/frost/admin/status" && method === "GET") {
     return jsonResponse3({
