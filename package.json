@@ -1,6 +1,6 @@
 {
   "name": "entotools-production",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "private": true,
   "scripts": {
     "dev": "wrangler pages dev public/",

@@ -106,6 +106,10 @@
       const { user } = await api('/api/account/session');
       state.user = user;
     } catch (e) {
+      // Logged, not silent: a 401 here right after a successful login is
+      // exactly the signature of the browser sending a cookie the server
+      // can't match (#38/#39), and it was invisible in bug reports before.
+      console.warn('[EntoAccount] checkSession: no active session (' + e.message + ')');
       state.user = null;
     }
     if (state.user) {

@@ -18912,26 +18912,35 @@ var SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 var REREGISTER_TOKEN_TTL_SECONDS = 15 * 60;
 var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function jsonResponse(data, status = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json", ...extraHeaders }
-  });
+  const headers = new Headers({ "Content-Type": "application/json" });
+  for (const [name, value] of Object.entries(extraHeaders)) {
+    for (const v of Array.isArray(value) ? value : [value]) headers.append(name, v);
+  }
+  return new Response(JSON.stringify(data), { status, headers });
 }
 function cookieDomainAttr(url) {
   const host = url.hostname;
   if (host === "localhost" || host === "127.0.0.1") return "";
   return "; Domain=entotools.org";
 }
-function sessionCookie(id, maxAgeSeconds, url) {
-  return `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}${cookieDomainAttr(url)}`;
+var HOST_ONLY_CLEAR = "ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+function sessionCookies(id, maxAgeSeconds, url) {
+  const domain = cookieDomainAttr(url);
+  const set = `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}${domain}`;
+  return domain ? [set, HOST_ONLY_CLEAR] : [set];
 }
-function clearSessionCookie(url) {
-  return `ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0${cookieDomainAttr(url)}`;
+function clearSessionCookies(url) {
+  const domain = cookieDomainAttr(url);
+  const clear = `ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0${domain}`;
+  return domain ? [clear, HOST_ONLY_CLEAR] : [clear];
 }
-function getSessionIdFromCookie(request) {
+function getSessionIdsFromCookie(request) {
   const cookie = request.headers.get("Cookie") || "";
-  const match = cookie.match(/(?:^|;\s*)ento_session=([^;]+)/);
-  return match ? match[1] : null;
+  const ids = [];
+  const re = /(?:^|;\s*)ento_session=([^;]*)/g;
+  let m;
+  while ((m = re.exec(cookie)) !== null) if (m[1]) ids.push(m[1]);
+  return ids;
 }
 async function storeChallenge(env, challenge, contextJson) {
   await env.GEOCODE_CACHE.put(`webauthn-challenge:${challenge}`, contextJson, {
@@ -18945,11 +18954,11 @@ async function consumeChallenge(env, challenge) {
   return value;
 }
 async function requireSession(request, env) {
-  const sessionId = getSessionIdFromCookie(request);
-  if (!sessionId) return null;
-  const session = await getSession(env, sessionId);
-  if (!session || new Date(session.expires_at).getTime() < Date.now()) return null;
-  return session;
+  for (const sessionId of getSessionIdsFromCookie(request)) {
+    const session = await getSession(env, sessionId);
+    if (session && new Date(session.expires_at).getTime() >= Date.now()) return session;
+  }
+  return null;
 }
 async function handleRegisterOptions(request, env) {
   const url = new URL(request.url);
@@ -19042,7 +19051,7 @@ async function handleRegisterVerify(request, env) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
   await createSession(env, { id: sessionId, userId: pending.userId, expiresAt });
-  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookie(sessionId, SESSION_TTL_SECONDS, url) });
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
 }
 async function handleLoginOptions(request, env) {
   const url = new URL(request.url);
@@ -19089,7 +19098,7 @@ async function handleLoginVerify(request, env) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
   await createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
-  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookie(sessionId, SESSION_TTL_SECONDS, url) });
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
 }
 var NO_STORE = { "Cache-Control": "no-store" };
 async function handleSession(request, env) {
@@ -19100,9 +19109,8 @@ async function handleSession(request, env) {
 }
 async function handleLogout(request, env) {
   const url = new URL(request.url);
-  const sessionId = getSessionIdFromCookie(request);
-  if (sessionId) await deleteSession(env, sessionId);
-  return jsonResponse({ success: true }, 200, { "Set-Cookie": clearSessionCookie(url) });
+  for (const sessionId of getSessionIdsFromCookie(request)) await deleteSession(env, sessionId);
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": clearSessionCookies(url) });
 }
 async function handleListCredentials(request, env) {
   const session = await requireSession(request, env);
@@ -20847,9 +20855,10 @@ var index_default = {
     ]);
     const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
     if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
+      const isReadOnly = request.method === "GET" || request.method === "HEAD";
       const allowedOrigins = allowedOriginsFor(url);
       const origin = request.headers.get("Origin");
-      if (!allowedOrigins.has(origin)) {
+      if (!isReadOnly && !allowedOrigins.has(origin)) {
         console.warn("[Worker:account] rejected disallowed/missing origin:", origin);
         return jsonResponse4({ error: "Forbidden." }, 403);
       }

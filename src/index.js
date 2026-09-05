@@ -1199,6 +1199,15 @@ export default {
     // Same origin-allowlist treatment as /api/feedback — the Origin header is
     // spoofable by non-browser clients, so this is defence-in-depth only; the
     // per-IP rate limit below is what actually caps automated abuse.
+    //
+    // Applied to state-changing methods ONLY. Browsers do not send an Origin
+    // header on same-origin GET/HEAD requests, so checking it there rejected
+    // every GET /api/account/session and /credentials call from the site's
+    // own pages with a 403 — the login ceremony succeeded, but the page could
+    // never read the session back, so it always rendered as logged out
+    // (issues #38/#39; present since v1.3.0, copied from the POST-only
+    // feedback route where Origin is always present). The read-only GETs
+    // are protected by the SameSite=Lax session cookie instead.
     const ACCOUNT_ROUTES = new Set([
       '/api/account/register/options', '/api/account/register/verify',
       '/api/account/login/options', '/api/account/login/verify',
@@ -1207,9 +1216,10 @@ export default {
     ]);
     const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
     if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
+      const isReadOnly = request.method === 'GET' || request.method === 'HEAD';
       const allowedOrigins = allowedOriginsFor(url);
       const origin = request.headers.get('Origin');
-      if (!allowedOrigins.has(origin)) {
+      if (!isReadOnly && !allowedOrigins.has(origin)) {
         console.warn('[Worker:account] rejected disallowed/missing origin:', origin);
         return jsonResponse({ error: 'Forbidden.' }, 403);
       }
