@@ -42,6 +42,20 @@ export async function getUserDetail(env, userId) {
   return { user, credentials, sessions };
 }
 
+// Deletes a user and everything referencing them — D1 doesn't enforce the
+// FK constraints by default, so each table has to be cleared explicitly, in
+// an order that leaves nothing orphaned even if this were interrupted
+// partway through (the users row itself goes last).
+export async function deleteUser(env, userId) {
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM credentials WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM user_feature_flags WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM collections WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId),
+  ]);
+}
+
 // ── Credentials ─────────────────────────────────────────────────
 export async function saveCredential(env, { credentialId, userId, publicKey, signCount, deviceLabel }) {
   await env.DB.prepare(

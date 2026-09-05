@@ -21,6 +21,16 @@
 
   var state = { user: null, credentials: [] };
 
+  // Set from a ?reregister=<token> URL param (see below) — an admin-issued
+  // link from the admin portal after resetting a user's passkeys (#36).
+  var pendingReregisterToken = null;
+
+  function clearReregisterFromUrl() {
+    var url = new URL(location.href);
+    url.searchParams.delete('reregister');
+    history.replaceState(null, '', url.toString());
+  }
+
   function loadScript(src, integrity) {
     return new Promise(function (resolve, reject) {
       var s = document.createElement('script');
@@ -135,6 +145,22 @@
     await checkSession();
   }
 
+  // An admin-issued single-use link (?reregister=<token>) after resetting a
+  // user's passkeys (#36) — the server links the new passkey to that same
+  // existing account instead of creating a new one, but only via this exact
+  // token; a normal signUp() with a matching label never does this (#35).
+  async function reregisterWithToken(token) {
+    await webauthnBrowserReady;
+    const options = await api('/api/account/register/options', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reregisterToken: token }),
+    });
+    const attResp = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: options });
+    await api('/api/account/register/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attResp),
+    });
+    await checkSession();
+  }
+
   async function removeCredential(credentialId) {
     await api('/api/account/credentials/' + encodeURIComponent(credentialId), { method: 'DELETE' });
     await refreshCredentials();
@@ -191,6 +217,24 @@
   function renderModalBody() {
     var body = document.getElementById('ento-account-body');
     var title = document.getElementById('ento-account-title');
+    if (pendingReregisterToken) {
+      title.textContent = 'Register a new passkey';
+      body.innerHTML = `
+        <p class="text-sm text-slate-600 mb-3">An admin reset your passkeys — register a new one below to regain access to your existing account. This link is single-use.</p>
+        <button id="ento-account-reregister" class="w-full px-3 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Register new passkey</button>
+      `;
+      document.getElementById('ento-account-reregister').addEventListener('click', async function () {
+        setStatus('Follow your browser/device prompt…');
+        try {
+          await reregisterWithToken(pendingReregisterToken);
+          pendingReregisterToken = null;
+          clearReregisterFromUrl();
+          setStatus('Passkey registered.');
+          closeModalSoon();
+        } catch (err) { setStatus(err.message, true); }
+      });
+      return;
+    }
     if (state.user) {
       title.textContent = 'Manage account';
       body.innerHTML = `
@@ -304,5 +348,8 @@
     refresh: checkSession,
   };
 
-  checkSession();
+  pendingReregisterToken = new URL(location.href).searchParams.get('reregister');
+  checkSession().then(function () {
+    if (pendingReregisterToken) openModal();
+  });
 })();

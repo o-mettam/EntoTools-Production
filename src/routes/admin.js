@@ -63,6 +63,7 @@ export async function handleAdminRoute(request, env, path) {
       routes: [
         'GET    /frost/admin/users?q=',
         'GET    /frost/admin/users/:id',
+        'DELETE /frost/admin/users/:id',
         'DELETE /frost/admin/users/:id/credentials',
         'DELETE /frost/admin/users/:id/sessions',
         'POST   /frost/admin/users/:id/reregister-token',
@@ -87,6 +88,14 @@ export async function handleAdminRoute(request, env, path) {
     const detail = await db.getUserDetail(env, m[1]);
     if (!detail) return jsonResponse({ error: 'Not found' }, 404);
     return jsonResponse(detail);
+  }
+  if (m && method === 'DELETE') {
+    const userId = m[1];
+    const existing = await db.getUser(env, userId);
+    if (!existing) return jsonResponse({ error: 'Not found' }, 404);
+    await db.deleteUser(env, userId);
+    await db.writeAuditLog(env, { adminIdentity: adminEmail, action: 'delete_user', targetUserId: userId, detail: existing.label });
+    return jsonResponse({ success: true });
   }
 
   m = path.match(/^\/frost\/admin\/users\/([^/]+)\/credentials$/);

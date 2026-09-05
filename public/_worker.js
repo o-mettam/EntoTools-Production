@@ -18799,6 +18799,15 @@ async function getUserDetail(env, userId) {
   ).bind(userId).all();
   return { user, credentials, sessions };
 }
+async function deleteUser(env, userId) {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM credentials WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM user_feature_flags WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM collections WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId)
+  ]);
+}
 async function saveCredential(env, { credentialId, userId, publicKey, signCount, deviceLabel }) {
   await env.DB.prepare(
     "INSERT INTO credentials (credential_id, user_id, public_key, sign_count, device_label, created_at) VALUES (?, ?, ?, ?, ?, ?)"
@@ -19299,7 +19308,10 @@ var admin_default = `<!DOCTYPE html>
                         <h2 id="ud-label" class="text-base font-semibold text-slate-800"></h2>
                         <p class="text-xs text-slate-400 mt-0.5">ID: <span id="ud-id"></span> \xB7 Created <span id="ud-created"></span></p>
                     </div>
-                    <button id="ud-close" class="text-slate-400 hover:text-slate-600 text-sm">Close</button>
+                    <div class="flex items-center gap-3">
+                        <button id="ud-delete-user" class="text-xs text-red-600 hover:text-red-700 font-medium">Delete user</button>
+                        <button id="ud-close" class="text-slate-400 hover:text-slate-600 text-sm">Close</button>
+                    </div>
                 </div>
 
                 <div class="grid sm:grid-cols-2 gap-6">
@@ -19318,9 +19330,10 @@ var admin_default = `<!DOCTYPE html>
 
                         <div class="mt-4">
                             <button id="ud-issue-token" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition">Issue re-registration link</button>
-                            <p class="text-xs text-slate-400 mt-1.5">For a user who's lost their only device. There's no
-                                registration UI yet (#35) \u2014 hand them this token directly; single-use, expires in 15 minutes.</p>
-                            <div id="ud-token-result" class="hidden mt-2 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 font-mono break-all"></div>
+                            <p class="text-xs text-slate-400 mt-1.5">For a user who's lost their only device \u2014 send them the
+                                link below and it walks them straight into registering a new passkey for this same account.
+                                Single-use, expires in 15 minutes.</p>
+                            <div id="ud-token-result" class="hidden mt-2 text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 break-all"></div>
                         </div>
                     </div>
 
@@ -19576,6 +19589,18 @@ var admin_default = `<!DOCTYPE html>
             currentUserId = null;
         });
 
+        document.getElementById('ud-delete-user').addEventListener('click', async () => {
+            if (!currentUserId) return;
+            const label = document.getElementById('ud-label').textContent;
+            if (!confirm('Permanently delete the account "' + label + '"? This removes their passkeys, sessions, feature flag assignments, and any account-synced collection data. This cannot be undone.')) return;
+            try {
+                await api('/frost/admin/users/' + encodeURIComponent(currentUserId), { method: 'DELETE' });
+                document.getElementById('user-detail').classList.add('hidden');
+                currentUserId = null;
+                searchUsers();
+            } catch (err) { showError('Delete failed: ' + err.message); }
+        });
+
         document.getElementById('ud-reset-credentials').addEventListener('click', async () => {
             if (!currentUserId) return;
             if (!confirm('Reset ALL passkeys for this user? They will need to register a new one (via a re-registration link) to log in again.')) return;
@@ -19598,8 +19623,14 @@ var admin_default = `<!DOCTYPE html>
             if (!currentUserId) return;
             try {
                 const { token, expiresInSeconds } = await api('/frost/admin/users/' + encodeURIComponent(currentUserId) + '/reregister-token', { method: 'POST' });
+                // A real clickable link (?reregister=<token>), not a raw token
+                // the user would have to paste somewhere themselves \u2014 account.js
+                // on the landing page picks this query param up automatically and
+                // walks them straight into "register a new passkey for my account".
+                const link = 'https://entotools.org/?reregister=' + encodeURIComponent(token);
                 const el = document.getElementById('ud-token-result');
-                el.textContent = 'Token: ' + token + '  (expires in ' + Math.round(expiresInSeconds / 60) + ' minutes)';
+                el.innerHTML = 'Send this link \u2014 expires in ' + Math.round(expiresInSeconds / 60) + ' minutes, single-use:<br>' +
+                    '<a href="' + esc(link) + '" target="_blank" rel="noopener" class="text-lime-700 underline break-all">' + esc(link) + '</a>';
                 el.classList.remove('hidden');
             } catch (err) { showError('Could not issue token: ' + err.message); }
         });
@@ -19783,6 +19814,7 @@ async function handleAdminRoute(request, env, path) {
       routes: [
         "GET    /frost/admin/users?q=",
         "GET    /frost/admin/users/:id",
+        "DELETE /frost/admin/users/:id",
         "DELETE /frost/admin/users/:id/credentials",
         "DELETE /frost/admin/users/:id/sessions",
         "POST   /frost/admin/users/:id/reregister-token",
@@ -19804,6 +19836,14 @@ async function handleAdminRoute(request, env, path) {
     const detail = await getUserDetail(env, m[1]);
     if (!detail) return jsonResponse3({ error: "Not found" }, 404);
     return jsonResponse3(detail);
+  }
+  if (m && method === "DELETE") {
+    const userId = m[1];
+    const existing = await getUser(env, userId);
+    if (!existing) return jsonResponse3({ error: "Not found" }, 404);
+    await deleteUser(env, userId);
+    await writeAuditLog(env, { adminIdentity: adminEmail, action: "delete_user", targetUserId: userId, detail: existing.label });
+    return jsonResponse3({ success: true });
   }
   m = path.match(/^\/frost\/admin\/users\/([^/]+)\/credentials$/);
   if (m && method === "DELETE") {
