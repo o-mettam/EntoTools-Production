@@ -29,6 +29,7 @@ mkdir -p "$ROOT/public/documentation"
 mkdir -p "$ROOT/public/privacy"
 mkdir -p "$ROOT/public/terms"
 mkdir -p "$ROOT/public/status"
+mkdir -p "$ROOT/public/frost/admin"
 
 # Homepage → public/index.html (served at /)
 cp "$ROOT/templates/entotools.html" "$ROOT/public/index.html"
@@ -56,6 +57,10 @@ cp "$ROOT/templates/terms_of_use.html" "$ROOT/public/terms/index.html"
 
 # Service Status → public/status/index.html (served at /status)
 cp "$ROOT/templates/status.html" "$ROOT/public/status/index.html"
+
+# Admin portal GUI → public/frost/admin/index.html (served at /frost/admin,
+# but only past Cloudflare Access + the JWT check in src/routes/admin.js — see #36)
+cp "$ROOT/templates/admin.html" "$ROOT/public/frost/admin/index.html"
 
 # Error pages
 cp "$ROOT/templates/404.html" "$ROOT/public/404.html"

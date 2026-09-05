@@ -24,12 +24,16 @@ export async function handleAdminRoute(request, env, path) {
   const url = new URL(request.url);
   const method = request.method;
 
-  // Confirms the Access → JWT-verification chain actually worked, since
-  // there's no admin frontend yet (#36 is backend-only, same phasing as
-  // #35) — without this, a successful Access login just bounces back to a
-  // bare "Not found" with nothing to distinguish "you're not authorized"
-  // from "you're in, there's just no UI here yet."
+  // The admin GUI itself (templates/admin.html → public/frost/admin/index.html)
+  // — served as a static asset once Access + the JWT check above have both
+  // passed, exactly like any other page on the site, just gated first.
   if (path === '/frost/admin' && method === 'GET') {
+    return env.ASSETS.fetch(request);
+  }
+
+  // Machine-readable equivalent, used by the GUI's own init() to confirm the
+  // Access → JWT-verification chain worked and show who's signed in.
+  if (path === '/frost/admin/status' && method === 'GET') {
     return jsonResponse({
       ok: true,
       admin: adminEmail,
