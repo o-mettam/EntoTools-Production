@@ -19114,6 +19114,9 @@ async function createUser(env, { id, label }) {
 async function getUser(env, id) {
   return env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(id).first();
 }
+async function getUserByLabel(env, label) {
+  return env.DB.prepare("SELECT id, label, created_at FROM users WHERE label = ?").bind(label).first();
+}
 async function searchUsers(env, query) {
   const like = `%${query}%`;
   const { results } = await env.DB.prepare(
@@ -19293,7 +19296,73 @@ async function purgeExpiredSessions(env) {
   await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(nowIso()).run();
 }
 
+// src/lib/ratelimit.js
+function maskIp(ip) {
+  if (!ip) return "(unknown)";
+  if (ip.includes(":")) return ip.split(":").slice(0, 2).join(":") + "::\u2026";
+  return ip.split(".").slice(0, 3).join(".") + ".x";
+}
+async function hashIp(ip) {
+  try {
+    const data = new TextEncoder().encode(ip);
+    const digest2 = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest2).slice(0, 8)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch (e) {
+    return "nohash";
+  }
+}
+async function bucketKey(ip, prefix, windowSeconds) {
+  const bucket = Math.floor(Date.now() / 1e3 / windowSeconds);
+  return `${prefix}:${bucket}:${await hashIp(ip)}`;
+}
+async function readCount(env, key) {
+  try {
+    return parseInt(await env.GEOCODE_CACHE.get(key), 10) || 0;
+  } catch (e) {
+    return null;
+  }
+}
+async function rateLimited(env, ip, prefix, limit, windowSeconds) {
+  if (!ip || !env.GEOCODE_CACHE) return false;
+  const key = await bucketKey(ip, prefix, windowSeconds);
+  const count = await readCount(env, key);
+  if (count === null) return false;
+  if (count >= limit) return true;
+  try {
+    await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: windowSeconds });
+  } catch (e) {
+  }
+  return false;
+}
+async function atRateLimit(env, ip, prefix, limit, windowSeconds) {
+  if (!ip || !env.GEOCODE_CACHE) return false;
+  const count = await readCount(env, await bucketKey(ip, prefix, windowSeconds));
+  return count !== null && count >= limit;
+}
+async function bumpRateLimit(env, ip, prefix, windowSeconds) {
+  if (!ip || !env.GEOCODE_CACHE) return;
+  const key = await bucketKey(ip, prefix, windowSeconds);
+  const count = await readCount(env, key) || 0;
+  try {
+    await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: windowSeconds });
+  } catch (e) {
+  }
+}
+
 // src/routes/account.js
+var SIGNUP_WINDOW_SECONDS = 2 * 60 * 60;
+var SIGNUP_ATTEMPTS_PER_WINDOW = 6;
+var SIGNUP_ACCOUNTS_PER_WINDOW = 3;
+var SIGNUP_COOKIE = "ento_su";
+function signupCookieCount(request) {
+  const m = (request.headers.get("Cookie") || "").match(/(?:^|;\s*)ento_su=(\d+)/);
+  return m ? parseInt(m[1], 10) || 0 : 0;
+}
+function signupCookie(count, url) {
+  return `${SIGNUP_COOKIE}=${count}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SIGNUP_WINDOW_SECONDS}${cookieDomainAttr(url)}`;
+}
+var SIGNUP_LIMIT_MESSAGE = "Too many accounts have been created from your network recently. Please try again in a couple of hours.";
+var EMAIL_TAKEN_MESSAGE = "An account with this email already exists. Sign in with your passkey instead \u2014 or, if you\u2019ve lost it, contact an admin for a re-registration link.";
 var CHALLENGE_TTL_SECONDS = 300;
 var SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 var REREGISTER_TOKEN_TTL_SECONDS = 15 * 60;
@@ -19403,8 +19472,14 @@ async function handleRegisterOptions(request, env) {
     isNewUser = false;
     viaToken = true;
   } else {
-    label = (body.label || "").trim().slice(0, 200);
+    label = (body.label || "").trim().toLowerCase().slice(0, 200);
     if (!EMAIL_RE.test(label)) return jsonResponse({ error: "A valid email address is required." }, 400);
+    const ip = request.headers.get("CF-Connecting-IP") || "";
+    if (await rateLimited(env, ip, "signup-att", SIGNUP_ATTEMPTS_PER_WINDOW, SIGNUP_WINDOW_SECONDS) || await atRateLimit(env, ip, "signup-ok", SIGNUP_ACCOUNTS_PER_WINDOW, SIGNUP_WINDOW_SECONDS) || signupCookieCount(request) >= SIGNUP_ACCOUNTS_PER_WINDOW) {
+      console.warn("[Worker:account] sign-up limit reached for IP:", maskIp(ip));
+      return jsonResponse({ error: SIGNUP_LIMIT_MESSAGE }, 429);
+    }
+    if (await getUserByLabel(env, label)) return jsonResponse({ error: EMAIL_TAKEN_MESSAGE }, 409);
     userId = crypto.randomUUID();
     isNewUser = true;
   }
@@ -19455,8 +19530,19 @@ async function handleRegisterVerify(request, env) {
     return jsonResponse({ error: "Passkey verification failed." }, 400);
   }
   const { credential: regCred } = verification.registrationInfo;
+  const ip = request.headers.get("CF-Connecting-IP") || "";
   if (pending.isNewUser) {
-    await createUser(env, { id: pending.userId, label: pending.label });
+    if (await atRateLimit(env, ip, "signup-ok", SIGNUP_ACCOUNTS_PER_WINDOW, SIGNUP_WINDOW_SECONDS)) {
+      return jsonResponse({ error: SIGNUP_LIMIT_MESSAGE }, 429);
+    }
+    if (await getUserByLabel(env, pending.label)) return jsonResponse({ error: EMAIL_TAKEN_MESSAGE }, 409);
+    try {
+      await createUser(env, { id: pending.userId, label: pending.label });
+    } catch (err) {
+      if (/UNIQUE/i.test(err.message || "")) return jsonResponse({ error: EMAIL_TAKEN_MESSAGE }, 409);
+      throw err;
+    }
+    await bumpRateLimit(env, ip, "signup-ok", SIGNUP_WINDOW_SECONDS);
   }
   await saveCredential(env, {
     credentialId: regCred.id,
@@ -19471,7 +19557,9 @@ async function handleRegisterVerify(request, env) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
   await createSession(env, { id: sessionId, userId: pending.userId, expiresAt, credentialId: regCred.id });
-  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
+  const cookies = sessionCookies(sessionId, SESSION_TTL_SECONDS, url);
+  if (pending.isNewUser) cookies.push(signupCookie(signupCookieCount(request) + 1, url));
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": cookies });
 }
 async function handleLoginOptions(request, env) {
   const url = new URL(request.url);
@@ -19796,6 +19884,94 @@ async function verifyAccessRequest(request, env) {
   }
 }
 
+// src/csp-hashes.json
+var csp_hashes_default = {
+  generated: "2026-09-05T04:04:55.372Z",
+  tailwindHash: "ddfd1b16b20b",
+  routes: {
+    "/404.html": [],
+    "/500.html": [],
+    "/503.html": [],
+    "/collection-database": [
+      "sha256-yXlsMdkD20uqyFwMCmCFsjZjy5hf68VJ6bwoGWXvisE="
+    ],
+    "/degree-day-calculator": [
+      "sha256-ZtTDpeBMkslZ/PrMK4dQK9GHb64blxtGUzp522hna3Q="
+    ],
+    "/documentation": [
+      "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
+    ],
+    "/gdd-lookup": [
+      "sha256-ixDldznWWlZGiUuOj1g27bkxckj8nUzEyQQePx2FVYE="
+    ],
+    "/": [
+      "sha256-PuWwM6FDzfiywFvEW3TpYCFehI+jutWEOeRzqq8FmM0="
+    ],
+    "/privacy": [
+      "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
+    ],
+    "/sample-collection": [
+      "sha256-OusoIA4AkTVWpYu1CHTIuf1bNLsi+e06oypr3htKAWU="
+    ],
+    "/status": [
+      "sha256-NgahHYqtLrcGdcaR1E9zjUk+fRJ63n47xhU4ikrJgD0="
+    ],
+    "/terms": [
+      "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
+    ]
+  },
+  admin: [
+    "sha256-8+T9IcUYMR/Jf8WnQgI27uZiF2PXIC6Y/+DW/KHHm8c="
+  ]
+};
+
+// src/lib/csp.js
+var PUBLIC_SCRIPT_HOSTS = "https://cdn.jsdelivr.net https://accounts.google.com https://static.cloudflareinsights.com";
+var PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://cloudflareinsights.com";
+function policy({ scriptHashes, scriptHosts, connect, styleHosts, fontHosts }) {
+  const hashes = (scriptHashes || []).map((h) => `'${h}'`).join(" ");
+  return [
+    "default-src 'self'",
+    `script-src 'self'${hashes ? " " + hashes : ""}${scriptHosts ? " " + scriptHosts : ""}`,
+    `style-src 'self' 'unsafe-inline'${styleHosts ? " " + styleHosts : ""}`,
+    fontHosts ? `font-src 'self' ${fontHosts}` : "font-src 'self'",
+    "img-src 'self' data:",
+    `connect-src ${connect}`,
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "upgrade-insecure-requests"
+  ].join("; ");
+}
+function routeKey(pathname) {
+  if (pathname === "/" || pathname === "") return "/";
+  let key = pathname.replace(/\/+$/, "");
+  if (key.endsWith("/index.html")) key = key.slice(0, -"/index.html".length) || "/";
+  return key || "/";
+}
+function cspForPage(pathname, status) {
+  let hashes = csp_hashes_default.routes[routeKey(pathname)];
+  if (!hashes && status === 404) hashes = csp_hashes_default.routes["/404.html"];
+  return policy({
+    scriptHashes: hashes || [],
+    scriptHosts: PUBLIC_SCRIPT_HOSTS,
+    connect: PUBLIC_CONNECT,
+    styleHosts: "https://fonts.googleapis.com",
+    fontHosts: "https://fonts.gstatic.com"
+  });
+}
+function cspForAdmin() {
+  return policy({
+    scriptHashes: csp_hashes_default.admin || [],
+    scriptHosts: "",
+    connect: "'self'",
+    styleHosts: "https://fonts.googleapis.com",
+    fontHosts: "https://fonts.gstatic.com"
+  });
+}
+var TAILWIND_HASH = csp_hashes_default.tailwindHash || "";
+
 // templates/admin.html
 var admin_default = `<!DOCTYPE html>
 <html lang="en">
@@ -19804,7 +19980,7 @@ var admin_default = `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>EntoTools Admin</title>
-    <script src="https://cdn.tailwindcss.com"><\/script>
+    <link rel="stylesheet" href="/tailwind.css">
     <!-- Shared theme: brand palette, dark-mode handling and common styles \u2014
          same as every public page, so the admin portal doesn't look/feel like
          a different app. Deliberately NOT loading feedback.js/log-capture.js
@@ -19812,9 +19988,9 @@ var admin_default = `<!DOCTYPE html>
          an internal tool gated entirely by Cloudflare Access. esc() is reused
          since it's a plain, dependency-free XSS-safe escaping helper (#36
          still has to escape admin-entered/user label data like any other page). -->
-    <script src="/theme.js"><\/script>
+    <script src="/theme.js?v=1"><\/script>
     <link rel="stylesheet" href="/theme.css">
-    <script src="/ento-gdd.js"><\/script>
+    <script src="/ento-gdd.js?v=1"><\/script>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
     <!-- Nav + Header follow the same two-tier layout as every public page
@@ -19824,7 +20000,7 @@ var admin_default = `<!DOCTYPE html>
             <div class="flex items-center justify-between h-14 sm:h-16">
                 <span class="text-lime-600 font-semibold text-lg">EntoTools Admin</span>
                 <div class="relative">
-                    <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                    <button id="settings-btn" data-action="toggleSettings" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
@@ -19839,7 +20015,7 @@ var admin_default = `<!DOCTYPE html>
                                 </svg>
                                 <span class="text-sm text-slate-700">Dark Mode</span>
                             </div>
-                            <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                            <button id="theme-toggle" data-action="toggleTheme" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
                                 <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
                             </button>
                         </div>
@@ -20359,9 +20535,11 @@ var admin_default = `<!DOCTYPE html>
 `;
 
 // src/routes/admin.js
+var adminHtml = admin_default.replace('href="/tailwind.css"', `href="/tailwind.css?h=${TAILWIND_HASH}"`);
 var SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests",
+  // Hash-based script-src, no 'unsafe-inline', no CDN (src/lib/csp.js).
+  "Content-Security-Policy": cspForAdmin(),
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
   "Permissions-Policy": "geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()",
   "Referrer-Policy": "strict-origin-when-cross-origin"
@@ -20392,7 +20570,7 @@ async function handleAdminRoute(request, env, path) {
   const url = new URL(request.url);
   const method = request.method;
   if ((path === "/frost/admin" || path === "/frost/admin/") && method === "GET") {
-    return new Response(admin_default, { headers: { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS } });
+    return new Response(adminHtml, { headers: { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS } });
   }
   if (path === "/frost/admin/status" && method === "GET") {
     return jsonResponse3({
@@ -21173,37 +21351,6 @@ var FEEDBACK_TYPE_LABELS = {
   feature: "enhancement",
   other: "feedback"
 };
-function maskIp(ip) {
-  if (!ip) return "(unknown)";
-  if (ip.includes(":")) return ip.split(":").slice(0, 2).join(":") + "::\u2026";
-  return ip.split(".").slice(0, 3).join(".") + ".x";
-}
-async function hashIp(ip) {
-  try {
-    const data = new TextEncoder().encode(ip);
-    const digest2 = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(digest2).slice(0, 8)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  } catch (e) {
-    return "nohash";
-  }
-}
-async function rateLimited(env, ip, prefix, limit, windowSeconds) {
-  if (!ip || !env.GEOCODE_CACHE) return false;
-  const bucket = Math.floor(Date.now() / 1e3 / windowSeconds);
-  const key = `${prefix}:${bucket}:${await hashIp(ip)}`;
-  let count = 0;
-  try {
-    count = parseInt(await env.GEOCODE_CACHE.get(key), 10) || 0;
-  } catch (e) {
-    return false;
-  }
-  if (count >= limit) return true;
-  try {
-    await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: windowSeconds });
-  } catch (e) {
-  }
-  return false;
-}
 function feedbackRateLimited(env, ip) {
   return rateLimited(env, ip, "fb-rl", FEEDBACK_RATE_LIMIT, FEEDBACK_RATE_WINDOW_SECONDS);
 }
@@ -21502,9 +21649,13 @@ var index_default = {
       }
     }
     const assetResponse = await env.ASSETS.fetch(request);
-    if (url.pathname.endsWith(".js") || url.pathname.endsWith(".css")) {
+    const contentType = assetResponse.headers.get("Content-Type") || "";
+    const isCode = url.pathname.endsWith(".js") || url.pathname.endsWith(".css");
+    const isHtml = contentType.includes("text/html");
+    if (isCode || isHtml) {
       const headers = new Headers(assetResponse.headers);
-      headers.set("Cache-Control", "no-cache");
+      if (isCode) headers.set("Cache-Control", "no-cache");
+      if (isHtml) headers.set("Content-Security-Policy", cspForPage(url.pathname, assetResponse.status));
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,

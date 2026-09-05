@@ -19,6 +19,12 @@ export async function getUser(env, id) {
   return env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(id).first();
 }
 
+// Labels are stored lower-cased (migration 0007 + the sign-up handler), and
+// a UNIQUE index on users.label backs this lookup.
+export async function getUserByLabel(env, label) {
+  return env.DB.prepare('SELECT id, label, created_at FROM users WHERE label = ?').bind(label).first();
+}
+
 // Admin user search — label/id are not secrets, so a simple substring match
 // on either is fine. Matches on id too so an admin can paste a user ID
 // (e.g. from the audit log or a support conversation) directly into search.

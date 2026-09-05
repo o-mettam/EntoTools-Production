@@ -10,6 +10,7 @@
 import { verifyAccessRequest } from '../lib/access.js';
 import * as db from '../lib/db.js';
 import { REREGISTER_TOKEN_TTL_SECONDS } from './account.js';
+import { cspForAdmin, TAILWIND_HASH } from '../lib/csp.js';
 // Bundled as a raw string (esbuild --loader:.html=text) and returned
 // directly, rather than served via env.ASSETS.fetch(). That was tried first
 // and caused an infinite redirect loop: requesting the exact index.html path
@@ -18,7 +19,10 @@ import { REREGISTER_TOKEN_TTL_SECONDS } from './account.js';
 // redirect of explicit /index.html requests back to the clean directory URL
 // — our code and Cloudflare's redirect kept bouncing off each other.
 // Embedding the HTML sidesteps Pages' static-asset routing entirely.
-import adminHtml from '../../templates/admin.html';
+import adminHtmlRaw from '../../templates/admin.html';
+// Same cache-busting stamp the public pages get at build time (gen-csp.js);
+// the link tag isn't inside a <script>, so the CSP hashes are unaffected.
+const adminHtml = adminHtmlRaw.replace('href="/tailwind.css"', `href="/tailwind.css?h=${TAILWIND_HASH}"`);
 
 // public/_headers only applies to responses served through Cloudflare Pages'
 // static-asset pipeline (env.ASSETS.fetch()) — every response here is built
@@ -28,7 +32,8 @@ import adminHtml from '../../templates/admin.html';
 // this path in its own strong no-store/no-cache headers.
 const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests",
+  // Hash-based script-src, no 'unsafe-inline', no CDN (src/lib/csp.js).
+  'Content-Security-Policy': cspForAdmin(),
   'Strict-Transport-Security': 'max-age=63072000; includeSubDomains',
   'Permissions-Policy': 'geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()',
   'Referrer-Policy': 'strict-origin-when-cross-origin',

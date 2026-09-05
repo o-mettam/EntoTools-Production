@@ -1,0 +1,39 @@
+{
+  "generated": "2026-09-05T04:04:55.372Z",
+  "tailwindHash": "ddfd1b16b20b",
+  "routes": {
+    "/404.html": [],
+    "/500.html": [],
+    "/503.html": [],
+    "/collection-database": [
+      "sha256-yXlsMdkD20uqyFwMCmCFsjZjy5hf68VJ6bwoGWXvisE="
+    ],
+    "/degree-day-calculator": [
+      "sha256-ZtTDpeBMkslZ/PrMK4dQK9GHb64blxtGUzp522hna3Q="
+    ],
+    "/documentation": [
+      "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
+    ],
+    "/gdd-lookup": [
+      "sha256-ixDldznWWlZGiUuOj1g27bkxckj8nUzEyQQePx2FVYE="
+    ],
+    "/": [
+      "sha256-PuWwM6FDzfiywFvEW3TpYCFehI+jutWEOeRzqq8FmM0="
+    ],
+    "/privacy": [
+      "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
+    ],
+    "/sample-collection": [
+      "sha256-OusoIA4AkTVWpYu1CHTIuf1bNLsi+e06oypr3htKAWU="
+    ],
+    "/status": [
+      "sha256-NgahHYqtLrcGdcaR1E9zjUk+fRJ63n47xhU4ikrJgD0="
+    ],
+    "/terms": [
+      "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
+    ]
+  },
+  "admin": [
+    "sha256-8+T9IcUYMR/Jf8WnQgI27uZiF2PXIC6Y/+DW/KHHm8c="
+  ]
+}

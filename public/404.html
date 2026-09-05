@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>404 — Page Not Found</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/tailwind.css?h=ddfd1b16b20b">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Shared logging: console capture, version + browser info, action logging -->
     <script src="/log-capture.js"></script>
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
-    <script src="/theme.js"></script>
+    <script src="/theme.js?v=1"></script>
     <link rel="stylesheet" href="/theme.css">
 </head>
 <body class="bg-slate-50 min-h-screen flex flex-col">
@@ -19,7 +19,7 @@
         <div class="max-w-5xl mx-auto px-4 sm:px-6">
             <div class="flex items-center justify-between h-14 sm:h-16">
                 <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
-                <button id="mobile-menu-btn" onclick="document.getElementById('mobile-menu').classList.toggle('hidden');document.getElementById('hamburger-icon').classList.toggle('hidden');document.getElementById('close-icon').classList.toggle('hidden');" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                <button id="mobile-menu-btn" data-action="toggleMobileMenu" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
                     <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
                     <svg id="close-icon" class="w-6 h-6 hidden" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
                 </button>
@@ -43,7 +43,7 @@
             <h1 class="text-2xl font-semibold text-slate-800 mb-2">Page Not Found</h1>
             <p class="text-slate-500 mb-8">The page you're looking for doesn't exist or has been moved.</p>
             <div class="flex items-center justify-center gap-3">
-                <button onclick="history.back()"
+                <button data-action="goBack"
                         class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm transition">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>

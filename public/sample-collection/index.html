@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Label Data</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/tailwind.css?h=ddfd1b16b20b">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Shared logging: console capture, version + browser info, action logging -->
     <script src="/log-capture.js"></script>
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
-    <script src="/theme.js"></script>
+    <script src="/theme.js?v=1"></script>
     <link rel="stylesheet" href="/theme.css">
     <!-- Shared mGDD calculation + HTML-escape helpers (single source of truth) -->
-    <script src="/ento-gdd.js"></script>
+    <script src="/ento-gdd.js?v=1"></script>
     <script src="/sync/config.js?v=2"></script>
     <script src="/sync/sync-core.js?v=3"></script>
     <script src="/sync/provider-account.js?v=1"></script>
@@ -35,7 +35,7 @@
                 <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
                 <div class="flex items-center gap-1">
                     <div class="relative">
-                        <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                        <button id="settings-btn" data-action="toggleSettings" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
@@ -49,17 +49,17 @@
                                         <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/></svg>
                                         <span class="text-sm text-slate-700">Google Drive Backup</span>
                                     </div>
-                                    <button id="drive-btn" onclick="entoDriveToggle(event)" class="px-3 py-1.5 text-xs font-medium text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition">Connect</button>
+                                    <button id="drive-btn" data-action="entoDriveToggle" class="px-3 py-1.5 text-xs font-medium text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition">Connect</button>
                                 </div>
                                 <p id="drive-status" class="text-xs text-slate-400 mt-1">Sync your collection database to your own Google Drive.</p>
-                                <button id="drive-sync-now" onclick="entoDriveSyncNow(event)" class="hidden mt-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sync now</button>
+                                <button id="drive-sync-now" data-action="entoDriveSyncNow" class="hidden mt-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sync now</button>
                             </div>
                             <div class="flex items-center justify-between py-2">
                                 <div class="flex items-center gap-2">
                                     <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
                                     <span class="text-sm text-slate-700">Dark Mode</span>
                                 </div>
-                                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                <button id="theme-toggle" data-action="toggleTheme" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
                                     <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
                                 </button>
                             </div>
@@ -69,12 +69,12 @@
                                     <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
                                     <span class="text-sm text-slate-700">Clear Local Cache</span>
                                 </div>
-                                <button onclick="clearLocalCache(event)" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">Clear</button>
+                                <button data-action="clearLocalCache" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">Clear</button>
                             </div>
                             <p class="text-xs text-slate-400 mt-1">Removes cached search results and saved searches from your browser.</p>
                         </div>
                     </div>
-                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                    <button id="mobile-menu-btn" data-action="toggleMobileMenu" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
                         <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                         </svg>
@@ -128,8 +128,8 @@
             <div class="mb-4">
                 <label class="block text-sm font-medium text-slate-700 mb-1">Location</label>
                 <div class="inline-flex flex-wrap rounded-lg bg-slate-100 p-1 mb-3 text-sm font-medium items-center gap-1">
-                    <button onclick="switchTab('city')"   id="tab-city"   class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">City / State / Country</button>
-                    <button onclick="switchTab('latlon')" id="tab-latlon" class="px-3 sm:px-4 py-2 rounded-md transition tab-active">Lat / Long</button>
+                    <button data-action="switchTab" data-args="[&quot;city&quot;]"   id="tab-city"   class="px-3 sm:px-4 py-2 rounded-md transition text-slate-500 hover:text-slate-700">City / State / Country</button>
+                    <button data-action="switchTab" data-args="[&quot;latlon&quot;]" id="tab-latlon" class="px-3 sm:px-4 py-2 rounded-md transition tab-active">Lat / Long</button>
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <input id="input-city-inline" type="text" placeholder="City"
@@ -151,11 +151,11 @@
                 <label class="block text-sm font-medium text-slate-700 mb-1">Collection Date</label>
                 <div class="flex flex-wrap items-center gap-3 mb-2">
                     <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                        <input type="radio" name="date-mode" value="single" checked onchange="toggleDateMode()" class="accent-lime-600" />
+                        <input type="radio" name="date-mode" value="single" checked data-change="toggleDateMode" class="accent-lime-600" />
                         Single Date
                     </label>
                     <label class="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                        <input type="radio" name="date-mode" value="range" onchange="toggleDateMode()" class="accent-lime-600" />
+                        <input type="radio" name="date-mode" value="range" data-change="toggleDateMode" class="accent-lime-600" />
                         Date Range
                     </label>
                 </div>
@@ -252,14 +252,14 @@
 
             <!-- Generate Button -->
             <div class="mt-5 flex flex-wrap items-center gap-3">
-                <button id="btn-generate" onclick="doGenerate()"
+                <button id="btn-generate" data-action="doGenerate"
                         class="inline-flex items-center gap-2 bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm px-6 py-2.5 rounded-lg transition shadow-sm">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
                     </svg>
                     Generate Labels &amp; Notes
                 </button>
-                <button id="btn-view-saved" onclick="document.getElementById('print-sheet-section').scrollIntoView({ behavior: 'smooth', block: 'start' })" class="hidden inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition border border-slate-300">
+                <button id="btn-view-saved" data-action="scrollToPrintSheet" class="hidden inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition border border-slate-300">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25Z"/></svg>
                     Saved Collections (<span id="saved-badge">0</span>)
                 </button>
@@ -306,7 +306,7 @@
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold text-slate-800">Collection Label</h2>
-                    <button onclick="printLabel('label1')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                    <button data-action="printLabel" data-args="[&quot;label1&quot;]" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
                         Print
                     </button>
@@ -318,7 +318,7 @@
             <section id="label2-section" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold text-slate-800">Specimen Label</h2>
-                    <button onclick="printLabel('label2')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                    <button data-action="printLabel" data-args="[&quot;label2&quot;]" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
                         Print
                     </button>
@@ -330,7 +330,7 @@
 
             <!-- Save to Database -->
             <div class="flex justify-center mt-2 mb-2">
-                <button onclick="addToSheet()" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm transition shadow-sm">
+                <button data-action="addToSheet" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm transition shadow-sm">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
                     Save to Collection Database
                 </button>
@@ -340,7 +340,7 @@
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold text-slate-800">Collection Notes</h2>
-                    <button onclick="printLabel('notes-content')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                    <button data-action="printLabel" data-args="[&quot;notes-content&quot;]" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
                         Print
                     </button>
@@ -355,7 +355,7 @@
                         <h2 class="text-lg font-semibold text-slate-800">Export CSV</h2>
                         <p class="text-sm text-slate-500 mt-1">Download all collection data as a CSV file.</p>
                     </div>
-                    <button onclick="downloadCSV()" class="inline-flex items-center gap-2 bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm px-5 py-2.5 rounded-lg transition shadow-sm">
+                    <button data-action="downloadCSV" class="inline-flex items-center gap-2 bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm px-5 py-2.5 rounded-lg transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                         Download CSV
                     </button>
@@ -371,15 +371,15 @@
                     <p class="text-sm text-slate-500 mt-0.5"><span id="sheet-count">0</span> collection(s) saved &mdash; <a href="/collection-database" class="text-lime-600 hover:text-lime-700 font-medium underline">View in Database</a></p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="printSheet()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
+                    <button data-action="printSheet" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 2.523a1.125 1.125 0 0 1-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0 0 21 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 0 0-1.913-.247M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 0 1 1.913-.247m0 0a48.159 48.159 0 0 1 10.5 0m-10.5 0V4.875c0-.621.504-1.125 1.125-1.125h8.25c.621 0 1.125.504 1.125 1.125v3.234"/></svg>
                         Print All
                     </button>
-                    <button onclick="downloadAllCSV()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
+                    <button data-action="downloadAllCSV" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                         Download All CSV
                     </button>
-                    <button onclick="clearSheet()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
+                    <button data-action="clearSheet" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition border border-slate-300">
                         Clear
                     </button>
                 </div>
@@ -975,7 +975,7 @@
                 const label2 = buildLabel2Html(d);
                 let html = `<div class="label-preview rounded-lg text-xs">${buildLabel1Html(d)}</div>`;
                 if (label2) html += `<div class="label-preview rounded-lg text-xs mt-2">${label2}</div>`;
-                html += `<button onclick="removeFromSheet(${i})" class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600 transition" title="Remove">&times;</button>`;
+                html += `<button data-action="removeFromSheet" data-args="[${i}]" class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center hover:bg-red-600 transition" title="Remove">&times;</button>`;
                 card.innerHTML = html;
                 container.appendChild(card);
             });
@@ -986,6 +986,10 @@
             labelSheet.splice(index, 1);
             updateSheetUI();
             saveSheet();
+        }
+
+        function scrollToPrintSheet() {
+            document.getElementById('print-sheet-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
 
         function printSheet() {

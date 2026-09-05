@@ -16,6 +16,30 @@ import {
 } from '@simplewebauthn/server';
 import { rpConfigFor, decodeClientDataChallenge } from '../lib/webauthn.js';
 import * as db from '../lib/db.js';
+import { rateLimited, atRateLimit, bumpRateLimit, maskIp } from '../lib/ratelimit.js';
+
+// ── Sign-up abuse limits ──────────────────────────────────────────
+// An anonymous visitor's only stable identity is their IP, so that's the
+// primary control (per 2-hour window): a cap on sign-up ATTEMPTS (each
+// register/options call for a brand-new account) and a stricter cap on
+// accounts actually CREATED. A browser cookie counting created accounts is
+// a soft second layer — trivially cleared, but it stops a single browser
+// churning out accounts by accident, and costs nothing. The general
+// passkey-ceremony limit (20/hour/IP, src/index.js) applies on top.
+const SIGNUP_WINDOW_SECONDS = 2 * 60 * 60;
+const SIGNUP_ATTEMPTS_PER_WINDOW = 6;
+const SIGNUP_ACCOUNTS_PER_WINDOW = 3;
+const SIGNUP_COOKIE = 'ento_su';
+
+function signupCookieCount(request) {
+  const m = (request.headers.get('Cookie') || '').match(/(?:^|;\s*)ento_su=(\d+)/);
+  return m ? parseInt(m[1], 10) || 0 : 0;
+}
+function signupCookie(count, url) {
+  return `${SIGNUP_COOKIE}=${count}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SIGNUP_WINDOW_SECONDS}${cookieDomainAttr(url)}`;
+}
+const SIGNUP_LIMIT_MESSAGE = 'Too many accounts have been created from your network recently. Please try again in a couple of hours.';
+const EMAIL_TAKEN_MESSAGE = 'An account with this email already exists. Sign in with your passkey instead — or, if you’ve lost it, contact an admin for a re-registration link.';
 
 const CHALLENGE_TTL_SECONDS = 300;       // 5 minutes to complete a ceremony
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
@@ -166,10 +190,20 @@ export async function handleRegisterOptions(request, env) {
     isNewUser = false;
     viaToken = true;
   } else {
-    label = (body.label || '').trim().slice(0, 200);
+    // Brand-new account. The label is lower-cased: emails are matched and
+    // kept unique case-insensitively (migration 0007).
+    label = (body.label || '').trim().toLowerCase().slice(0, 200);
     // Never trust client-side validation alone — accounts require an email,
     // not an arbitrary display name (same check as public/account.js).
     if (!EMAIL_RE.test(label)) return jsonResponse({ error: 'A valid email address is required.' }, 400);
+    const ip = request.headers.get('CF-Connecting-IP') || '';
+    if (await rateLimited(env, ip, 'signup-att', SIGNUP_ATTEMPTS_PER_WINDOW, SIGNUP_WINDOW_SECONDS)
+        || await atRateLimit(env, ip, 'signup-ok', SIGNUP_ACCOUNTS_PER_WINDOW, SIGNUP_WINDOW_SECONDS)
+        || signupCookieCount(request) >= SIGNUP_ACCOUNTS_PER_WINDOW) {
+      console.warn('[Worker:account] sign-up limit reached for IP:', maskIp(ip));
+      return jsonResponse({ error: SIGNUP_LIMIT_MESSAGE }, 429);
+    }
+    if (await db.getUserByLabel(env, label)) return jsonResponse({ error: EMAIL_TAKEN_MESSAGE }, 409);
     userId = crypto.randomUUID();
     isNewUser = true;
   }
@@ -222,8 +256,21 @@ export async function handleRegisterVerify(request, env) {
   }
 
   const { credential: regCred } = verification.registrationInfo;
+  const ip = request.headers.get('CF-Connecting-IP') || '';
   if (pending.isNewUser) {
-    await db.createUser(env, { id: pending.userId, label: pending.label });
+    // Re-checked here as well as at options time: the challenge lives for
+    // five minutes, and the UNIQUE index is the final word on a race.
+    if (await atRateLimit(env, ip, 'signup-ok', SIGNUP_ACCOUNTS_PER_WINDOW, SIGNUP_WINDOW_SECONDS)) {
+      return jsonResponse({ error: SIGNUP_LIMIT_MESSAGE }, 429);
+    }
+    if (await db.getUserByLabel(env, pending.label)) return jsonResponse({ error: EMAIL_TAKEN_MESSAGE }, 409);
+    try {
+      await db.createUser(env, { id: pending.userId, label: pending.label });
+    } catch (err) {
+      if (/UNIQUE/i.test(err.message || '')) return jsonResponse({ error: EMAIL_TAKEN_MESSAGE }, 409);
+      throw err;
+    }
+    await bumpRateLimit(env, ip, 'signup-ok', SIGNUP_WINDOW_SECONDS);
   }
   await db.saveCredential(env, {
     credentialId: regCred.id,
@@ -242,7 +289,9 @@ export async function handleRegisterVerify(request, env) {
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   await db.createSession(env, { id: sessionId, userId: pending.userId, expiresAt, credentialId: regCred.id });
 
-  return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookies(sessionId, SESSION_TTL_SECONDS, url) });
+  const cookies = sessionCookies(sessionId, SESSION_TTL_SECONDS, url);
+  if (pending.isNewUser) cookies.push(signupCookie(signupCookieCount(request) + 1, url));
+  return jsonResponse({ success: true }, 200, { 'Set-Cookie': cookies });
 }
 
 // ── Login ───────────────────────────────────────────────────────

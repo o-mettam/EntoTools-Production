@@ -29,6 +29,8 @@ import {
 } from './routes/account.js';
 import { handleMyFlags } from './routes/flags.js';
 import { handleAdminRoute } from './routes/admin.js';
+import { cspForPage } from './lib/csp.js';
+import { rateLimited, maskIp } from './lib/ratelimit.js';
 
 const NCEI_BASE_URL = 'https://www.ncei.noaa.gov/access/services/data/v1';
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
@@ -882,50 +884,8 @@ const FEEDBACK_TYPE_LABELS = {
   other: 'feedback',
 };
 
-// Mask an IP before logging (privacy): keep enough to spot patterns in the
-// logs, drop enough that a single user can't be identified from them.
-// IPv4 → first three octets (1.2.3.x); IPv6 → first two hextets (a:b::…).
-function maskIp(ip) {
-  if (!ip) return '(unknown)';
-  if (ip.includes(':')) return ip.split(':').slice(0, 2).join(':') + '::…';
-  return ip.split('.').slice(0, 3).join('.') + '.x';
-}
-
-// Hash an IP so it never appears in cleartext in a KV key. SHA-256 → first 16
-// hex chars is ample to avoid collisions within a single time bucket while
-// keeping no reversible record of the caller's address.
-async function hashIp(ip) {
-  try {
-    const data = new TextEncoder().encode(ip);
-    const digest = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(digest).slice(0, 8))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  } catch (e) {
-    // Fallback (crypto unavailable): still avoid storing the raw IP verbatim.
-    return 'nohash';
-  }
-}
-
-// Per-IP rate limit backed by KV (GEOCODE_CACHE). Returns true if the caller
-// has exceeded the allowed number of requests in the current window.
-// The read-modify-write is not atomic, so concurrent requests from one IP can
-// undercount; the window is bucketed by wall-clock so a caller can never be
-// locked out for longer than one window. The IP is hashed into the key so no
-// cleartext address is ever persisted.
-async function rateLimited(env, ip, prefix, limit, windowSeconds) {
-  if (!ip || !env.GEOCODE_CACHE) return false; // can't identify caller — don't hard-block
-  const bucket = Math.floor(Date.now() / 1000 / windowSeconds);
-  const key = `${prefix}:${bucket}:${await hashIp(ip)}`;
-  let count = 0;
-  try { count = parseInt(await env.GEOCODE_CACHE.get(key), 10) || 0; }
-  catch (e) { return false; }
-  if (count >= limit) return true;
-  try { await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: windowSeconds }); }
-  catch (e) { /* fail open on KV write error */ }
-  return false;
-}
-
+// maskIp / rateLimited live in src/lib/ratelimit.js (shared with the
+// sign-up limits in src/routes/account.js).
 function feedbackRateLimited(env, ip) {
   return rateLimited(env, ip, 'fb-rl', FEEDBACK_RATE_LIMIT, FEEDBACK_RATE_WINDOW_SECONDS);
 }
@@ -1313,9 +1273,17 @@ export default {
     // one path guaranteed to actually take effect. This is what #33's fix
     // was supposed to be from the start; the _headers version never worked.
     const assetResponse = await env.ASSETS.fetch(request);
-    if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
+    const contentType = assetResponse.headers.get('Content-Type') || '';
+    const isCode = url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+    const isHtml = contentType.includes('text/html');
+    if (isCode || isHtml) {
       const headers = new Headers(assetResponse.headers);
-      headers.set('Cache-Control', 'no-cache');
+      if (isCode) headers.set('Cache-Control', 'no-cache');
+      // Per-route CSP with this page's inline-script hashes and no
+      // 'unsafe-inline' for scripts (src/lib/csp.js, security assessment
+      // 2026-09 R4). Set here rather than in public/_headers because the
+      // value differs per page.
+      if (isHtml) headers.set('Content-Security-Policy', cspForPage(url.pathname, assetResponse.status));
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,

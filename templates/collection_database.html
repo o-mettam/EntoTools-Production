@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collection Database</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/tailwind.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Shared logging: console capture, version + browser info, action logging -->
     <script src="/log-capture.js"></script>
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
-    <script src="/theme.js"></script>
+    <script src="/theme.js?v=1"></script>
     <link rel="stylesheet" href="/theme.css">
     <script src="/sync/config.js?v=2"></script>
     <script src="/sync/sync-core.js?v=3"></script>
@@ -32,7 +32,7 @@
                 <a href="/" class="text-lime-600 font-semibold text-lg hover:text-lime-700 transition shrink-0">EntoTools</a>
                 <div class="flex items-center gap-1">
                     <div class="relative">
-                        <button id="settings-btn" onclick="toggleSettings()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
+                        <button id="settings-btn" data-action="toggleSettings" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Settings">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
@@ -46,17 +46,17 @@
                                         <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/></svg>
                                         <span class="text-sm text-slate-700">Google Drive Backup</span>
                                     </div>
-                                    <button id="drive-btn" onclick="entoDriveToggle(event)" class="px-3 py-1.5 text-xs font-medium text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition">Connect</button>
+                                    <button id="drive-btn" data-action="entoDriveToggle" class="px-3 py-1.5 text-xs font-medium text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition">Connect</button>
                                 </div>
                                 <p id="drive-status" class="text-xs text-slate-400 mt-1">Sync your collection database to your own Google Drive.</p>
-                                <button id="drive-sync-now" onclick="entoDriveSyncNow(event)" class="hidden mt-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sync now</button>
+                                <button id="drive-sync-now" data-action="entoDriveSyncNow" class="hidden mt-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sync now</button>
                             </div>
                             <div class="flex items-center justify-between py-2">
                                 <div class="flex items-center gap-2">
                                     <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
                                     <span class="text-sm text-slate-700">Dark Mode</span>
                                 </div>
-                                <button id="theme-toggle" onclick="toggleTheme()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
+                                <button id="theme-toggle" data-action="toggleTheme" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-lime-500 focus:ring-offset-2 bg-slate-200">
                                     <span id="theme-toggle-dot" class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"></span>
                                 </button>
                             </div>
@@ -68,14 +68,14 @@
                                     </svg>
                                     <span class="text-sm text-slate-700">Clear Local Cache</span>
                                 </div>
-                                <button onclick="clearLocalCache(event)" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">
+                                <button data-action="clearLocalCache" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition">
                                     Clear
                                 </button>
                             </div>
                             <p class="text-xs text-slate-400 mt-1">Removes cached search results and saved searches from your browser.</p>
                         </div>
                     </div>
-                    <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
+                    <button id="mobile-menu-btn" data-action="toggleMobileMenu" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition" title="Menu">
                         <svg id="hamburger-icon" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                         </svg>
@@ -123,17 +123,17 @@
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <input id="search-input" type="text" placeholder="Search records..."
-                           oninput="debouncedRender()"
+                           data-input="debouncedRender"
                            class="w-full sm:w-64 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 focus:border-lime-500 outline-none" />
-                    <button onclick="exportAllCSV()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
+                    <button data-action="exportAllCSV" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
                         Export CSV
                     </button>
-                    <button onclick="document.getElementById('csv-file-input').click()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition border border-slate-300">
+                    <button data-action="openCsvPicker" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition border border-slate-300">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/></svg>
                         Import CSV
                     </button>
-                    <input id="csv-file-input" type="file" accept=".csv" class="hidden" onchange="importCSV(this)" />
+                    <input id="csv-file-input" type="file" accept=".csv" class="hidden" data-change="importCSV" />
                     <a href="/sample-collection" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition border border-slate-300">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
                         Create New Label
@@ -147,7 +147,7 @@
             <svg class="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z"/></svg>
             <h3 class="text-lg font-semibold text-slate-700 mb-2">No collections saved yet</h3>
             <p class="text-sm text-slate-500 mb-4">Create a collection on the <a href="/sample-collection" class="text-lime-600 font-medium hover:text-lime-700 underline">Label Data</a> page and click "Save to Collection Database" to add it here.</p>
-            <p class="text-sm text-slate-500 mb-6">You can also <button onclick="document.getElementById('csv-file-input').click()" class="text-lime-600 font-medium hover:text-lime-700 underline">import a CSV</button> exported from this site.</p>
+            <p class="text-sm text-slate-500 mb-6">You can also <button data-action="openCsvPicker" class="text-lime-600 font-medium hover:text-lime-700 underline">import a CSV</button> exported from this site.</p>
             <a href="/sample-collection" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 font-medium text-sm transition shadow-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
                 Create Your First Label
@@ -160,12 +160,12 @@
                 <table class="w-full text-sm text-left">
                     <thead class="bg-slate-50 border-b border-slate-200">
                         <tr>
-                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('specimenId')">Specimen ID <span id="sort-specimenId" class="text-xs"></span></th>
-                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('identification')">Identification <span id="sort-identification" class="text-xs"></span></th>
-                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('siteName')">Site <span id="sort-siteName" class="text-xs"></span></th>
-                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('location')">Location <span id="sort-location" class="text-xs"></span></th>
-                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('dateStart')">Date <span id="sort-dateStart" class="text-xs"></span></th>
-                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" onclick="sortBy('collector')">Collector <span id="sort-collector" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" data-action="sortBy" data-args="[&quot;specimenId&quot;]">Specimen ID <span id="sort-specimenId" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" data-action="sortBy" data-args="[&quot;identification&quot;]">Identification <span id="sort-identification" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" data-action="sortBy" data-args="[&quot;siteName&quot;]">Site <span id="sort-siteName" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" data-action="sortBy" data-args="[&quot;location&quot;]">Location <span id="sort-location" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" data-action="sortBy" data-args="[&quot;dateStart&quot;]">Date <span id="sort-dateStart" class="text-xs"></span></th>
+                            <th class="px-4 py-3 font-semibold text-slate-600 cursor-pointer select-none" data-action="sortBy" data-args="[&quot;collector&quot;]">Collector <span id="sort-collector" class="text-xs"></span></th>
                             <th class="px-4 py-3 font-semibold text-slate-600 text-center w-24">Actions</th>
                         </tr>
                     </thead>
@@ -409,7 +409,7 @@
                     <td class="px-4 py-3 text-slate-600 whitespace-nowrap">${fmtDate(d.dateStart)}</td>
                     <td class="px-4 py-3 text-slate-600">${esc(d.collector || '—')}</td>
                     <td class="px-4 py-3 text-center">
-                        <button onclick="event.stopPropagation(); deleteEntry(${i})" class="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition" title="Delete">
+                        <button data-action="deleteEntry" data-args="[${i}]" data-stop class="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition" title="Delete">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
                         </button>
                     </td>
@@ -629,7 +629,12 @@
             return html;
         }
 
+        function openCsvPicker() { document.getElementById('csv-file-input').click(); }
+
         function importCSV(input) {
+            // Reached via data-change delegation (theme.js) with the event; also
+            // accepts the <input> element directly.
+            if (input && input.target) input = input.target;
             const file = input.files[0];
             if (!file) return;
             console.log('[CollectionDB] importing CSV file:', file.name, '(' + file.size + ' bytes)');

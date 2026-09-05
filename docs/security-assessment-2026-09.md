@@ -69,4 +69,40 @@ The session cookie is `Domain=entotools.org`, so it's sent to every subdomain. F
 
 ---
 
-*Last updated with v1.8.0. Re-run this assessment when email verification (R1) or a CSP rewrite (R4) lands, or when a new data-bearing endpoint is added.*
+## Update — v1.9.0 / v1.10.0 (2026-09-05)
+
+R2, R3, R4 and R7 above are now **implemented**, plus three further requirements raised during the work. Everything below was verified end-to-end in headless Chrome with virtual passkeys against the live site.
+
+| Item | What shipped |
+|---|---|
+| **R2 Session policy** (v1.9.0, migration 0006) | 7-day idle timeout inside the 30-day lifetime (`last_seen_at`, refreshed at most hourly). Sessions record the passkey that opened them; removing a passkey revokes the sessions it created (except the one doing the removing). Manage account lists signed-in devices (passkey name, last active, "this device" — session ids are never sent to the client) with **Sign out everywhere else**. "Add a passkey" no longer replaces the current session. |
+| **R3 User verification + step-up** (v1.9.0) | `userVerification: 'required'` for registration, login and re-auth, `requireUserVerification` on every verify. `POST /api/account/reauth/{options,verify}` issues a fresh assertion bound to the *current* session (challenge carries user + session id; a re-auth challenge can't be redeemed as a login and vice versa). Removing a passkey, adding one, and deleting the account require one within 5 minutes; a fresh login counts, so a new user isn't prompted twice. |
+| **R4 CSP without `'unsafe-inline'`** (v1.10.0) | Tailwind is compiled at build time (`tailwind.config.js` reads the palette from `theme.js`; 25 KB stylesheet replaces the ~300 KB Play-CDN script). All 108 inline `on*="…"` handlers were replaced by `data-action` / `data-change` / `data-input` delegation in `theme.js`. `scripts/gen-csp.js` hashes every page's inline `<script>` at build time and **fails the build** if any inline handler or `javascript:` URL remains; the Worker attaches a per-route policy (`src/lib/csp.js`) to every HTML response. `script-src` is now `'self'` + the page's hashes + three named hosts. `style-src` keeps `'unsafe-inline'` (inline CSS is not a script vector; removing it is not worth the refactor). |
+| **R7 Privacy** (v1.9.0) | `GET /api/account/export` (JSON attachment: account, passkey names, flags, collection — no public keys or session ids). `DELETE /api/account` (re-auth gated). Startup diagnostics in bug reports trimmed to version/page/theme/user-agent. |
+| **Unique emails** (v1.10.0, migration 0007) | Labels are lower-cased; `UNIQUE` index on `users.label`. Checked at sign-up start (409 with a clear message) and again at verify; the index makes a concurrent race impossible. *This closes the non-uniqueness half of R1; verification of address ownership is still open.* |
+| **Sign-up limits** (v1.10.0) | Per IP, 2-hour window: **6 sign-up attempts** (each `register/options` for a new account) and **3 accounts created**, checked at options and at verify. A browser cookie counting created accounts (3) is a soft second layer. IP is the primary control because it is the only identity an anonymous visitor can't change for free; the general passkey-ceremony limit (20/hour/IP) still applies on top. |
+| **Session hygiene** | Expired sessions purged on login; re-auth window 5 min; `ento_su` sign-up cookie expires with its window. |
+
+### SQL injection review (sign-up and login paths)
+
+Every D1 statement in the codebase is a **string literal** passed to `prepare()` with runtime values supplied exclusively through `bind()`. There is no template literal or string concatenation of a runtime value into SQL anywhere (`grep -rn 'prepare(\`\|prepare(.*\${' src/` → none; the only `+` inside `prepare()` joins two literal fragments). Specifically on the paths asked about:
+
+| Step | Statement | Runtime values (all bound) |
+|---|---|---|
+| Sign-up: uniqueness | `SELECT … FROM users WHERE label = ?` | email, after `EMAIL_RE` (no whitespace, exactly one `@`), lower-cased, ≤ 200 chars |
+| Sign-up: create | `INSERT INTO users (id, label, created_at) VALUES (?, ?, ?)` | server-generated UUID, email, timestamp |
+| Sign-up: passkey | `INSERT INTO credentials (credential_id, user_id, public_key, sign_count, device_label, created_at) VALUES (?, ?, ?, ?, ?, ?)` | credential id (base64url from the authenticator, after signature verification), UUID, COSE key bytes, counter |
+| Login: lookup | `SELECT * FROM credentials WHERE credential_id = ?` | credential id from the assertion (only used after the challenge is found in KV) |
+| Login: counter | `UPDATE credentials SET sign_count = ?, last_used_at = ? WHERE credential_id = ?` | integer from the verified assertion |
+| Session | `INSERT INTO sessions (…) VALUES (?, ?, ?, ?, ?, ?, ?)` / `SELECT * FROM sessions WHERE id = ?` | UUIDs and timestamps; the cookie value is bound, never interpolated |
+| Admin search | `… WHERE label LIKE ? OR id LIKE ?` | the pattern `%q%` is a bound parameter; `%`/`_` in `q` only widen the match |
+
+Login abuse beyond injection: login is username-less (discoverable credentials), so there is nothing to enumerate; a `login/verify` needs a challenge that exists in KV (single-use, 5-minute TTL) and a signature over it by a registered key; the sign counter rejects cloned authenticators; ceremony starts are rate-limited per IP.
+
+### Still open
+
+- **R1 — verify that the sign-up email is actually the visitor's.** Uniqueness is now enforced, but ownership is not. Needs an email sender (Cloudflare Email Workers / Resend / Postmark) and a one-time link before the account becomes usable. Until then, the admin procedure for issuing re-registration links should include an out-of-band identity check.
+- **R5** — consume the re-registration token on verify rather than options; move it out of the URL.
+- **R6** — dashboard items (Access SameSite, WAF rate limit, Workers Logs, `GITHUB_TOKEN` scope).
+
+*Last updated with v1.10.0. Re-run this assessment when email verification (R1) lands or when a new data-bearing endpoint is added.*

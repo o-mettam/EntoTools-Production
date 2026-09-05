@@ -1,19 +1,14 @@
 # Cloudflare Pages headers config: https://developers.cloudflare.com/pages/configuration/headers/
 #
 # ── Security headers (all pages) ──────────────────────────────────
-# CSP allows 'unsafe-inline' for script-src/style-src because the app is built
-# entirely from inline <script> blocks and the Tailwind Play CDN (which injects
-# a <style> tag at runtime) — a nonce/hash-based CSP would need a build step
-# this project doesn't have. Still meaningfully reduces blast radius: blocks
-# framing (clickjacking), restricts which hosts can load a script/style/font/
-# XHR at all, and disables object/base-uri/form-action injection vectors.
-#
-# connect-src lists every external host the client actually calls: the
-# open-meteo/nominatim/sunrise-sunset APIs used directly from the browser
-# (label_data.html, degree_day_calculator.html), plus the Google Drive/OAuth
-# hosts used by the Cloud Sync feature (public/sync/provider-gdrive.js) — that
-# feature is currently disabled in the UI but not removed, so it's kept here
-# to avoid a silent CSP break whenever it's turned back on.
+# Content-Security-Policy is NOT set here any more (security assessment
+# 2026-09, R4): it is per-page — each page's inline <script> blocks are
+# hashed at build time (scripts/gen-csp.js → src/csp-hashes.json) and the
+# Worker attaches the matching policy to every HTML response (src/lib/csp.js,
+# applied in src/index.js's catch-all). That policy has no 'unsafe-inline'
+# for scripts; inline on*="…" handlers were replaced by the data-action
+# delegation in public/theme.js and the Tailwind Play CDN by a static build.
+# A value that differs per page can't be expressed in this file.
 #
 # NOTE: Cache-Control is deliberately NOT set here. Two things were tried and
 # both failed to actually take effect, verified against live response
@@ -34,7 +29,6 @@
 # APP_VERSION for hours after a deploy).
 /*
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=63072000; includeSubDomains
   Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()
   Referrer-Policy: strict-origin-when-cross-origin
