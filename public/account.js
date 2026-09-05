@@ -11,6 +11,14 @@
  * an npm import here; the actual WebAuthn ceremony (navigator.credentials.
  * create/get plus base64url encoding of the binary fields) is handled by
  * that library rather than hand-rolled in this file.
+ *
+ * IMPORTANT: every template loads this as <script src="/account.js?v=N">
+ * (same convention as /sync/*.js). Bump N here and in every template on any
+ * change to this file — the Worker's Cache-Control header for .js assets is
+ * "no-cache", not "no-store", and browsers (Safari especially) have been
+ * observed serving a stale cached copy under revalidation rather than
+ * always refetching. A version-bumped URL is a fresh cache key and sidesteps
+ * that entirely; relying on headers alone was the root cause of #38/#39.
  */
 (function () {
   'use strict';
