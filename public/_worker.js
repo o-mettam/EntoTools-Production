@@ -18907,11 +18907,16 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
     headers: { "Content-Type": "application/json", ...extraHeaders }
   });
 }
-function sessionCookie(id, maxAgeSeconds) {
-  return `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+function cookieDomainAttr(url) {
+  const host = url.hostname;
+  if (host === "localhost" || host === "127.0.0.1") return "";
+  return "; Domain=entotools.org";
 }
-function clearSessionCookie() {
-  return "ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+function sessionCookie(id, maxAgeSeconds, url) {
+  return `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}${cookieDomainAttr(url)}`;
+}
+function clearSessionCookie(url) {
+  return `ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0${cookieDomainAttr(url)}`;
 }
 function getSessionIdFromCookie(request) {
   const cookie = request.headers.get("Cookie") || "";
@@ -19027,7 +19032,7 @@ async function handleRegisterVerify(request, env) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
   await createSession(env, { id: sessionId, userId: pending.userId, expiresAt });
-  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookie(sessionId, SESSION_TTL_SECONDS) });
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookie(sessionId, SESSION_TTL_SECONDS, url) });
 }
 async function handleLoginOptions(request, env) {
   const url = new URL(request.url);
@@ -19074,7 +19079,7 @@ async function handleLoginVerify(request, env) {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1e3).toISOString();
   await createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
-  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookie(sessionId, SESSION_TTL_SECONDS) });
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": sessionCookie(sessionId, SESSION_TTL_SECONDS, url) });
 }
 async function handleSession(request, env) {
   const session = await requireSession(request, env);
@@ -19083,9 +19088,10 @@ async function handleSession(request, env) {
   return jsonResponse({ user: user ? { id: user.id, label: user.label } : null });
 }
 async function handleLogout(request, env) {
+  const url = new URL(request.url);
   const sessionId = getSessionIdFromCookie(request);
   if (sessionId) await deleteSession(env, sessionId);
-  return jsonResponse({ success: true }, 200, { "Set-Cookie": clearSessionCookie() });
+  return jsonResponse({ success: true }, 200, { "Set-Cookie": clearSessionCookie(url) });
 }
 async function handleListCredentials(request, env) {
   const session = await requireSession(request, env);

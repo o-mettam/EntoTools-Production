@@ -28,12 +28,24 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
   });
 }
 
-function sessionCookie(id, maxAgeSeconds) {
-  return `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+// Without an explicit Domain, the cookie is host-only — set while visiting
+// entotools.org it would NOT be sent on www.entotools.org, or vice versa
+// (this was a real bug: sign up on one exact host, then look logged-out on
+// the other). A bare "entotools.org" Domain (no leading dot) covers both
+// per the modern Cookie spec. Local dev keeps a host-only cookie — browsers
+// don't reliably accept a Domain attribute for "localhost".
+function cookieDomainAttr(url) {
+  const host = url.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return '';
+  return '; Domain=entotools.org';
 }
 
-function clearSessionCookie() {
-  return 'ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
+function sessionCookie(id, maxAgeSeconds, url) {
+  return `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}${cookieDomainAttr(url)}`;
+}
+
+function clearSessionCookie(url) {
+  return `ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0${cookieDomainAttr(url)}`;
 }
 
 function getSessionIdFromCookie(request) {
@@ -164,7 +176,7 @@ export async function handleRegisterVerify(request, env) {
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   await db.createSession(env, { id: sessionId, userId: pending.userId, expiresAt });
 
-  return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookie(sessionId, SESSION_TTL_SECONDS) });
+  return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookie(sessionId, SESSION_TTL_SECONDS, url) });
 }
 
 // ── Login ───────────────────────────────────────────────────────
@@ -221,7 +233,7 @@ export async function handleLoginVerify(request, env) {
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
   await db.createSession(env, { id: sessionId, userId: stored.user_id, expiresAt });
 
-  return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookie(sessionId, SESSION_TTL_SECONDS) });
+  return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookie(sessionId, SESSION_TTL_SECONDS, url) });
 }
 
 // ── Session / logout ────────────────────────────────────────────
@@ -233,9 +245,10 @@ export async function handleSession(request, env) {
 }
 
 export async function handleLogout(request, env) {
+  const url = new URL(request.url);
   const sessionId = getSessionIdFromCookie(request);
   if (sessionId) await db.deleteSession(env, sessionId);
-  return jsonResponse({ success: true }, 200, { 'Set-Cookie': clearSessionCookie() });
+  return jsonResponse({ success: true }, 200, { 'Set-Cookie': clearSessionCookie(url) });
 }
 
 // ── Self-service credential management (#35 phase 2) ─────────────
