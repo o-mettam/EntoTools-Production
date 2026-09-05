@@ -19671,11 +19671,18 @@ var admin_default = `<!DOCTYPE html>
 `;
 
 // src/routes/admin.js
+var SECURITY_HEADERS = {
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+  "Permissions-Policy": "geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()",
+  "Referrer-Policy": "strict-origin-when-cross-origin"
+};
 function jsonResponse3(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...SECURITY_HEADERS } });
 }
 function notFound() {
-  return new Response("Not found", { status: 404 });
+  return new Response("Not found", { status: 404, headers: SECURITY_HEADERS });
 }
 async function handleAdminRoute(request, env, path) {
   const identity = await verifyAccessRequest(request, env);
@@ -19684,7 +19691,7 @@ async function handleAdminRoute(request, env, path) {
   const url = new URL(request.url);
   const method = request.method;
   if ((path === "/frost/admin" || path === "/frost/admin/") && method === "GET") {
-    return new Response(admin_default, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    return new Response(admin_default, { headers: { "Content-Type": "text/html; charset=utf-8", ...SECURITY_HEADERS } });
   }
   if (path === "/frost/admin/status" && method === "GET") {
     return jsonResponse3({
