@@ -1139,7 +1139,7 @@ function sanitizeIssueText(str, maxLen = 4000) {
   return String(str)
     .slice(0, maxLen)
     .replace(/[<>]/g, (c) => (c === '<' ? '\u2039' : '\u203A')) // ‹ › — strip raw HTML tags
-    .replace(/[`*_~#\[\]()|!]/g, '\\$&');                        // escape Markdown control chars
+    .replace(/[\\`*_~#\[\]()|!]/g, '\\$&');                      // escape Markdown control chars, backslash included, or "\![x](…)" un-escapes itself
 }
 
 async function handleFeedback(request, env) {
@@ -1181,7 +1181,9 @@ async function handleFeedback(request, env) {
     return reply({ error: 'A description is required.' }, 400);
   }
   const trimmedEmail = email && email.trim();
-  if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+  // Length check first: the pattern backtracks quadratically on long
+  // dot-heavy input, and 254 is the longest valid address anyway.
+  if (trimmedEmail && (trimmedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail))) {
     return reply({ error: 'Please enter a valid email address, or leave it blank.' }, 400);
   }
 

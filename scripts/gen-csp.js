@@ -26,7 +26,7 @@ function fail(msg) { console.error('✗ gen-csp: ' + msg); process.exit(1); }
 
 function inlineScripts(html) {
   const out = [];
-  const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  const re = /<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
   let m;
   while ((m = re.exec(html)) !== null) {
     if (/\bsrc\s*=/i.test(m[1])) continue;                    // external — covered by 'self' / host list
@@ -41,8 +41,15 @@ function hashOf(src) {
 }
 
 // Everything outside <script> blocks — inline handlers live in markup.
+// Repeated until nothing changes, so a removal can't splice two fragments
+// into a new <script> block that the guard below would then never see.
 function markupOnly(html) {
-  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  let prev;
+  do {
+    prev = html;
+    html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, '');
+  } while (html !== prev);
+  return html;
 }
 
 function guard(label, html) {

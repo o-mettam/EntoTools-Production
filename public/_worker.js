@@ -19945,7 +19945,7 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-10-22T20:42:58.239Z",
+  generated: "2026-10-22T21:22:41.745Z",
   tailwindHash: "427e2af05424",
   routes: {
     "/404.html": [],
@@ -20101,7 +20101,7 @@ async function checkAllServices() {
 // package.json
 var package_default = {
   name: "entotools-production",
-  version: "1.11.0",
+  version: "1.12.0",
   private: true,
   scripts: {
     dev: "wrangler pages dev public/",
@@ -20115,7 +20115,10 @@ var package_default = {
   devDependencies: {
     esbuild: "^0.28.2",
     tailwindcss: "^3.4.19",
-    wrangler: "^4.129.0"
+    wrangler: "^4.152.0"
+  },
+  overrides: {
+    "postcss-selector-parser": "7.1.6"
   }
 };
 
@@ -21985,7 +21988,7 @@ function redactPii(str) {
   return out;
 }
 function sanitizeIssueText(str, maxLen = 4e3) {
-  return String(str).slice(0, maxLen).replace(/[<>]/g, (c) => c === "<" ? "\u2039" : "\u203A").replace(/[`*_~#\[\]()|!]/g, "\\$&");
+  return String(str).slice(0, maxLen).replace(/[<>]/g, (c) => c === "<" ? "\u2039" : "\u203A").replace(/[\\`*_~#\[\]()|!]/g, "\\$&");
 }
 async function handleFeedback(request, env) {
   const allowedOrigins = allowedOriginsFor(new URL(request.url));
@@ -22015,7 +22018,7 @@ async function handleFeedback(request, env) {
     return reply({ error: "A description is required." }, 400);
   }
   const trimmedEmail = email && email.trim();
-  if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+  if (trimmedEmail && (trimmedEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail))) {
     return reply({ error: "Please enter a valid email address, or leave it blank." }, 400);
   }
   const token = env.GITHUB_TOKEN;
