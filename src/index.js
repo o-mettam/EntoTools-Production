@@ -27,7 +27,7 @@ import {
   handleListSessions, handleRevokeOtherSessions,
   handleExport, handleDeleteAccount,
 } from './routes/account.js';
-import { handleMyFlags } from './routes/flags.js';
+import { handleMyFlags, hasFlag } from './routes/flags.js';
 import { handleAdminRoute } from './routes/admin.js';
 import { cspForPage } from './lib/csp.js';
 import { rateLimited, maskIp, LIMITS } from './lib/ratelimit.js';
@@ -102,6 +102,7 @@ function getProviderForCountry(countryCode) {
 
 // ── In-memory cache (persists across requests on same isolate) ─────
 let _stationsCache = null;
+let _stationsById = null; // upper-cased station id → station, built on first manual-station lookup
 
 // ── Utility helpers ────────────────────────────────────────────────
 
@@ -304,6 +305,42 @@ async function getStations(env) {
   return data;
 }
 
+// Manual station choice (issue #40, flag: station-override). Accepts the bare
+// GHCND id or the "GHCND:" form NCEI's own tools display. Ids are matched
+// case-insensitively — stations.json has some mixed-case ids (US10adam001).
+const STATION_ID_RE = /^(?:GHCND:)?([A-Za-z0-9]{11})$/i;
+
+function normalizeStationId(raw) {
+  const m = typeof raw === 'string' ? raw.trim().match(STATION_ID_RE) : null;
+  return m ? m[1] : null;
+}
+
+async function getStationById(id, env) {
+  if (!_stationsById) {
+    const stations = await getStations(env);
+    _stationsById = new Map(stations.map((s) => [s.id.toUpperCase(), s]));
+  }
+  return _stationsById.get(id.toUpperCase()) || null;
+}
+
+function stationResult(s, lat, lon, selection) {
+  return {
+    station_id: s.id,
+    station_name: s.name,
+    station_lat: s.lat,
+    station_lon: s.lon,
+    distance_miles: Math.round(haversine(lat, lon, s.lat, s.lon) * 10) / 10,
+    selection,
+  };
+}
+
+const NEARBY_STATIONS_MAX = 6;
+
+// Returns { station, nearby } — `station` is the recommended station: the
+// first candidate (temperature-likely networks first, then by distance) that
+// reported temperatures in the last 30 days, or null if none did. `nearby` is
+// the closest of those stations, recommended one included, so the client can
+// offer them as alternatives.
 async function findNearestStation(lat, lon, env, maxCandidates = 50) {
   console.log('[Worker:findNearestStation] searching (maxCandidates:', maxCandidates, ')');
   const stations = await getStations(env);
@@ -351,43 +388,36 @@ async function findNearestStation(lat, lon, env, maxCandidates = 50) {
   url.searchParams.set('units', 'standard');
 
   const resp = await nceiFetch(url);
-  if (!resp.ok) return null;
+  if (!resp.ok) return { station: null, nearby: [] };
 
   const data = await resp.json();
-  if (!data || !data.length) return null;
+  if (!data || !data.length) return { station: null, nearby: [] };
 
-  // Which stations have data?
-  const idsWithData = new Set();
+  // Which stations reported temperatures? GDD needs TMIN/TMAX, so a
+  // precipitation-only station (most CoCoRaHS sites) never qualifies.
+  const has = (rec, k) => _get(rec, k) != null && _get(rec, k) !== '';
+  const idsWithTemps = new Set();
   for (const rec of data) {
     const sid = _get(rec, 'station');
-    if (
-      sid && (
-        (_get(rec, 'TMIN') != null && _get(rec, 'TMIN') !== '') ||
-        (_get(rec, 'TMAX') != null && _get(rec, 'TMAX') !== '') ||
-        (_get(rec, 'PRCP') != null && _get(rec, 'PRCP') !== '')
-      )
-    ) {
-      idsWithData.add(sid);
-    }
+    if (sid && (has(rec, 'TMIN') || has(rec, 'TMAX'))) idsWithTemps.add(sid);
   }
+  const withTemps = candidates
+    .filter((c) => idsWithTemps.has(c.station.id))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, NEARBY_STATIONS_MAX)
+    .map((c) => stationResult(c.station, lat, lon, 'auto'));
 
-  console.log('[Worker:findNearestStation]', idsWithData.size, 'stations have data out of', candidates.length, 'candidates');
+  console.log('[Worker:findNearestStation]', idsWithTemps.size, 'stations have temperature data out of', candidates.length, 'candidates');
   for (const c of candidates) {
-    if (idsWithData.has(c.station.id)) {
-      const result = {
-        station_id: c.station.id,
-        station_name: c.station.name,
-        station_lat: c.station.lat,
-        station_lon: c.station.lon,
-        distance_miles: Math.round(c.dist * 10) / 10,
-      };
-      console.log('[Worker:findNearestStation] best station:', result.station_id, result.station_name, '(' + result.distance_miles + ' mi)');
-      return result;
+    if (idsWithTemps.has(c.station.id)) {
+      const result = stationResult(c.station, lat, lon, 'auto');
+      console.log('[Worker:findNearestStation] best station:', result.station_id, result.station_name, '(' + result.distance_miles + ' mi) |', withTemps.length, 'nearby');
+      return { station: result, nearby: withTemps };
     }
   }
 
-  console.warn('[Worker:findNearestStation] no station with data found near the requested location');
-  return null;
+  console.warn('[Worker:findNearestStation] no station with temperature data found near the requested location');
+  return { station: null, nearby: withTemps };
 }
 
 // ── NCEI weather data ─────────────────────────────────────────────
@@ -647,6 +677,25 @@ async function handleSearch(request, env) {
     return jsonResponse({ error: `Combined date ranges are too large (max ${MAX_TOTAL_DAYS} days total).` }, 400);
   }
 
+  // Optional manual NCEI station (issue #40). Checked against the station
+  // index here, before any upstream call. Without the flag the field is
+  // ignored, so the search behaves exactly as before.
+  let manualStation = null;
+  if (body.station_id != null && body.station_id !== '') {
+    const id = normalizeStationId(body.station_id);
+    if (!id) {
+      return jsonResponse({ error: 'NCEI station IDs are 11 letters and digits, for example USW00013891.' }, 400);
+    }
+    if (await hasFlag(request, env, 'station-override')) {
+      manualStation = await getStationById(id, env);
+      if (!manualStation) {
+        return jsonResponse({ error: `Station ${id} isn't in the NCEI station list. Check the ID, or clear the field to use the nearest station.` }, 400);
+      }
+    } else {
+      console.log('[Worker:handleSearch] station_id ignored — station-override flag not enabled');
+    }
+  }
+
   // Step 1 — Resolve location + country_code
   let lat = null;
   let lon = null;
@@ -693,8 +742,15 @@ async function handleSearch(request, env) {
   // Log only non-identifying routing info — never the coordinates or label.
   console.log('[Worker:handleSearch] geocoded — country:', countryCode, 'provider:', provider, 'fallback:', isFallback);
 
+  if (manualStation && provider !== 'ncei') {
+    return jsonResponse({ error: 'A specific NCEI station can only be used for locations in the United States. Clear the station ID to search this location.' }, 400);
+  }
+
   // Step 2 — Resolve data source (station for NCEI, grid point for Open-Meteo)
   let station;
+  let nearbyStations = [];
+  let recommendedStationId = null;
+  let nearbyPromise = null; // manual station: the nearby lookup runs alongside the data fetch
   const makeOpenMeteoStation = () => ({
     station_id: `OM:${lat.toFixed(4)},${lon.toFixed(4)}`,
     station_name: 'Open-Meteo Grid Point',
@@ -703,9 +759,16 @@ async function handleSearch(request, env) {
     distance_miles: 0,
   });
 
-  if (provider === 'ncei') {
+  if (manualStation) {
+    station = stationResult(manualStation, lat, lon, 'manual');
+    nearbyPromise = findNearestStation(lat, lon, env).catch((err) => {
+      console.warn('[Worker:handleSearch] nearby station lookup failed (manual station in use):', err.message);
+      return { station: null, nearby: [] };
+    });
+  } else if (provider === 'ncei') {
     try {
-      station = await findNearestStation(lat, lon, env);
+      ({ station, nearby: nearbyStations } = await findNearestStation(lat, lon, env));
+      recommendedStationId = station ? station.station_id : null;
     } catch (err) {
       console.error('[Worker:handleSearch] NCEI station lookup FAILED:', err.message);
       console.warn('[Worker:handleSearch] falling back to Open-Meteo due to station lookup failure');
@@ -715,10 +778,10 @@ async function handleSearch(request, env) {
       station = makeOpenMeteoStation();
     }
     if (!station) {
-      console.warn('[Worker:handleSearch] no NCEI station found with recent data — falling back to Open-Meteo');
+      console.warn('[Worker:handleSearch] no NCEI station found with recent temperature data — falling back to Open-Meteo');
       provider = 'open-meteo';
       providerFallback = true;
-      fallbackReason = 'No NCEI weather stations with recent data were found near this location. Using Open-Meteo as a fallback data source.';
+      fallbackReason = 'No NCEI weather stations with recent temperature data were found near this location. Using Open-Meteo as a fallback data source.';
       station = makeOpenMeteoStation();
     }
   } else {
@@ -755,6 +818,7 @@ async function handleSearch(request, env) {
 
   // Fetch all date ranges in parallel
   let resultsByRange;
+  let nceiObservedDays = 0; // days with a temperature reading, across ranges
   let serviceErrors = [];  // Track which services had issues
   try {
     resultsByRange = await Promise.all(
@@ -767,6 +831,7 @@ async function handleSearch(request, env) {
         if (provider === 'ncei') {
           try {
             temps = await getWeatherData(station.station_id, sd, ed);
+            nceiObservedDays += temps.filter((t) => t.TMIN != null || t.TMAX != null).length;
             console.log('[Worker:handleSearch] NCEI data fetched for range "' + label + '":', temps.length, 'records');
           } catch (nceiErr) {
             console.error('[Worker:handleSearch] NCEI data fetch FAILED for range "' + label + '":', nceiErr.message);
@@ -852,6 +917,21 @@ async function handleSearch(request, env) {
     console.warn('[Worker:handleSearch] PROVIDER FALLBACK active — reason:', fallbackReason);
   }
 
+  // A manually chosen station may be precipitation-only, or not have reported
+  // for these dates. Say so rather than draw an empty chart. Wholly future
+  // ranges are exempt: they never have observations.
+  if (manualStation && !providerFallback && nceiObservedDays === 0 && dateRanges.some((dr) => dr.startDate <= today)) {
+    console.warn('[Worker:handleSearch] manual station', station.station_id, 'returned no temperature observations');
+    return jsonResponse({
+      error: `Station ${station.station_id} (${station.station_name}) has no temperature readings for the selected dates. Choose another station, or clear the station ID to use the nearest one.`,
+    }, 422);
+  }
+  if (nearbyPromise) {
+    const auto = await nearbyPromise;
+    nearbyStations = auto.nearby;
+    recommendedStationId = auto.station ? auto.station.station_id : null;
+  }
+
   console.log('[Worker:handleSearch] returning', resultsByRange.length, 'range(s) of data | provider:', provider, '| fallback:', isFallback, '| providerFallback:', providerFallback);
   return jsonResponse({
     location: locationLabel,
@@ -864,7 +944,128 @@ async function handleSearch(request, env) {
     fallback_reason: fallbackReason,
     forecast_unavailable: forecastUnavailable,
     station,
+    nearby_stations: provider === 'ncei' ? nearbyStations : [],
+    recommended_station_id: provider === 'ncei' ? recommendedStationId : null,
     ranges: resultsByRange,
+  });
+}
+
+// ── Season vs. normal (feature flag: season-normals) ──────────────
+// Raw daily TMIN/TMAX for the 1991–2020 WMO standard normal period plus the
+// previous calendar year, for the location a search already resolved. The
+// client computes GDD per year with its own base/cap/start settings
+// (computeGDD in public/ento-gdd.js) and averages them — averaging GDD, not
+// temperatures, since GDD isn't linear in temperature. Returning temperatures
+// rather than GDD also means one cached response serves every GDD setting.
+const NORMALS_FIRST_YEAR = 1991;
+const NORMALS_LAST_YEAR = 2020;
+const NORMALS_MIN_COMPLETE_YEARS = 20; // fewer usable station years → use the Open-Meteo grid instead
+const NORMALS_YEAR_COMPLETENESS = 0.9; // a year counts if ≥ 90% of its days have TMIN and TMAX
+const PREV_YEAR_CACHE_TTL = 30 * 24 * 3600; // NCEI revises recent data for a while
+
+// Daily records → { "1991": [[tmin, tmax], …from Jan 1], … }, one decimal place.
+function packYears(records) {
+  const years = {};
+  for (const r of records) {
+    const y = r.date.slice(0, 4);
+    (years[y] = years[y] || []).push([r.TMIN, r.TMAX]);
+  }
+  return years;
+}
+
+function completeYears(years) {
+  return Object.keys(years).filter((y) => {
+    const days = years[y];
+    const ok = days.filter(([lo, hi]) => lo != null && hi != null).length;
+    return ok >= NORMALS_YEAR_COMPLETENESS * days.length;
+  });
+}
+
+async function fetchYears(source, stationId, lat, lon, firstYear, lastYear) {
+  // A decade per request keeps each upstream response modest.
+  const chunks = [];
+  for (let y = firstYear; y <= lastYear; y += 10) chunks.push([y, Math.min(y + 9, lastYear)]);
+  const parts = await Promise.all(chunks.map(([a, b]) => source === 'ncei'
+    ? getWeatherData(stationId, `${a}-01-01`, `${b}-12-31`)
+    : getWeatherDataOpenMeteo(lat, lon, `${a}-01-01`, `${b}-12-31`)));
+  return packYears(parts.flat());
+}
+
+async function cachedJson(env, key, ttl, produce) {
+  try {
+    const hit = await env.GEOCODE_CACHE.get(key, 'json');
+    if (hit) return hit;
+  } catch (e) { console.warn('[Worker:normals] KV read failed:', e.message); }
+  const value = await produce();
+  try {
+    await env.GEOCODE_CACHE.put(key, JSON.stringify(value), ttl ? { expirationTtl: ttl } : undefined);
+  } catch (e) { console.warn('[Worker:normals] KV write failed:', e.message); }
+  return value;
+}
+
+async function handleNormals(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return privateJson({ error: 'Invalid request body.' }, 400); }
+
+  // The client sends back what /api/search resolved, so no geocoding here.
+  // Coordinates are rounded to 0.01° (~1 km) — far finer than the reanalysis
+  // grid — so nearby searches share a cache entry.
+  const lat = Math.round(parseFloat(body.lat) * 100) / 100;
+  const lon = Math.round(parseFloat(body.lon) * 100) / 100;
+  if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return privateJson({ error: 'Invalid latitude / longitude values.' }, 400);
+  }
+  const stationId = body.provider === 'ncei' && /^[A-Za-z0-9]{11}$/.test(body.station_id || '') ? body.station_id : null;
+  const gridKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const prevYear = new Date().getUTCFullYear() - 1;
+
+  // Normals: station first (US), grid otherwise or when the station's
+  // history is too short. Cached indefinitely — the period is closed.
+  let normals = null;
+  if (stationId) {
+    try {
+      normals = await cachedJson(env, `normals:v1:ncei:${stationId}`, 0, async () => {
+        const years = await fetchYears('ncei', stationId, lat, lon, NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR);
+        return { source: 'ncei', years };
+      });
+      if (completeYears(normals.years).length < NORMALS_MIN_COMPLETE_YEARS) {
+        console.log('[Worker:normals] station', stationId, 'has', completeYears(normals.years).length, 'complete years — using grid');
+        normals = null;
+      }
+    } catch (err) {
+      console.warn('[Worker:normals] NCEI normals failed — using grid:', err.message);
+      normals = null;
+    }
+  }
+  if (!normals) {
+    normals = await cachedJson(env, `normals:v1:om:${gridKey}`, 0, async () => {
+      const years = await fetchYears('open-meteo', null, lat, lon, NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR);
+      return { source: 'open-meteo', years };
+    });
+  }
+  const used = completeYears(normals.years);
+  const normalYears = {};
+  for (const y of used) normalYears[y] = normals.years[y];
+
+  // Previous calendar year, from the same source as the normals.
+  let previous = null;
+  try {
+    const id = normals.source === 'ncei' ? `ncei:${stationId}` : `om:${gridKey}`;
+    previous = await cachedJson(env, `prevyear:v1:${id}:${prevYear}`, PREV_YEAR_CACHE_TTL, async () => {
+      const years = await fetchYears(normals.source, stationId, lat, lon, prevYear, prevYear);
+      return { year: prevYear, days: years[String(prevYear)] || [] };
+    });
+  } catch (err) {
+    console.warn('[Worker:normals] previous year fetch failed:', err.message);
+  }
+
+  console.log('[Worker:normals] source:', normals.source, '| years used:', used.length, '| previous year:', previous ? previous.year : 'none');
+  return privateJson({
+    source: normals.source,
+    period: [NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR],
+    years_used: used.length,
+    years: normalYears,
+    previous_year: previous,
   });
 }
 
@@ -891,6 +1092,10 @@ function searchRateLimited(env, ip) {
 
 function accountRateLimited(env, ip) {
   return rateLimited(env, ip, 'acct-rl', LIMITS.ceremony.limit, LIMITS.ceremony.windowSeconds);
+}
+
+function normalsRateLimited(env, ip) {
+  return rateLimited(env, ip, 'normals-rl', LIMITS.normals.limit, LIMITS.normals.windowSeconds);
 }
 
 function statusRateLimited(env, ip) {
@@ -1098,6 +1303,26 @@ export default {
       }
     }
 
+    // Flag-gated (season-normals): 404 unless the visitor has the flag, so
+    // the upstream cost of a 30-year fetch is limited to who can see it.
+    // Same-origin only — the body carries a searched location.
+    if (url.pathname === '/api/normals' && request.method === 'POST') {
+      const origin = request.headers.get('Origin');
+      if (!origin || !allowedOriginsFor(url).has(origin)) return privateJson({ error: 'Forbidden' }, 403);
+      if (!(await hasFlag(request, env, 'season-normals'))) return privateJson({ error: 'Not found' }, 404);
+      const ip = request.headers.get('CF-Connecting-IP') || '';
+      if (await normalsRateLimited(env, ip)) {
+        console.warn('[Worker:normals] rate limit exceeded for IP:', maskIp(ip));
+        return privateJson({ error: 'Too many requests. Please try again later.' }, 429);
+      }
+      try {
+        return await handleNormals(request, env);
+      } catch (err) {
+        console.error('[Worker:normals] unexpected error:', err.message, err.stack);
+        return privateJson({ error: 'Could not load historical data. Please try again later.' }, 503);
+      }
+    }
+
     if (url.pathname === '/api/feedback' && request.method === 'POST') {
       try {
         return await handleFeedback(request, env);
@@ -1189,7 +1414,8 @@ export default {
       }
     }
 
-    // #37 — a logged-in user reading their own feature flags.
+    // #37 — any visitor reading the feature flags in effect for them ('ga'
+    // flags, plus their own 'targeted' assignments when signed in).
     if (url.pathname === '/api/account/flags' && request.method === 'GET') {
       try {
         return await handleMyFlags(request, env);

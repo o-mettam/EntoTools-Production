@@ -1,15 +1,15 @@
 {
-  "generated": "2026-09-05T16:01:24.800Z",
-  "tailwindHash": "1db23f6ad98d",
+  "generated": "2026-10-22T20:42:58.239Z",
+  "tailwindHash": "427e2af05424",
   "routes": {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-yXlsMdkD20uqyFwMCmCFsjZjy5hf68VJ6bwoGWXvisE="
+      "sha256-CqfkLySfosL5GULrDtCo66Mcrkq6gdQgG6Pf/65im8I="
     ],
     "/degree-day-calculator": [
-      "sha256-ZtTDpeBMkslZ/PrMK4dQK9GHb64blxtGUzp522hna3Q="
+      "sha256-RxHe4yot4psQWKdhJHCD0exX7DfvKxYIoOk3F1kH+nY="
     ],
     "/documentation": [
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
@@ -34,6 +34,6 @@
     ]
   },
   "admin": [
-    "sha256-BZ3LqOzsREN1P/LJulnmSnL21aCMsgjFLr35oMLRziU="
+    "sha256-hsbOtb/KWxuwxUsdcbsRe0fAZ7MA6e8FsjFvZQiArJM="
   ]
 }

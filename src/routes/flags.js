@@ -1,6 +1,6 @@
 /**
- * Feature flag routes — issue #37. The public half (a logged-in user reading
- * their own flags); the admin half (defining flags, assigning them to users)
+ * Feature flag routes — issue #37. The public half (any visitor reading the
+ * flags in effect for them); the admin half (defining flags, assigning them to users)
  * is dispatched from src/routes/admin.js since it's Access-gated the same
  * way as the rest of the admin portal.
  */
@@ -16,12 +16,24 @@ function jsonResponse(data, status = 200) {
 }
 
 // A flag being off is always the safe default (#37 security checklist) — any
-// failure to resolve a session falls through to an empty flag list rather
-// than an error, so a bug here can only ever hide a beta feature, never show
-// one to someone who shouldn't have it.
+// failure to resolve a session still returns only the 'ga' flags, so a bug
+// here can only ever hide a beta feature, never show one to someone who
+// shouldn't have it. Signed-out visitors get the 'ga' flags too.
 export async function handleMyFlags(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse({ flags: [] });
-  const flags = await db.getUserFlags(env, session.user_id);
+  const flags = await db.getEffectiveFlags(env, session ? session.user_id : null);
   return jsonResponse({ flags });
+}
+
+// Server-side gate for flagged endpoints (docs/feature-flags.md). Same
+// fail-closed rule: any error means "not enabled".
+export async function hasFlag(request, env, flagKey) {
+  try {
+    const session = await requireSession(request, env);
+    const flags = await db.getEffectiveFlags(env, session ? session.user_id : null);
+    return flags.includes(flagKey);
+  } catch (err) {
+    console.error('[Worker:flags] hasFlag failed for', flagKey, '-', err.message);
+    return false;
+  }
 }

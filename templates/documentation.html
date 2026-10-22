@@ -352,7 +352,7 @@
                         <li><strong>Bounding Box Filter:</strong> Stations within approximately 140 miles (2° latitude) of the search location are pre-filtered.</li>
                         <li><strong>Distance Ranking:</strong> Remaining stations are ranked by haversine distance.</li>
                         <li><strong>Station Type Priority:</strong> Stations with IDs starting with USW (airports), USC (cooperative), or USR (regional) are preferred, as they are more likely to report temperature data.</li>
-                        <li><strong>Data Verification:</strong> The top candidates are checked against NCEI for recent data (last 30 days). The closest station with actual data is selected.</li>
+                        <li><strong>Data Verification:</strong> The top candidates are checked against NCEI for recent temperature readings (last 30 days). The closest station that reported temperatures is selected; stations that only report precipitation are skipped, since degree days need daily highs and lows.</li>
                     </ol>
                     <p>The selected station's name, ID, and distance from your search location are displayed in the results.</p>
 
@@ -437,7 +437,7 @@
             alert('Cleared ' + cleared + ' cached item(s).');
         }
     </script>
-    <script src="/account.js?v=6"></script>
+    <script src="/account.js?v=7"></script>
     <script src="/feedback.js"></script>
 </body>
 </html>

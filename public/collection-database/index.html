@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Collection Database</title>
-    <link rel="stylesheet" href="/tailwind.css?h=1db23f6ad98d">
+    <link rel="stylesheet" href="/tailwind.css?h=427e2af05424">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Shared logging: console capture, version + browser info, action logging -->
@@ -142,6 +142,37 @@
             </div>
         </section>
 
+        <!-- Collection Map — gated behind the "collection-map" flag
+             (docs/feature-flags.md). Leaflet and the OpenStreetMap tiles
+             are only fetched once the visitor clicks "Show map", so nothing
+             about their records' locations leaves the browser before then. -->
+        <section id="collection-map-section" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-lg font-semibold text-slate-800">Collection Map</h2>
+                    <span id="map-count" class="hidden inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-lime-100 text-lime-800">0</span>
+                </div>
+                <div class="flex flex-wrap items-end gap-2">
+                    <div id="map-filters" class="hidden flex flex-wrap items-end gap-2">
+                        <label class="text-xs font-medium text-slate-500">From
+                            <input id="map-from" type="date" data-change="refreshMapIfOpen" class="block rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                        </label>
+                        <label class="text-xs font-medium text-slate-500">To
+                            <input id="map-to" type="date" data-change="refreshMapIfOpen" class="block rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                        </label>
+                        <label class="text-xs font-medium text-slate-500">Taxon
+                            <select id="map-taxon" data-change="refreshMapIfOpen" class="block max-w-[14rem] rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                                <option value="">All taxa</option>
+                            </select>
+                        </label>
+                    </div>
+                    <button id="map-toggle" data-action="toggleCollectionMap" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition border border-slate-300">Show map</button>
+                </div>
+            </div>
+            <div id="collection-map" class="hidden mt-4 h-[320px] sm:h-[460px] rounded-xl border border-slate-200 overflow-hidden isolate"></div>
+            <p id="map-note" class="hidden text-xs text-slate-400 mt-2"></p>
+        </section>
+
         <!-- Empty State -->
         <section id="empty-state" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 p-8 sm:p-12 text-center">
             <svg class="w-16 h-16 mx-auto text-slate-300 mb-4" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z"/></svg>
@@ -192,6 +223,12 @@
         let expandedIdx = -1;
         let dirtyThisSession = false;
         let searchDebounceTimer = null;
+        // Collection map (collection-map flag). Declared here, not with the
+        // map code below: renderTable() runs during page load and reads them.
+        let collectionMap = null;
+        let collectionMapLayer = null;
+        let collectionMapOpen = false;
+        let leafletReady = null;
 
         function debouncedRender() {
             clearTimeout(searchDebounceTimer);
@@ -351,6 +388,7 @@
         /* ── Render ── */
         function renderTable() {
             loadEntries();
+            refreshMapIfOpen();
             const query = (document.getElementById('search-input').value || '').toLowerCase().trim();
             const countEl = document.getElementById('record-count');
             const emptyEl = document.getElementById('empty-state');
@@ -800,9 +838,143 @@
         }
         let cloudBackupInitialised = false;
 
+        /* ── Collection Map (flag: collection-map) ── */
+        const LEAFLET_JS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
+        const LEAFLET_JS_SRI = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH';
+        const LEAFLET_CSS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css';
+        const LEAFLET_CSS_SRI = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H';
+        function loadLeaflet() {
+            if (leafletReady) return leafletReady;
+            const css = new Promise((resolve, reject) => {
+                const l = document.createElement('link');
+                l.rel = 'stylesheet'; l.href = LEAFLET_CSS; l.integrity = LEAFLET_CSS_SRI; l.crossOrigin = 'anonymous';
+                l.onload = resolve; l.onerror = reject;
+                document.head.appendChild(l);
+            });
+            const js = new Promise((resolve, reject) => {
+                const sc = document.createElement('script');
+                sc.src = LEAFLET_JS; sc.integrity = LEAFLET_JS_SRI; sc.crossOrigin = 'anonymous';
+                sc.onload = resolve; sc.onerror = reject;
+                document.head.appendChild(sc);
+            });
+            leafletReady = Promise.all([css, js]).catch((err) => { leafletReady = null; throw err; });
+            return leafletReady;
+        }
+
+        function recordCoords(d) {
+            const lat = parseFloat(d.lat), lon = parseFloat(d.lon);
+            if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+            return [lat, lon];
+        }
+
+        // Same keyword filter as the table, plus the map's own date and taxon filters.
+        function mapRecords() {
+            const query = (document.getElementById('search-input').value || '').toLowerCase().trim();
+            const from = document.getElementById('map-from').value;
+            const to = document.getElementById('map-to').value;
+            const taxon = document.getElementById('map-taxon').value;
+            return entries.map((e) => e.data || {}).filter((d) => {
+                if (!recordCoords(d)) return false;
+                if (query) {
+                    const haystack = [d.specimenId, d.identification, d.siteName, d.location, d.dateStart, d.collector, d.identifier, d.collectionMethod, d.userNotes].filter(Boolean).join(' ').toLowerCase();
+                    if (!haystack.includes(query)) return false;
+                }
+                const start = d.dateStart || '', end = d.dateEnd || d.dateStart || '';
+                if (from && end && end < from) return false;
+                if (to && start && start > to) return false;
+                if (taxon && (d.identification || '').trim() !== taxon) return false;
+                return true;
+            });
+        }
+
+        function renderTaxonOptions() {
+            const select = document.getElementById('map-taxon');
+            const current = select.value;
+            const taxa = [...new Set(entries.map((e) => ((e.data || {}).identification || '').trim()).filter(Boolean))]
+                .sort((a, b) => a.localeCompare(b));
+            select.innerHTML = '<option value="">All taxa</option>' +
+                taxa.map((t) => `<option value="${esc(t).replace(/"/g, '&quot;')}">${esc(t)}</option>`).join('');
+            select.value = taxa.includes(current) ? current : '';
+        }
+
+        function popupFor(d) {
+            const el = document.createElement('div');
+            el.className = 'text-sm';
+            const title = document.createElement('div');
+            title.className = 'font-semibold';
+            title.textContent = d.specimenId || 'Untitled';
+            el.appendChild(title);
+            [d.identification, d.siteName || d.location,
+             d.isRange && d.dateEnd ? `${fmtDate(d.dateStart)} – ${fmtDate(d.dateEnd)}` : fmtDate(d.dateStart),
+             d.collector].filter(Boolean).forEach((line, i) => {
+                const div = document.createElement('div');
+                if (i === 0 && d.identification) div.style.fontStyle = 'italic';
+                div.textContent = line;
+                el.appendChild(div);
+            });
+            return el;
+        }
+
+        function refreshMapIfOpen() {
+            if (!collectionMapOpen || !collectionMap) return;
+            renderTaxonOptions();
+            const records = mapRecords();
+            const withCoords = entries.filter((e) => recordCoords(e.data || {})).length;
+            collectionMapLayer.clearLayers();
+            const points = [];
+            records.forEach((d) => {
+                const ll = recordCoords(d);
+                points.push(ll);
+                L.circleMarker(ll, { radius: 7, weight: 2, color: '#3f6212', fillColor: '#84cc16', fillOpacity: 0.75 })
+                    .bindPopup(popupFor(d))
+                    .addTo(collectionMapLayer);
+            });
+            const countEl = document.getElementById('map-count');
+            countEl.textContent = records.length === withCoords ? String(records.length) : `${records.length} / ${withCoords}`;
+            countEl.classList.remove('hidden');
+            const missing = entries.length - withCoords;
+            document.getElementById('map-note').textContent =
+                (missing ? `${missing} record${missing === 1 ? '' : 's'} without coordinates not shown. ` : '') +
+                'Overlapping records share a point — click to see each one.';
+            if (points.length) collectionMap.fitBounds(points, { padding: [24, 24], maxZoom: 12 });
+            else collectionMap.setView([20, 0], 2);
+        }
+
+        async function toggleCollectionMap() {
+            const btn = document.getElementById('map-toggle');
+            const mapEl = document.getElementById('collection-map');
+            collectionMapOpen = !collectionMapOpen;
+            ['collection-map', 'map-filters', 'map-note'].forEach((id) => document.getElementById(id).classList.toggle('hidden', !collectionMapOpen));
+            document.getElementById('map-count').classList.toggle('hidden', !collectionMapOpen);
+            btn.textContent = collectionMapOpen ? 'Hide map' : 'Show map';
+            if (!collectionMapOpen) return;
+            if (!collectionMap) {
+                btn.disabled = true;
+                try {
+                    await loadLeaflet();
+                } catch (err) {
+                    console.error('[CollectionDB] failed to load map library:', err);
+                    collectionMapOpen = false;
+                    mapEl.classList.add('hidden');
+                    btn.textContent = 'Show map';
+                    alert('The map could not be loaded. Please check your connection and try again.');
+                    return;
+                } finally { btn.disabled = false; }
+                collectionMap = L.map(mapEl, { worldCopyJump: true });
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                }).addTo(collectionMap);
+                collectionMapLayer = L.featureGroup().addTo(collectionMap);
+                console.log('[CollectionDB] map initialised');
+            }
+            collectionMap.invalidateSize();
+            refreshMapIfOpen();
+        }
+
         // account.js fires this once it knows whether the visitor is logged
-        // in and, if so, which flags they have (empty/false for a logged-out
-        // visitor — feature flags are inherently account-scoped).
+        // in and which flags apply — 'ga' flags reach signed-out visitors
+        // too (docs/feature-flags.md).
         document.addEventListener('entoaccount:ready', (e) => {
             // A logged-in user automatically syncs via their EntoTools
             // account — no separate "Connect" step, the session itself is
@@ -813,6 +985,12 @@
                 // connected — no separate call needed here.
                 EntoSync.tryResume(EntoAccountProvider.id).catch(() => { /* surfaced via EntoStore events elsewhere */ });
             }
+
+            // Collection map: show the entry point only; the map itself (and
+            // its third-party requests) waits for an explicit click.
+            const mapOn = !!(window.EntoFlags && window.EntoFlags.has('collection-map'));
+            document.getElementById('collection-map-section').classList.toggle('hidden', !mapOn);
+            if (!mapOn && collectionMapOpen) toggleCollectionMap();
 
             // Google Drive stays an optional, additional backend, and only
             // past this flag check do its scripts even get added to the
@@ -829,7 +1007,7 @@
             });
         });
     </script>
-    <script src="/account.js?v=6"></script>
+    <script src="/account.js?v=7"></script>
     <script src="/feedback.js"></script>
 </body>
 </html>

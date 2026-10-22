@@ -21,7 +21,7 @@
     <script src="/theme.js?v=2"></script>
     <link rel="stylesheet" href="/theme.css">
     <!-- Shared mGDD calculation + HTML-escape helpers (single source of truth) -->
-    <script src="/ento-gdd.js?v=1"></script>
+    <script src="/ento-gdd.js?v=2"></script>
     <style>
         /* Page-specific dark overrides — everything shared lives in /theme.css */
         .dark .bg-slate-50\/60, .dark .bg-slate-50\/50 { background-color: rgba(62,74,100,.6) !important; }
@@ -127,6 +127,17 @@
                        class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none hidden" />
             </div>
             <p id="dms-hint" class="text-xs text-slate-500 -mt-4 mb-5 hidden">Accepts decimal degrees (35.4564) or DMS (35° 27' 23" N)</p>
+
+            <!-- Manual NCEI station (issue #40). Gated behind the "station-override" flag (docs/feature-flags.md). -->
+            <details id="station-override-details" class="hidden -mt-2 mb-5 text-sm">
+                <summary class="cursor-pointer select-none text-slate-600 hover:text-slate-800 font-medium">Use a specific NCEI station (optional)</summary>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <input id="input-station-id" type="text" placeholder="e.g. USW00013891" maxlength="17" autocomplete="off" spellcheck="false"
+                           class="w-full sm:w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+                    <button data-action="clearStationOverride" class="text-xs font-medium text-blue-600 hover:text-blue-800 transition">Clear</button>
+                </div>
+                <p class="text-xs text-slate-500 mt-1.5">US locations only. Leave blank to use the nearest station with recent temperature readings. You can also pick from the other nearby stations shown with your results, or look up IDs with NOAA's <a href="https://www.ncei.noaa.gov/cdo-web/datatools/findstation" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">Find a Station</a> tool (Daily Summaries dataset).</p>
+            </details>
 
             <!-- Date Ranges -->
             <div class="mt-5 pt-5 border-t border-slate-100">
@@ -245,6 +256,14 @@
                     </svg>
                     Save Search
                 </button>
+                <!-- Gated behind the "share-links" flag (docs/feature-flags.md). -->
+                <button id="btn-share-link" data-action="copyShareLink" title="Copy a link that reopens this search. The location is in the link itself, so only share it with people you'd tell."
+                        class="hidden inline-flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm px-5 py-2.5 rounded-lg transition border border-slate-300">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
+                    </svg>
+                    <span id="btn-share-link-text">Copy Link</span>
+                </button>
             </div>
         </section>
 
@@ -301,10 +320,16 @@
                     <p class="text-slate-500 text-xs mt-1" id="res-coords"></p>
                 </div>
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Nearest Station</p>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1" id="res-station-label">Nearest Station</p>
                     <p class="text-slate-800 font-medium text-sm" id="res-station-name"></p>
                     <p class="text-blue-600 font-mono text-xs mt-1" id="res-station-id"></p>
                     <p class="text-slate-500 text-xs mt-0.5" id="res-station-dist"></p>
+                    <!-- Flag: station-override -->
+                    <details id="nearby-stations" class="hidden mt-3 text-xs">
+                        <summary class="cursor-pointer select-none font-medium text-blue-600 hover:text-blue-800" id="nearby-stations-summary">Other nearby stations</summary>
+                        <p class="text-slate-500 mt-1.5">Stations with temperature readings in the last 30 days.</p>
+                        <ul id="nearby-stations-list" class="mt-1.5"></ul>
+                    </details>
                 </div>
             </div>
 
@@ -368,6 +393,31 @@
                         <div class="relative h-[280px] sm:h-[420px]">
                             <canvas id="gddChart"></canvas>
                         </div>
+                </div>
+            </details>
+
+            <!-- Season vs. Normal — gated behind the "season-normals" flag
+                 (docs/feature-flags.md). Fetched on demand, not with every search. -->
+            <details id="season-normals-details" class="group hidden" open>
+                <summary class="flex items-center gap-2 cursor-pointer select-none bg-white rounded-t-2xl shadow-sm border border-slate-200 px-4 sm:px-6 py-4 hover:bg-slate-50 transition mt-5">
+                    <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <h3 class="text-base font-semibold text-slate-800">Season vs. Normal</h3>
+                    <span class="text-xs text-slate-400 ml-2">Click to expand</span>
+                </summary>
+                <div class="bg-white rounded-b-2xl shadow-sm border-l border-r border-b border-slate-200 px-4 sm:px-6 pt-2 pb-6">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <p class="text-sm text-slate-600">Compare this season's cumulative GDD with the 1991–2020 normal and last year, using the GDD settings above.</p>
+                        <button id="btn-season-normals" data-action="loadSeasonNormals"
+                                class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-slate-900 text-sm font-medium transition shadow-sm">Compare</button>
+                    </div>
+                    <p id="season-normals-status" class="hidden text-sm text-slate-500 mb-3"></p>
+                    <div id="season-normals-summary" class="hidden bg-slate-50 rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 mb-4"></div>
+                    <div id="season-normals-chart-wrap" class="hidden relative h-[280px] sm:h-[380px]">
+                        <canvas id="seasonNormalsChart"></canvas>
+                    </div>
+                    <p id="season-normals-source" class="hidden text-xs text-slate-400 mt-2"></p>
                 </div>
             </details>
 
@@ -946,6 +996,7 @@
                 dateMarkers: [...dateMarkers],
                 includeTempForecast: document.getElementById('include-temp-forecast')?.checked ?? true,
                 includeGddForecast: document.getElementById('include-gdd-forecast')?.checked ?? true,
+                stationId: document.getElementById('input-station-id').value.trim(),
             };
         }
 
@@ -958,6 +1009,8 @@
             document.getElementById('input-country-inline').value = state.country || '';
             document.getElementById('input-lat-inline').value = state.lat || '';
             document.getElementById('input-lon-inline').value = state.lon || '';
+            document.getElementById('input-station-id').value = state.stationId || '';
+            if (state.stationId) document.getElementById('station-override-details').open = true;
 
             // Date ranges — clear existing, recreate
             const container = document.getElementById('date-ranges-container');
@@ -1176,6 +1229,8 @@
                 body.lat = parsedLat;
                 body.lon = parsedLon;
             }
+            const stationId = stationOverrideEnabled() ? document.getElementById('input-station-id').value.trim() : '';
+            if (stationId) body.station_id = stationId;
 
             const ranges = getDateRanges();
 
@@ -1320,16 +1375,22 @@
         /* ── Render ────────────────────────────────────── */
         function renderResults(data, localRanges) {
             console.log('[Ento:renderResults] rendering results — station:', data.station?.station_id, '| ranges:', data.ranges?.length);
+            lastSearchData = data;
+            resetSeasonNormals();
             const { location, search_lat, search_lon, station, ranges } = data;
 
             // Station info
             const fx = (n) => (typeof n === 'number' && !isNaN(n)) ? n.toFixed(4) : 'N/A';
             document.getElementById('res-location').textContent = location;
             document.getElementById('res-coords').textContent = `${fx(search_lat)}, ${fx(search_lon)}`;
+            document.getElementById('res-station-label').textContent =
+                station.selection === 'manual' ? 'Selected Station' : 'Nearest Station';
             document.getElementById('res-station-name').textContent = station.station_name;
             document.getElementById('res-station-id').textContent = `Station ID: ${station.station_id}`;
             document.getElementById('res-station-dist').textContent =
-                `${station.distance_miles} mi away  ·  ${fx(station.station_lat)}, ${fx(station.station_lon)}`;
+                `${station.distance_miles} mi away  ·  ${fx(station.station_lat)}, ${fx(station.station_lon)}` +
+                (station.selection === 'manual' && station.distance_miles > 50 ? '  ·  far from the searched location' : '');
+            renderNearbyStations(data);
 
             // Dynamic chart title
             document.getElementById('chart-title').textContent = 'Temperature (°F)';
@@ -2482,7 +2543,7 @@
         });
 
         /* ── Enter-key support (location inputs only) ── */
-        ['input-city-inline', 'input-state-inline', 'input-country-inline', 'input-lat-inline', 'input-lon-inline'].forEach(id => {
+        ['input-city-inline', 'input-state-inline', 'input-country-inline', 'input-lat-inline', 'input-lon-inline', 'input-station-id'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
         });
@@ -2521,6 +2582,346 @@
                 }
             });
         }
+        /* ── Share links (flag: share-links) ──────────────── */
+        // The whole search state rides in the URL fragment (#s=…), which
+        // browsers never send to the server — the searched location stays
+        // out of request logs. Everything read back is validated: thresholds
+        // and date markers are interpolated into data-args attributes, so
+        // only numbers and MM-DD strings may come through.
+        const SHARE_PREFIX = '#s=';
+
+        function encodeShareState(state) {
+            const bytes = new TextEncoder().encode(JSON.stringify(state));
+            let bin = '';
+            bytes.forEach((b) => { bin += String.fromCharCode(b); });
+            return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function decodeShareState(encoded) {
+            const b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+            const bin = atob(b64 + '='.repeat((4 - b64.length % 4) % 4));
+            return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0))));
+        }
+
+        function sanitizeSharedState(raw) {
+            if (!raw || typeof raw !== 'object') return null;
+            const str = (v, max) => (typeof v === 'string' ? v.slice(0, max || 100) : '');
+            const isoDate = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '');
+            const numStr = (v) => (typeof v === 'string' && /^-?\d{1,3}(\.\d+)?$/.test(v) ? v : '');
+            return {
+                tab: raw.tab === 'latlon' ? 'latlon' : 'city',
+                city: str(raw.city), state: str(raw.state), country: str(raw.country),
+                lat: str(raw.lat, 40), lon: str(raw.lon, 40),
+                dateRanges: (Array.isArray(raw.dateRanges) ? raw.dateRanges : []).slice(0, 10).map((r) => ({
+                    label: str(r && r.label, 60),
+                    startDate: isoDate(r && r.startDate),
+                    endDate: isoDate(r && r.endDate),
+                    useToday: !!(r && r.useToday),
+                })),
+                gddBase: numStr(raw.gddBase) || '50',
+                gddMax: numStr(raw.gddMax) || '86',
+                gddMonth: typeof raw.gddMonth === 'string' && /^(0[1-9]|1[0-2])$/.test(raw.gddMonth) ? raw.gddMonth : '03',
+                gddDay: typeof raw.gddDay === 'string' && /^([1-9]|[12]\d|3[01])$/.test(raw.gddDay) ? raw.gddDay : '1',
+                gddThresholds: (Array.isArray(raw.gddThresholds) ? raw.gddThresholds : []).slice(0, 20)
+                    .filter((t) => t && typeof t.value === 'number' && isFinite(t.value) && t.value > 0)
+                    .map((t) => ({ value: t.value, label: str(t.label, 60) || (t.value + ' GDD') })),
+                dateMarkers: (Array.isArray(raw.dateMarkers) ? raw.dateMarkers : []).slice(0, 20)
+                    .filter((d) => d && typeof d.md === 'string' && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(d.md))
+                    .map((d) => ({ md: d.md, label: str(d.label, 60) || d.md })),
+                includeTempForecast: raw.includeTempForecast !== false,
+                includeGddForecast: raw.includeGddForecast !== false,
+                stationId: typeof raw.stationId === 'string' && /^(GHCND:)?[A-Za-z0-9]{11}$/i.test(raw.stationId) ? raw.stationId : '',
+            };
+        }
+
+        async function copyShareLink() {
+            const state = { ...collectSearchState(), gddMax: document.getElementById('input-gdd-max').value };
+            const url = location.origin + location.pathname + SHARE_PREFIX + encodeShareState(state);
+            const label = document.getElementById('btn-share-link-text');
+            try {
+                await navigator.clipboard.writeText(url);
+                console.log('[Ento:copyShareLink] link copied (' + url.length + ' chars)');
+                label.textContent = 'Link copied';
+            } catch (e) {
+                console.warn('[Ento:copyShareLink] clipboard unavailable — showing link instead:', e.message);
+                prompt('Copy this link:', url);
+            }
+            setTimeout(() => { label.textContent = 'Copy Link'; }, 2000);
+        }
+
+        // Runs once, after account.js has resolved flags.
+        let sharedLinkHandled = false;
+        function openSharedLinkIfPresent() {
+            if (sharedLinkHandled) return;
+            sharedLinkHandled = true;
+            if (!location.hash.startsWith(SHARE_PREFIX)) return;
+            let state;
+            try {
+                state = sanitizeSharedState(decodeShareState(location.hash.slice(SHARE_PREFIX.length)));
+            } catch (e) {
+                console.warn('[Ento:openSharedLink] could not read shared link:', e.message);
+            }
+            if (!state || !state.dateRanges.length) {
+                showError('This shared link is incomplete or damaged, so the search could not be opened.');
+                return;
+            }
+            console.log('[Ento:openSharedLink] opening shared search with', state.dateRanges.length, 'range(s)');
+            restoreSearchState(state);
+            document.getElementById('input-gdd-max').value = state.gddMax;
+            doSearch();
+        }
+
+        /* ── Season vs. Normal (flag: season-normals) ───────── */
+        let lastSearchData = null;
+        let seasonNormalsChart = null;
+        const normalsCache = new Map(); // per page load: location → /api/normals response
+
+        function resetSeasonNormals() {
+            ['season-normals-status', 'season-normals-summary', 'season-normals-chart-wrap', 'season-normals-source']
+                .forEach((id) => document.getElementById(id).classList.add('hidden'));
+            if (seasonNormalsChart) { seasonNormalsChart.destroy(); seasonNormalsChart = null; }
+        }
+
+        function setNormalsStatus(msg) {
+            const el = document.getElementById('season-normals-status');
+            el.textContent = msg;
+            el.classList.toggle('hidden', !msg);
+        }
+
+        // Day-of-season axis: accumulation start → Dec 31, no Feb 29 (a
+        // leap day still counts toward the cumulative totals, it just has
+        // no slot of its own on the chart).
+        function seasonAxis(startMD) {
+            const mds = [];
+            const d = new Date(Date.UTC(2001, parseInt(startMD.slice(0, 2), 10) - 1, parseInt(startMD.slice(3), 10)));
+            while (d.getUTCFullYear() === 2001) {
+                mds.push(d.toISOString().slice(5, 10));
+                d.setUTCDate(d.getUTCDate() + 1);
+            }
+            return mds;
+        }
+
+        function cumulativeByMD(records, base, startMD, max) {
+            const out = {};
+            computeGDD(records, base, startMD, max, { quiet: true }).forEach((g) => { out[g.md] = g; });
+            return out;
+        }
+
+        // [[tmin, tmax], …] from Jan 1 of `year` → temperature records.
+        function unpackYear(year, days) {
+            const d = new Date(Date.UTC(year, 0, 1));
+            return days.map(([lo, hi]) => {
+                const rec = { date: d.toISOString().slice(0, 10), TMIN: lo, TMAX: hi };
+                d.setUTCDate(d.getUTCDate() + 1);
+                return rec;
+            });
+        }
+
+        function percentile(sorted, p) {
+            if (!sorted.length) return null;
+            const i = (sorted.length - 1) * p;
+            const lo = Math.floor(i), hi = Math.ceil(i);
+            return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+        }
+
+        async function loadSeasonNormals() {
+            if (!lastSearchData) return;
+            const btn = document.getElementById('btn-season-normals');
+            const body = {
+                provider: lastSearchData.provider,
+                station_id: lastSearchData.station && lastSearchData.station.station_id,
+                lat: lastSearchData.search_lat,
+                lon: lastSearchData.search_lon,
+            };
+            const key = JSON.stringify(body);
+            btn.disabled = true;
+            try {
+                let normals = normalsCache.get(key);
+                if (!normals) {
+                    setNormalsStatus('Loading 30 years of history… this can take up to a minute the first time for a location.');
+                    const resp = await fetch('/api/normals', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+                    normals = data;
+                    normalsCache.set(key, normals);
+                }
+                renderSeasonNormals(normals);
+                setNormalsStatus('');
+            } catch (err) {
+                console.error('[Ento:loadSeasonNormals] failed:', err.message);
+                setNormalsStatus('Could not load historical data: ' + err.message);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function renderSeasonNormals(normals) {
+            const base = parseFloat(document.getElementById('input-gdd-base').value) || 50;
+            const max = parseFloat(document.getElementById('input-gdd-max').value) || 86;
+            const startMD = getGddStartMD();
+            const axis = seasonAxis(startMD);
+
+            // This season: the most recent calendar year with observations in the results.
+            const all = [];
+            lastSearchData.ranges.forEach((r) => (r.temperatures || []).forEach((t) => all.push(t)));
+            const observed = all.filter((t) => !t.is_forecast && t.TMIN != null && t.TMAX != null);
+            if (!observed.length) { setNormalsStatus('No observed data in these results to compare.'); return; }
+            const year = observed.reduce((m, t) => (t.date > m ? t.date : m), '').slice(0, 4);
+            const byDate = {};
+            all.filter((t) => t.date.startsWith(year)).forEach((t) => { byDate[t.date] = t; });
+            const thisSeason = cumulativeByMD(Object.values(byDate), base, startMD, max);
+            const lastObserved = observed.filter((t) => t.date.startsWith(year)).reduce((m, t) => (t.date > m ? t.date : m), '');
+
+            // Normal = mean (and 10th–90th percentile) of each year's cumulative GDD.
+            const perYear = Object.entries(normals.years).map(([y, days]) => cumulativeByMD(unpackYear(parseInt(y, 10), days), base, startMD, max));
+            const normalMean = [], band10 = [], band90 = [];
+            axis.forEach((md) => {
+                const vals = perYear.map((c) => (c[md] ? c[md].cumulative : null)).filter((v) => v != null).sort((a, b) => a - b);
+                normalMean.push(vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10 : null);
+                band10.push(percentile(vals, 0.1));
+                band90.push(percentile(vals, 0.9));
+            });
+            const prev = normals.previous_year && normals.previous_year.days && normals.previous_year.days.length
+                ? cumulativeByMD(unpackYear(normals.previous_year.year, normals.previous_year.days), base, startMD, max) : null;
+
+            // Summary at the last observed day.
+            const md = lastObserved.slice(5);
+            const idx = axis.indexOf(md);
+            const summaryEl = document.getElementById('season-normals-summary');
+            if (idx >= 0 && thisSeason[md] && normalMean[idx] != null) {
+                const cur = thisSeason[md].cumulative;
+                const norm = normalMean[idx];
+                const diff = Math.round((cur - norm) * 10) / 10;
+                const pct = norm > 0 ? Math.round(diff / norm * 100) : null;
+                // Days ahead/behind: when does the normal curve reach today's total?
+                const reach = normalMean.findIndex((v) => v != null && v >= cur);
+                const days = reach - idx;
+                const seasonTotal = normalMean.filter((v) => v != null).pop();
+                const dateLabel = new Date(lastObserved + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const pace = cur === 0 ? 'accumulation has not started yet'
+                    : reach < 0 ? `already past the normal <strong>full-season</strong> total of ${seasonTotal}`
+                    : days > 0 ? `about <strong>${days} day${days === 1 ? '' : 's'} ahead</strong> of normal`
+                    : days < 0 ? `about <strong>${-days} day${days === -1 ? '' : 's'} behind</strong> normal`
+                    : '<strong>on pace</strong> with normal';
+                let html = `As of ${esc(dateLabel)}: <strong>${cur}</strong> GDD vs. a normal of <strong>${norm}</strong> ` +
+                    `(${diff >= 0 ? '+' : ''}${diff}${pct != null ? `, ${pct >= 0 ? '+' : ''}${pct}%` : ''}) — ${pace}.`;
+                if (prev && prev[md]) html += ` Last year (${normals.previous_year.year}) had ${prev[md].cumulative} GDD on this date.`;
+                summaryEl.innerHTML = html;
+                summaryEl.classList.remove('hidden');
+            } else {
+                summaryEl.classList.add('hidden');
+            }
+
+            const labels = axis.map((m) => new Date(`2001-${m}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+            const gray = chartGray();
+            const datasets = [
+                { label: '10th–90th percentile', data: band90, borderWidth: 0, pointRadius: 0, backgroundColor: 'rgba(148,163,184,.18)', fill: '+1', order: 4 },
+                { label: '10th percentile', data: band10, borderWidth: 0, pointRadius: 0, fill: false, order: 4 },
+                { label: `Normal (${normals.period[0]}–${normals.period[1]})`, data: normalMean, borderColor: gray, borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, order: 3 },
+            ];
+            if (prev) datasets.push({ label: String(normals.previous_year.year), data: axis.map((m) => (prev[m] ? prev[m].cumulative : null)), borderColor: '#5c8fc4', borderWidth: 2, pointRadius: 0, fill: false, order: 2 });
+            datasets.push({
+                label: `${year} (observed)`, data: axis.map((m) => (thisSeason[m] && !thisSeason[m].is_forecast && m <= md ? thisSeason[m].cumulative : null)),
+                borderColor: '#abd037', borderWidth: 3, pointRadius: 0, fill: false, order: 1,
+            });
+            datasets.push({
+                label: `${year} forecast`, data: axis.map((m) => (thisSeason[m] && m >= md && (m === md || thisSeason[m].is_forecast) ? thisSeason[m].cumulative : null)),
+                borderColor: '#abd037', borderDash: [3, 3], borderWidth: 2, pointRadius: 0, fill: false, order: 1,
+            });
+
+            document.getElementById('season-normals-chart-wrap').classList.remove('hidden');
+            if (seasonNormalsChart) seasonNormalsChart.destroy();
+            seasonNormalsChart = new Chart(document.getElementById('seasonNormalsChart'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false, spanGaps: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        datalabels: { display: false },
+                        legend: { labels: { color: gray, filter: (item) => item.text !== '10th percentile' } },
+                        tooltip: { filter: (item) => item.dataset.label !== '10th percentile' && item.raw != null },
+                    },
+                    scales: {
+                        x: { ticks: { color: gray, maxTicksLimit: 12 }, grid: { color: chartGridColor() } },
+                        y: { title: { display: true, text: `Cumulative GDD (base ${base}°F)`, color: gray }, ticks: { color: gray }, grid: { color: chartGridColor() } },
+                    },
+                },
+            });
+
+            const src = document.getElementById('season-normals-source');
+            src.textContent = (normals.source === 'ncei'
+                ? `Normal from NOAA NCEI station ${lastSearchData.station.station_id}`
+                : 'Normal from Open-Meteo historical reanalysis for this location') +
+                `, ${normals.years_used} of 30 years with complete data. Shaded band: 10th–90th percentile of those years.`;
+            src.classList.remove('hidden');
+        }
+
+        /* ── Manual NCEI station (flag: station-override, issue #40) ── */
+        function stationOverrideEnabled() {
+            return !!(window.EntoFlags && window.EntoFlags.has('station-override'));
+        }
+
+        function clearStationOverride() {
+            document.getElementById('input-station-id').value = '';
+        }
+
+        // Re-run the current search with another station. Choosing the
+        // recommended station clears the override, so the search goes back
+        // to picking the nearest station automatically.
+        function useStation(stationId, recommended) {
+            console.log('[Ento:useStation] switching to station', stationId, recommended ? '(recommended — clearing override)' : '');
+            document.getElementById('input-station-id').value = recommended ? '' : stationId;
+            document.getElementById('station-override-details').open = !recommended;
+            doSearch();
+        }
+
+        // The nearby list comes back with every NCEI search. The station the
+        // server would pick on its own is tagged Recommended; choosing it
+        // clears the override rather than pinning it.
+        function renderNearbyStations(data) {
+            const box = document.getElementById('nearby-stations');
+            const nearby = Array.isArray(data.nearby_stations) ? data.nearby_stations : [];
+            const current = data.station || {};
+            const others = nearby.filter((s) => s.station_id !== current.station_id);
+            if (!stationOverrideEnabled() || data.provider !== 'ncei' || !others.length) {
+                box.classList.add('hidden');
+                return;
+            }
+            document.getElementById('nearby-stations-summary').textContent = `Other nearby stations (${others.length})`;
+            document.getElementById('nearby-stations-list').innerHTML = others.map((s) => {
+                // Station ids are [A-Za-z0-9]{11} from stations.json, so they
+                // are safe inside data-args; names still go through esc().
+                const id = /^[A-Za-z0-9]{11}$/.test(s.station_id) ? s.station_id : '';
+                if (!id) return '';
+                const recommended = id === data.recommended_station_id;
+                const args = esc(JSON.stringify([id, recommended]));
+                return `<li class="flex items-center justify-between gap-2 py-1.5 border-t border-slate-100 first:border-t-0">
+                    <span class="min-w-0">
+                        <span class="block text-slate-700 truncate">${esc(s.station_name)}${recommended ? ' <span class="ml-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">Recommended</span>' : ''}</span>
+                        <span class="block text-slate-500"><span class="font-mono">${id}</span> · ${esc(String(s.distance_miles))} mi</span>
+                    </span>
+                    <button data-action="useStation" data-args="${args}"
+                            class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition">Use</button>
+                </li>`;
+            }).join('');
+            box.classList.remove('hidden');
+        }
+
+        // Flag-gated entry points. account.js fires entoflags:updated once
+        // flags are known (signed in or not), and again on login/logout.
+        document.addEventListener('entoflags:updated', () => {
+            const flags = window.EntoFlags || new Set();
+            const shareLinks = flags.has('share-links');
+            document.getElementById('btn-share-link').classList.toggle('hidden', !shareLinks);
+            document.getElementById('season-normals-details').classList.toggle('hidden', !flags.has('season-normals'));
+            document.getElementById('station-override-details').classList.toggle('hidden', !flags.has('station-override'));
+            if (!flags.has('station-override')) document.getElementById('nearby-stations').classList.add('hidden');
+            if (shareLinks) openSharedLinkIfPresent();
+        });
+
         /* ── Mobile Menu ────────────────────────────────── */
         function toggleMobileMenu() {
             const menu = document.getElementById('mobile-menu');
@@ -2577,7 +2978,7 @@
             }, 2000);
         }
     </script>
-    <script src="/account.js?v=6"></script>
+    <script src="/account.js?v=7"></script>
     <script src="/feedback.js"></script>
 </body>
 </html>

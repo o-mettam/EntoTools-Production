@@ -19286,11 +19286,18 @@ async function listFlagUsers(env, flagKey) {
   ).bind(flagKey).all();
   return results;
 }
-async function getUserFlags(env, userId) {
-  const { results } = await env.DB.prepare(
-    "SELECT flag_key FROM user_feature_flags WHERE user_id = ?"
-  ).bind(userId).all();
+var FLAG_STATUSES = ["targeted", "ga", "off"];
+async function getEffectiveFlags(env, userId) {
+  const { results } = userId ? await env.DB.prepare(
+    "SELECT flag_key FROM feature_flags WHERE status = 'ga' UNION SELECT f.flag_key FROM user_feature_flags u JOIN feature_flags f ON f.flag_key = u.flag_key WHERE u.user_id = ? AND f.status = 'targeted'"
+  ).bind(userId).all() : await env.DB.prepare("SELECT flag_key FROM feature_flags WHERE status = 'ga'").all();
   return results.map((r) => r.flag_key);
+}
+async function setFlagStatus(env, flagKey, status) {
+  const row = await env.DB.prepare("SELECT status FROM feature_flags WHERE flag_key = ?").bind(flagKey).first();
+  if (!row) return null;
+  await env.DB.prepare("UPDATE feature_flags SET status = ?, status_changed_at = ? WHERE flag_key = ?").bind(status, nowIso(), flagKey).run();
+  return row.status;
 }
 async function enableUserFlag(env, userId, flagKey) {
   await env.DB.prepare(
@@ -19334,6 +19341,7 @@ var LIMITS = {
   search: { limit: 60, windowSeconds: 3600, applies: "POST /api/search" },
   feedback: { limit: 5, windowSeconds: 3600, applies: "POST /api/feedback" },
   status: { limit: 120, windowSeconds: 3600, applies: "GET /api/status/check" },
+  normals: { limit: 30, windowSeconds: 3600, applies: "POST /api/normals (season-normals flag)" },
   ceremony: { limit: 20, windowSeconds: 3600, applies: "Passkey ceremony starts (register / login / re-auth options)" },
   signupAttempts: { limit: 6, windowSeconds: 7200, applies: "Sign-up attempts (register/options for a new account)" },
   signupAccounts: { limit: 3, windowSeconds: 7200, applies: "Accounts created (also mirrored in a per-browser cookie)" }
@@ -19855,9 +19863,18 @@ function jsonResponse2(data, status = 200) {
 }
 async function handleMyFlags(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse2({ flags: [] });
-  const flags = await getUserFlags(env, session.user_id);
+  const flags = await getEffectiveFlags(env, session ? session.user_id : null);
   return jsonResponse2({ flags });
+}
+async function hasFlag(request, env, flagKey) {
+  try {
+    const session = await requireSession(request, env);
+    const flags = await getEffectiveFlags(env, session ? session.user_id : null);
+    return flags.includes(flagKey);
+  } catch (err) {
+    console.error("[Worker:flags] hasFlag failed for", flagKey, "-", err.message);
+    return false;
+  }
 }
 
 // src/lib/access.js
@@ -19928,17 +19945,17 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-09-05T16:01:24.800Z",
-  tailwindHash: "1db23f6ad98d",
+  generated: "2026-10-22T20:42:58.239Z",
+  tailwindHash: "427e2af05424",
   routes: {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-yXlsMdkD20uqyFwMCmCFsjZjy5hf68VJ6bwoGWXvisE="
+      "sha256-CqfkLySfosL5GULrDtCo66Mcrkq6gdQgG6Pf/65im8I="
     ],
     "/degree-day-calculator": [
-      "sha256-ZtTDpeBMkslZ/PrMK4dQK9GHb64blxtGUzp522hna3Q="
+      "sha256-RxHe4yot4psQWKdhJHCD0exX7DfvKxYIoOk3F1kH+nY="
     ],
     "/documentation": [
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
@@ -19963,21 +19980,24 @@ var csp_hashes_default = {
     ]
   },
   admin: [
-    "sha256-BZ3LqOzsREN1P/LJulnmSnL21aCMsgjFLr35oMLRziU="
+    "sha256-hsbOtb/KWxuwxUsdcbsRe0fAZ7MA6e8FsjFvZQiArJM="
   ]
 };
 
 // src/lib/csp.js
 var PUBLIC_SCRIPT_HOSTS = "https://cdn.jsdelivr.net https://accounts.google.com https://static.cloudflareinsights.com";
 var PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://cloudflareinsights.com";
-function policy({ scriptHashes, scriptHosts, connect, styleHosts, fontHosts }) {
+var ROUTE_EXTRAS = {
+  "/collection-database": { styleHosts: "https://cdn.jsdelivr.net", imgHosts: "https://tile.openstreetmap.org" }
+};
+function policy({ scriptHashes, scriptHosts, connect, styleHosts, fontHosts, imgHosts }) {
   const hashes = (scriptHashes || []).map((h) => `'${h}'`).join(" ");
   return [
     "default-src 'self'",
     `script-src 'self'${hashes ? " " + hashes : ""}${scriptHosts ? " " + scriptHosts : ""}`,
     `style-src 'self' 'unsafe-inline'${styleHosts ? " " + styleHosts : ""}`,
     fontHosts ? `font-src 'self' ${fontHosts}` : "font-src 'self'",
-    "img-src 'self' data:",
+    `img-src 'self' data:${imgHosts ? " " + imgHosts : ""}`,
     `connect-src ${connect}`,
     "frame-ancestors 'none'",
     "object-src 'none'",
@@ -19995,12 +20015,14 @@ function routeKey(pathname) {
 function cspForPage(pathname, status) {
   let hashes = csp_hashes_default.routes[routeKey(pathname)];
   if (!hashes && status === 404) hashes = csp_hashes_default.routes["/404.html"];
+  const extras = status !== 404 && ROUTE_EXTRAS[routeKey(pathname)] || {};
   return policy({
     scriptHashes: hashes || [],
     scriptHosts: PUBLIC_SCRIPT_HOSTS,
     connect: PUBLIC_CONNECT,
-    styleHosts: "https://fonts.googleapis.com",
-    fontHosts: "https://fonts.gstatic.com"
+    styleHosts: "https://fonts.googleapis.com" + (extras.styleHosts ? " " + extras.styleHosts : ""),
+    fontHosts: "https://fonts.gstatic.com",
+    imgHosts: extras.imgHosts
   });
 }
 function cspForAdmin() {
@@ -20084,7 +20106,8 @@ var package_default = {
   scripts: {
     dev: "wrangler pages dev public/",
     "build-public": "bash scripts/build-public.sh",
-    "build-worker": "esbuild src/index.js --bundle --format=esm --platform=browser --loader:.html=text --outfile=public/_worker.js"
+    "build-worker": "esbuild src/index.js --bundle --format=esm --platform=browser --loader:.html=text --outfile=public/_worker.js",
+    "flag-report": "node scripts/flag-report.js"
   },
   dependencies: {
     "@simplewebauthn/server": "^14.0.1"
@@ -20114,7 +20137,7 @@ var admin_default = `<!DOCTYPE html>
          still has to escape admin-entered/user label data like any other page). -->
     <script src="/theme.js?v=2"><\/script>
     <link rel="stylesheet" href="/theme.css">
-    <script src="/ento-gdd.js?v=1"><\/script>
+    <script src="/ento-gdd.js?v=2"><\/script>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
     <!-- Nav + Header follow the same two-tier layout as every public page
@@ -20225,7 +20248,7 @@ var admin_default = `<!DOCTYPE html>
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
                 <table class="w-full text-sm">
                     <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
-                        <tr><th class="text-left px-4 py-2">Key</th><th class="text-left px-4 py-2">Description</th></tr>
+                        <tr><th class="text-left px-4 py-2">Key</th><th class="text-left px-4 py-2">Status</th><th class="text-left px-4 py-2">Description</th></tr>
                     </thead>
                     <tbody id="flags-table-body"></tbody>
                 </table>
@@ -20243,6 +20266,19 @@ var admin_default = `<!DOCTYPE html>
                         <button id="fd-close" class="text-slate-400 hover:text-slate-600 text-sm">Close</button>
                     </div>
                 </div>
+
+                <!-- Lifecycle \u2014 see docs/feature-flags.md. Assignments are kept
+                     when moving to ga/off, so rolling back restores them. -->
+                <h3 class="text-sm font-semibold text-slate-700 mb-2">Status</h3>
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                    <select id="fd-status" class="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-lime-500 outline-none">
+                        <option value="targeted">Targeted \u2014 assigned users only</option>
+                        <option value="ga">GA \u2014 everyone, including signed-out visitors</option>
+                        <option value="off">Off \u2014 nobody (kill switch)</option>
+                    </select>
+                    <button id="fd-status-save" class="px-4 py-2 rounded-lg bg-lime-600 hover:bg-lime-700 text-white text-sm font-medium transition">Apply</button>
+                </div>
+                <p id="fd-status-note" class="text-xs text-slate-400 mb-4"></p>
 
                 <h3 class="text-sm font-semibold text-slate-700 mb-2">Assigned users</h3>
                 <div id="fd-users" class="text-sm space-y-1.5 mb-4"></div>
@@ -20480,7 +20516,7 @@ var admin_default = `<!DOCTYPE html>
                 <label class="flex items-start gap-2 bg-slate-50 rounded-lg px-3 py-2 cursor-pointer">
                     <input type="checkbox" class="user-flag-checkbox mt-0.5" data-key="\${esc(f.flag_key)}">
                     <span>
-                        <span class="block text-slate-700 font-medium">\${esc(f.flag_key)}</span>
+                        <span class="block text-slate-700 font-medium">\${esc(f.flag_key)} \${statusBadge(f.status)}</span>
                         \${f.description ? \`<span class="block text-xs text-slate-400">\${esc(f.description)}</span>\` : ''}
                     </span>
                 </label>
@@ -20562,6 +20598,21 @@ var admin_default = `<!DOCTYPE html>
         // \u2500\u2500 Feature Flags tab \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         let currentFlagKey = null;
 
+        const STATUS_STYLES = {
+            targeted: ['Targeted', 'bg-amber-100 text-amber-800'],
+            ga: ['GA', 'bg-lime-100 text-lime-800'],
+            off: ['Off', 'bg-slate-200 text-slate-600'],
+        };
+        function statusBadge(status) {
+            const [label, cls] = STATUS_STYLES[status] || [status || '?', 'bg-slate-100 text-slate-600'];
+            return \`<span class="inline-block rounded-full px-2 py-0.5 text-xs font-medium \${cls}">\${esc(label)}</span>\`;
+        }
+        const STATUS_NOTES = {
+            targeted: 'Only the users assigned below see this feature.',
+            ga: 'Everyone sees this feature, signed in or not. Assignments below are kept for rollback. Next step: remove the flag check from the code (docs/feature-flags.md).',
+            off: 'Nobody sees this feature, including assigned users.',
+        };
+
         async function loadFlags() {
             try {
                 const { flags } = await api('/frost/admin/flags');
@@ -20569,23 +20620,27 @@ var admin_default = `<!DOCTYPE html>
                 const tbody = document.getElementById('flags-table-body');
                 tbody.innerHTML = flags.length
                     ? flags.map((f) => \`
-                        <tr class="flag-row border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition" data-key="\${esc(f.flag_key)}" data-description="\${esc(f.description || '')}">
+                        <tr class="flag-row border-t border-slate-100 cursor-pointer hover:bg-slate-50 transition" data-key="\${esc(f.flag_key)}">
                             <td class="px-4 py-2 font-mono text-xs">\${esc(f.flag_key)}</td>
+                            <td class="px-4 py-2">\${statusBadge(f.status)}</td>
                             <td class="px-4 py-2 text-slate-600">\${esc(f.description || '\u2014')}</td>
                         </tr>
                     \`).join('')
-                    : '<tr><td colspan="2" class="px-4 py-4 text-center text-slate-400">No flags defined yet.</td></tr>';
+                    : '<tr><td colspan="3" class="px-4 py-4 text-center text-slate-400">No flags defined yet.</td></tr>';
                 tbody.querySelectorAll('.flag-row').forEach((row) => {
-                    row.addEventListener('click', () => openFlag(row.dataset.key, row.dataset.description));
+                    row.addEventListener('click', () => openFlag(flags.find((f) => f.flag_key === row.dataset.key)));
                 });
             } catch (err) { showError('Could not load flags: ' + err.message); }
         }
 
-        function openFlag(key, description) {
-            currentFlagKey = key;
+        function openFlag(flag) {
+            if (!flag) return;
+            currentFlagKey = flag.flag_key;
             document.getElementById('flag-detail').classList.remove('hidden');
-            document.getElementById('fd-key').textContent = key;
-            document.getElementById('fd-description').textContent = description || '';
+            document.getElementById('fd-key').textContent = flag.flag_key;
+            document.getElementById('fd-description').textContent = flag.description || '';
+            document.getElementById('fd-status').value = flag.status || 'targeted';
+            document.getElementById('fd-status-note').textContent = STATUS_NOTES[flag.status] || '';
             document.getElementById('fd-assign-input').value = '';
             document.getElementById('fd-assign-results').innerHTML = '';
             renderFlagUsers();
@@ -20606,6 +20661,29 @@ var admin_default = `<!DOCTYPE html>
                 allFlags = []; // force a refresh next time a user is opened
                 loadFlags();
             } catch (err) { showError('Could not delete flag: ' + err.message); }
+        });
+
+        document.getElementById('fd-status-save').addEventListener('click', async () => {
+            if (!currentFlagKey) return;
+            const status = document.getElementById('fd-status').value;
+            const current = (allFlags.find((f) => f.flag_key === currentFlagKey) || {}).status;
+            if (status === current) return;
+            const prompts = {
+                ga: 'Release "' + currentFlagKey + '" to everyone, including signed-out visitors? This takes effect on their next page load.',
+                off: 'Turn "' + currentFlagKey + '" off for everyone, including assigned users?',
+                targeted: 'Return "' + currentFlagKey + '" to assigned users only?',
+            };
+            if (!confirm(prompts[status])) return;
+            try {
+                await api('/frost/admin/flags/' + encodeURIComponent(currentFlagKey) + '/status', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status }),
+                });
+                const key = currentFlagKey;
+                await loadFlags();
+                openFlag(allFlags.find((f) => f.flag_key === key));
+            } catch (err) { showError('Could not change status: ' + err.message); }
         });
 
         async function renderFlagUsers() {
@@ -20804,6 +20882,7 @@ var admin_default = `<!DOCTYPE html>
 var API_ENDPOINTS = [
   { method: "POST", path: "/api/search", auth: "none", protection: "per-IP limit, input caps (ranges/days)", purpose: "Weather + station lookup for the calculator" },
   { method: "POST", path: "/api/feedback", auth: "none", protection: "Origin allowlist, per-IP limit, PII redaction, Markdown neutralised", purpose: "Feedback widget \u2192 public GitHub issue" },
+  { method: "POST", path: "/api/normals", auth: "flag: season-normals", protection: "Origin allowlist, flag check (404), per-IP limit, KV cache", purpose: "1991\u20132020 + previous-year temperatures for Season vs. Normal" },
   { method: "GET", path: "/api/status/ping", auth: "none", protection: "\u2014", purpose: "Worker liveness" },
   { method: "GET", path: "/api/status/check?service=", auth: "none", protection: "per-IP limit, allow-listed targets", purpose: "One upstream service probe (public /status page)" },
   { method: "POST", path: "/api/account/register/options", auth: "none / session", protection: "Origin, ceremony + sign-up limits, unique email, re-auth when adding", purpose: "Start passkey registration" },
@@ -20821,7 +20900,7 @@ var API_ENDPOINTS = [
   { method: "DELETE", path: "/api/account/sessions", auth: "session", protection: "Origin", purpose: "Sign out everywhere else" },
   { method: "GET", path: "/api/account/collection", auth: "session", protection: "\u2014", purpose: "Pull account-synced collection" },
   { method: "PUT", path: "/api/account/collection", auth: "session", protection: "Origin, 1 MB / 20k-entry cap", purpose: "Push collection" },
-  { method: "GET", path: "/api/account/flags", auth: "session", protection: "fail-closed (empty on error)", purpose: "Own feature flags" },
+  { method: "GET", path: "/api/account/flags", auth: "none / session", protection: "fail-closed (empty on error)", purpose: "Flags in effect (ga + own targeted)" },
   { method: "GET", path: "/api/account/export", auth: "session", protection: "no-store, attachment", purpose: "Data export (JSON)" },
   { method: "DELETE", path: "/api/account", auth: "session", protection: "Origin, step-up required", purpose: "Delete own account" },
   { method: "*", path: "/frost/admin/**", auth: "Cloudflare Access + JWT", protection: "Access JWT (RS256, aud/iss/exp), CSRF guard on writes, 404 on failure, audit log", purpose: "This portal" }
@@ -20892,6 +20971,7 @@ async function handleAdminRoute(request, env, path) {
         "GET    /frost/admin/status/upstream",
         "GET    /frost/admin/flags",
         "POST   /frost/admin/flags",
+        "PUT    /frost/admin/flags/:key/status",
         "GET    /frost/admin/flags/:key/users",
         "PUT    /frost/admin/users/:id/flags/:key",
         "DELETE /frost/admin/users/:id/flags/:key"
@@ -20999,6 +21079,23 @@ async function handleAdminRoute(request, env, path) {
     await writeAuditLog(env, { adminIdentity: adminEmail, action: "define_flag", detail: key });
     return jsonResponse3({ success: true });
   }
+  m = path.match(/^\/frost\/admin\/flags\/([^/]+)\/status$/);
+  if (m && method === "PUT") {
+    const key = m[1];
+    let body;
+    try {
+      body = await request.json();
+    } catch (e) {
+      return jsonResponse3({ error: "Invalid request body." }, 400);
+    }
+    if (!FLAG_STATUSES.includes(body.status)) {
+      return jsonResponse3({ error: "Status must be one of: " + FLAG_STATUSES.join(", ") + "." }, 400);
+    }
+    const previous = await setFlagStatus(env, key, body.status);
+    if (previous === null) return jsonResponse3({ error: "Not found" }, 404);
+    await writeAuditLog(env, { adminIdentity: adminEmail, action: "flag_status", detail: `${key}: ${previous} \u2192 ${body.status}` });
+    return jsonResponse3({ success: true });
+  }
   m = path.match(/^\/frost\/admin\/flags\/([^/]+)\/users$/);
   if (m && method === "GET") {
     return jsonResponse3({ users: await listFlagUsers(env, m[1]) });
@@ -21073,6 +21170,7 @@ function getProviderForCountry(countryCode) {
   return COUNTRY_PROVIDER_MAP[countryCode.toLowerCase()] || DEFAULT_PROVIDER;
 }
 var _stationsCache = null;
+var _stationsById = null;
 function jsonResponse4(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -21229,6 +21327,29 @@ async function getStations(env) {
   console.log("[Worker:getStations] loaded", data.length, "stations");
   return data;
 }
+var STATION_ID_RE = /^(?:GHCND:)?([A-Za-z0-9]{11})$/i;
+function normalizeStationId(raw) {
+  const m = typeof raw === "string" ? raw.trim().match(STATION_ID_RE) : null;
+  return m ? m[1] : null;
+}
+async function getStationById(id, env) {
+  if (!_stationsById) {
+    const stations = await getStations(env);
+    _stationsById = new Map(stations.map((s) => [s.id.toUpperCase(), s]));
+  }
+  return _stationsById.get(id.toUpperCase()) || null;
+}
+function stationResult(s, lat, lon, selection) {
+  return {
+    station_id: s.id,
+    station_name: s.name,
+    station_lat: s.lat,
+    station_lon: s.lon,
+    distance_miles: Math.round(haversine(lat, lon, s.lat, s.lon) * 10) / 10,
+    selection
+  };
+}
+var NEARBY_STATIONS_MAX = 6;
 async function findNearestStation(lat, lon, env, maxCandidates = 50) {
   console.log("[Worker:findNearestStation] searching (maxCandidates:", maxCandidates, ")");
   const stations = await getStations(env);
@@ -21264,32 +21385,26 @@ async function findNearestStation(lat, lon, env, maxCandidates = 50) {
   url.searchParams.set("format", "json");
   url.searchParams.set("units", "standard");
   const resp = await nceiFetch(url);
-  if (!resp.ok) return null;
+  if (!resp.ok) return { station: null, nearby: [] };
   const data = await resp.json();
-  if (!data || !data.length) return null;
-  const idsWithData = /* @__PURE__ */ new Set();
+  if (!data || !data.length) return { station: null, nearby: [] };
+  const has = (rec, k) => _get(rec, k) != null && _get(rec, k) !== "";
+  const idsWithTemps = /* @__PURE__ */ new Set();
   for (const rec of data) {
     const sid = _get(rec, "station");
-    if (sid && (_get(rec, "TMIN") != null && _get(rec, "TMIN") !== "" || _get(rec, "TMAX") != null && _get(rec, "TMAX") !== "" || _get(rec, "PRCP") != null && _get(rec, "PRCP") !== "")) {
-      idsWithData.add(sid);
-    }
+    if (sid && (has(rec, "TMIN") || has(rec, "TMAX"))) idsWithTemps.add(sid);
   }
-  console.log("[Worker:findNearestStation]", idsWithData.size, "stations have data out of", candidates.length, "candidates");
+  const withTemps = candidates.filter((c) => idsWithTemps.has(c.station.id)).sort((a, b) => a.dist - b.dist).slice(0, NEARBY_STATIONS_MAX).map((c) => stationResult(c.station, lat, lon, "auto"));
+  console.log("[Worker:findNearestStation]", idsWithTemps.size, "stations have temperature data out of", candidates.length, "candidates");
   for (const c of candidates) {
-    if (idsWithData.has(c.station.id)) {
-      const result = {
-        station_id: c.station.id,
-        station_name: c.station.name,
-        station_lat: c.station.lat,
-        station_lon: c.station.lon,
-        distance_miles: Math.round(c.dist * 10) / 10
-      };
-      console.log("[Worker:findNearestStation] best station:", result.station_id, result.station_name, "(" + result.distance_miles + " mi)");
-      return result;
+    if (idsWithTemps.has(c.station.id)) {
+      const result = stationResult(c.station, lat, lon, "auto");
+      console.log("[Worker:findNearestStation] best station:", result.station_id, result.station_name, "(" + result.distance_miles + " mi) |", withTemps.length, "nearby");
+      return { station: result, nearby: withTemps };
     }
   }
-  console.warn("[Worker:findNearestStation] no station with data found near the requested location");
-  return null;
+  console.warn("[Worker:findNearestStation] no station with temperature data found near the requested location");
+  return { station: null, nearby: withTemps };
 }
 async function getWeatherData(stationId, startDate, endDate) {
   console.log("[Worker:getWeatherData] station:", stationId, "range:", startDate, "to", endDate);
@@ -21505,6 +21620,21 @@ async function handleSearch(request, env) {
   if (totalDays > MAX_TOTAL_DAYS) {
     return jsonResponse4({ error: `Combined date ranges are too large (max ${MAX_TOTAL_DAYS} days total).` }, 400);
   }
+  let manualStation = null;
+  if (body.station_id != null && body.station_id !== "") {
+    const id = normalizeStationId(body.station_id);
+    if (!id) {
+      return jsonResponse4({ error: "NCEI station IDs are 11 letters and digits, for example USW00013891." }, 400);
+    }
+    if (await hasFlag(request, env, "station-override")) {
+      manualStation = await getStationById(id, env);
+      if (!manualStation) {
+        return jsonResponse4({ error: `Station ${id} isn't in the NCEI station list. Check the ID, or clear the field to use the nearest station.` }, 400);
+      }
+    } else {
+      console.log("[Worker:handleSearch] station_id ignored \u2014 station-override flag not enabled");
+    }
+  }
   let lat = null;
   let lon = null;
   let locationLabel = "";
@@ -21545,7 +21675,13 @@ async function handleSearch(request, env) {
   let providerFallback = false;
   let fallbackReason = "";
   console.log("[Worker:handleSearch] geocoded \u2014 country:", countryCode, "provider:", provider, "fallback:", isFallback);
+  if (manualStation && provider !== "ncei") {
+    return jsonResponse4({ error: "A specific NCEI station can only be used for locations in the United States. Clear the station ID to search this location." }, 400);
+  }
   let station;
+  let nearbyStations = [];
+  let recommendedStationId = null;
+  let nearbyPromise = null;
   const makeOpenMeteoStation = () => ({
     station_id: `OM:${lat.toFixed(4)},${lon.toFixed(4)}`,
     station_name: "Open-Meteo Grid Point",
@@ -21553,9 +21689,16 @@ async function handleSearch(request, env) {
     station_lon: lon,
     distance_miles: 0
   });
-  if (provider === "ncei") {
+  if (manualStation) {
+    station = stationResult(manualStation, lat, lon, "manual");
+    nearbyPromise = findNearestStation(lat, lon, env).catch((err) => {
+      console.warn("[Worker:handleSearch] nearby station lookup failed (manual station in use):", err.message);
+      return { station: null, nearby: [] };
+    });
+  } else if (provider === "ncei") {
     try {
-      station = await findNearestStation(lat, lon, env);
+      ({ station, nearby: nearbyStations } = await findNearestStation(lat, lon, env));
+      recommendedStationId = station ? station.station_id : null;
     } catch (err) {
       console.error("[Worker:handleSearch] NCEI station lookup FAILED:", err.message);
       console.warn("[Worker:handleSearch] falling back to Open-Meteo due to station lookup failure");
@@ -21565,10 +21708,10 @@ async function handleSearch(request, env) {
       station = makeOpenMeteoStation();
     }
     if (!station) {
-      console.warn("[Worker:handleSearch] no NCEI station found with recent data \u2014 falling back to Open-Meteo");
+      console.warn("[Worker:handleSearch] no NCEI station found with recent temperature data \u2014 falling back to Open-Meteo");
       provider = "open-meteo";
       providerFallback = true;
-      fallbackReason = "No NCEI weather stations with recent data were found near this location. Using Open-Meteo as a fallback data source.";
+      fallbackReason = "No NCEI weather stations with recent temperature data were found near this location. Using Open-Meteo as a fallback data source.";
       station = makeOpenMeteoStation();
     }
   } else {
@@ -21589,6 +21732,7 @@ async function handleSearch(request, env) {
   const today = formatDate(/* @__PURE__ */ new Date());
   const forecastHorizonEnd = forecastDays.length ? forecastDays.reduce((max, f) => f.date > max ? f.date : max, forecastDays[0].date) : today;
   let resultsByRange;
+  let nceiObservedDays = 0;
   let serviceErrors = [];
   try {
     resultsByRange = await Promise.all(
@@ -21600,6 +21744,7 @@ async function handleSearch(request, env) {
         if (provider === "ncei") {
           try {
             temps = await getWeatherData(station.station_id, sd, ed);
+            nceiObservedDays += temps.filter((t) => t.TMIN != null || t.TMAX != null).length;
             console.log('[Worker:handleSearch] NCEI data fetched for range "' + label + '":', temps.length, "records");
           } catch (nceiErr) {
             console.error('[Worker:handleSearch] NCEI data fetch FAILED for range "' + label + '":', nceiErr.message);
@@ -21664,6 +21809,17 @@ async function handleSearch(request, env) {
   if (providerFallback) {
     console.warn("[Worker:handleSearch] PROVIDER FALLBACK active \u2014 reason:", fallbackReason);
   }
+  if (manualStation && !providerFallback && nceiObservedDays === 0 && dateRanges.some((dr) => dr.startDate <= today)) {
+    console.warn("[Worker:handleSearch] manual station", station.station_id, "returned no temperature observations");
+    return jsonResponse4({
+      error: `Station ${station.station_id} (${station.station_name}) has no temperature readings for the selected dates. Choose another station, or clear the station ID to use the nearest one.`
+    }, 422);
+  }
+  if (nearbyPromise) {
+    const auto = await nearbyPromise;
+    nearbyStations = auto.nearby;
+    recommendedStationId = auto.station ? auto.station.station_id : null;
+  }
   console.log("[Worker:handleSearch] returning", resultsByRange.length, "range(s) of data | provider:", provider, "| fallback:", isFallback, "| providerFallback:", providerFallback);
   return jsonResponse4({
     location: locationLabel,
@@ -21676,7 +21832,109 @@ async function handleSearch(request, env) {
     fallback_reason: fallbackReason,
     forecast_unavailable: forecastUnavailable,
     station,
+    nearby_stations: provider === "ncei" ? nearbyStations : [],
+    recommended_station_id: provider === "ncei" ? recommendedStationId : null,
     ranges: resultsByRange
+  });
+}
+var NORMALS_FIRST_YEAR = 1991;
+var NORMALS_LAST_YEAR = 2020;
+var NORMALS_MIN_COMPLETE_YEARS = 20;
+var NORMALS_YEAR_COMPLETENESS = 0.9;
+var PREV_YEAR_CACHE_TTL = 30 * 24 * 3600;
+function packYears(records) {
+  const years = {};
+  for (const r of records) {
+    const y = r.date.slice(0, 4);
+    (years[y] = years[y] || []).push([r.TMIN, r.TMAX]);
+  }
+  return years;
+}
+function completeYears(years) {
+  return Object.keys(years).filter((y) => {
+    const days = years[y];
+    const ok = days.filter(([lo, hi]) => lo != null && hi != null).length;
+    return ok >= NORMALS_YEAR_COMPLETENESS * days.length;
+  });
+}
+async function fetchYears(source, stationId, lat, lon, firstYear, lastYear) {
+  const chunks = [];
+  for (let y = firstYear; y <= lastYear; y += 10) chunks.push([y, Math.min(y + 9, lastYear)]);
+  const parts = await Promise.all(chunks.map(([a, b]) => source === "ncei" ? getWeatherData(stationId, `${a}-01-01`, `${b}-12-31`) : getWeatherDataOpenMeteo(lat, lon, `${a}-01-01`, `${b}-12-31`)));
+  return packYears(parts.flat());
+}
+async function cachedJson(env, key, ttl, produce) {
+  try {
+    const hit = await env.GEOCODE_CACHE.get(key, "json");
+    if (hit) return hit;
+  } catch (e) {
+    console.warn("[Worker:normals] KV read failed:", e.message);
+  }
+  const value = await produce();
+  try {
+    await env.GEOCODE_CACHE.put(key, JSON.stringify(value), ttl ? { expirationTtl: ttl } : void 0);
+  } catch (e) {
+    console.warn("[Worker:normals] KV write failed:", e.message);
+  }
+  return value;
+}
+async function handleNormals(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return privateJson({ error: "Invalid request body." }, 400);
+  }
+  const lat = Math.round(parseFloat(body.lat) * 100) / 100;
+  const lon = Math.round(parseFloat(body.lon) * 100) / 100;
+  if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return privateJson({ error: "Invalid latitude / longitude values." }, 400);
+  }
+  const stationId = body.provider === "ncei" && /^[A-Za-z0-9]{11}$/.test(body.station_id || "") ? body.station_id : null;
+  const gridKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const prevYear = (/* @__PURE__ */ new Date()).getUTCFullYear() - 1;
+  let normals = null;
+  if (stationId) {
+    try {
+      normals = await cachedJson(env, `normals:v1:ncei:${stationId}`, 0, async () => {
+        const years = await fetchYears("ncei", stationId, lat, lon, NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR);
+        return { source: "ncei", years };
+      });
+      if (completeYears(normals.years).length < NORMALS_MIN_COMPLETE_YEARS) {
+        console.log("[Worker:normals] station", stationId, "has", completeYears(normals.years).length, "complete years \u2014 using grid");
+        normals = null;
+      }
+    } catch (err) {
+      console.warn("[Worker:normals] NCEI normals failed \u2014 using grid:", err.message);
+      normals = null;
+    }
+  }
+  if (!normals) {
+    normals = await cachedJson(env, `normals:v1:om:${gridKey}`, 0, async () => {
+      const years = await fetchYears("open-meteo", null, lat, lon, NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR);
+      return { source: "open-meteo", years };
+    });
+  }
+  const used = completeYears(normals.years);
+  const normalYears = {};
+  for (const y of used) normalYears[y] = normals.years[y];
+  let previous = null;
+  try {
+    const id = normals.source === "ncei" ? `ncei:${stationId}` : `om:${gridKey}`;
+    previous = await cachedJson(env, `prevyear:v1:${id}:${prevYear}`, PREV_YEAR_CACHE_TTL, async () => {
+      const years = await fetchYears(normals.source, stationId, lat, lon, prevYear, prevYear);
+      return { year: prevYear, days: years[String(prevYear)] || [] };
+    });
+  } catch (err) {
+    console.warn("[Worker:normals] previous year fetch failed:", err.message);
+  }
+  console.log("[Worker:normals] source:", normals.source, "| years used:", used.length, "| previous year:", previous ? previous.year : "none");
+  return privateJson({
+    source: normals.source,
+    period: [NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR],
+    years_used: used.length,
+    years: normalYears,
+    previous_year: previous
   });
 }
 var GITHUB_REPO_OWNER = "o-mettam";
@@ -21694,6 +21952,9 @@ function searchRateLimited(env, ip) {
 }
 function accountRateLimited(env, ip) {
   return rateLimited(env, ip, "acct-rl", LIMITS.ceremony.limit, LIMITS.ceremony.windowSeconds);
+}
+function normalsRateLimited(env, ip) {
+  return rateLimited(env, ip, "normals-rl", LIMITS.normals.limit, LIMITS.normals.windowSeconds);
 }
 function statusRateLimited(env, ip) {
   return rateLimited(env, ip, "status-rl", LIMITS.status.limit, LIMITS.status.windowSeconds);
@@ -21843,6 +22104,22 @@ var index_default = {
       } catch (err) {
         console.error("[Worker:handleSearch] unexpected error:", err.message, err.stack);
         return jsonResponse4({ error: "An unexpected server error occurred. Please try again." }, 500);
+      }
+    }
+    if (url.pathname === "/api/normals" && request.method === "POST") {
+      const origin = request.headers.get("Origin");
+      if (!origin || !allowedOriginsFor(url).has(origin)) return privateJson({ error: "Forbidden" }, 403);
+      if (!await hasFlag(request, env, "season-normals")) return privateJson({ error: "Not found" }, 404);
+      const ip = request.headers.get("CF-Connecting-IP") || "";
+      if (await normalsRateLimited(env, ip)) {
+        console.warn("[Worker:normals] rate limit exceeded for IP:", maskIp(ip));
+        return privateJson({ error: "Too many requests. Please try again later." }, 429);
+      }
+      try {
+        return await handleNormals(request, env);
+      } catch (err) {
+        console.error("[Worker:normals] unexpected error:", err.message, err.stack);
+        return privateJson({ error: "Could not load historical data. Please try again later." }, 503);
       }
     }
     if (url.pathname === "/api/feedback" && request.method === "POST") {

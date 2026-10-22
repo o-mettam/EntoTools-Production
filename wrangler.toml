@@ -21,6 +21,7 @@ id = "f44e390b2fba41c78dc6e6fa2c487a9c"
 #   wrangler d1 execute entotools-accounts --file=migrations/0001_accounts.sql
 #   wrangler d1 execute entotools-accounts --file=migrations/0002_admin_audit.sql
 #   wrangler d1 execute entotools-accounts --file=migrations/0003_feature_flags.sql
+#   …through migrations/0008_flag_status.sql (see docs/feature-flags.md)
 # (add --remote to each once verified against a local copy)
 [[d1_databases]]
 binding = "DB"

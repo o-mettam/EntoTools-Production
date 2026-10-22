@@ -23,14 +23,21 @@ import manifest from '../csp-hashes.json' with { type: 'json' };
 const PUBLIC_SCRIPT_HOSTS = 'https://cdn.jsdelivr.net https://accounts.google.com https://static.cloudflareinsights.com';
 const PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://cloudflareinsights.com";
 
-function policy({ scriptHashes, scriptHosts, connect, styleHosts, fontHosts }) {
+// Per-route additions, kept as narrow as possible. /collection-database: the
+// Leaflet stylesheet (jsDelivr, with SRI) and OpenStreetMap tiles for the
+// collection map (collection-map flag), loaded only when the map is opened.
+const ROUTE_EXTRAS = {
+  '/collection-database': { styleHosts: 'https://cdn.jsdelivr.net', imgHosts: 'https://tile.openstreetmap.org' },
+};
+
+function policy({ scriptHashes, scriptHosts, connect, styleHosts, fontHosts, imgHosts }) {
   const hashes = (scriptHashes || []).map((h) => `'${h}'`).join(' ');
   return [
     "default-src 'self'",
     `script-src 'self'${hashes ? ' ' + hashes : ''}${scriptHosts ? ' ' + scriptHosts : ''}`,
     `style-src 'self' 'unsafe-inline'${styleHosts ? ' ' + styleHosts : ''}`,
     fontHosts ? `font-src 'self' ${fontHosts}` : "font-src 'self'",
-    "img-src 'self' data:",
+    `img-src 'self' data:${imgHosts ? ' ' + imgHosts : ''}`,
     `connect-src ${connect}`,
     "frame-ancestors 'none'",
     "object-src 'none'",
@@ -53,12 +60,14 @@ export function cspForPage(pathname, status) {
   let hashes = manifest.routes[routeKey(pathname)];
   // An unknown path is served the 404 page by Pages — use ITS hashes.
   if (!hashes && status === 404) hashes = manifest.routes['/404.html'];
+  const extras = (status !== 404 && ROUTE_EXTRAS[routeKey(pathname)]) || {};
   return policy({
     scriptHashes: hashes || [],
     scriptHosts: PUBLIC_SCRIPT_HOSTS,
     connect: PUBLIC_CONNECT,
-    styleHosts: 'https://fonts.googleapis.com',
+    styleHosts: 'https://fonts.googleapis.com' + (extras.styleHosts ? ' ' + extras.styleHosts : ''),
     fontHosts: 'https://fonts.gstatic.com',
+    imgHosts: extras.imgHosts,
   });
 }
 

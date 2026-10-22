@@ -21,6 +21,7 @@ import pkg from '../../package.json' with { type: 'json' };
 const API_ENDPOINTS = [
   { method: 'POST',   path: '/api/search',                     auth: 'none',           protection: 'per-IP limit, input caps (ranges/days)', purpose: 'Weather + station lookup for the calculator' },
   { method: 'POST',   path: '/api/feedback',                   auth: 'none',           protection: 'Origin allowlist, per-IP limit, PII redaction, Markdown neutralised', purpose: 'Feedback widget → public GitHub issue' },
+  { method: 'POST',   path: '/api/normals',                    auth: 'flag: season-normals', protection: 'Origin allowlist, flag check (404), per-IP limit, KV cache', purpose: '1991–2020 + previous-year temperatures for Season vs. Normal' },
   { method: 'GET',    path: '/api/status/ping',                auth: 'none',           protection: '—', purpose: 'Worker liveness' },
   { method: 'GET',    path: '/api/status/check?service=',      auth: 'none',           protection: 'per-IP limit, allow-listed targets', purpose: 'One upstream service probe (public /status page)' },
   { method: 'POST',   path: '/api/account/register/options',   auth: 'none / session', protection: 'Origin, ceremony + sign-up limits, unique email, re-auth when adding', purpose: 'Start passkey registration' },
@@ -38,7 +39,7 @@ const API_ENDPOINTS = [
   { method: 'DELETE', path: '/api/account/sessions',           auth: 'session',        protection: 'Origin', purpose: 'Sign out everywhere else' },
   { method: 'GET',    path: '/api/account/collection',         auth: 'session',        protection: '—', purpose: 'Pull account-synced collection' },
   { method: 'PUT',    path: '/api/account/collection',         auth: 'session',        protection: 'Origin, 1 MB / 20k-entry cap', purpose: 'Push collection' },
-  { method: 'GET',    path: '/api/account/flags',              auth: 'session',        protection: 'fail-closed (empty on error)', purpose: 'Own feature flags' },
+  { method: 'GET',    path: '/api/account/flags',              auth: 'none / session', protection: 'fail-closed (empty on error)', purpose: 'Flags in effect (ga + own targeted)' },
   { method: 'GET',    path: '/api/account/export',             auth: 'session',        protection: 'no-store, attachment', purpose: 'Data export (JSON)' },
   { method: 'DELETE', path: '/api/account',                    auth: 'session',        protection: 'Origin, step-up required', purpose: 'Delete own account' },
   { method: '*',      path: '/frost/admin/**',                 auth: 'Cloudflare Access + JWT', protection: 'Access JWT (RS256, aud/iss/exp), CSRF guard on writes, 404 on failure, audit log', purpose: 'This portal' },
@@ -144,6 +145,7 @@ export async function handleAdminRoute(request, env, path) {
         'GET    /frost/admin/status/upstream',
         'GET    /frost/admin/flags',
         'POST   /frost/admin/flags',
+        'PUT    /frost/admin/flags/:key/status',
         'GET    /frost/admin/flags/:key/users',
         'PUT    /frost/admin/users/:id/flags/:key',
         'DELETE /frost/admin/users/:id/flags/:key',
@@ -261,6 +263,22 @@ export async function handleAdminRoute(request, env, path) {
     if (!key) return jsonResponse({ error: 'A flag key is required.' }, 400);
     await db.defineFlag(env, { key, description: body.description });
     await db.writeAuditLog(env, { adminIdentity: adminEmail, action: 'define_flag', detail: key });
+    return jsonResponse({ success: true });
+  }
+
+  // Lifecycle: targeted → ga (general availability) or off (kill switch).
+  // See docs/feature-flags.md.
+  m = path.match(/^\/frost\/admin\/flags\/([^/]+)\/status$/);
+  if (m && method === 'PUT') {
+    const key = m[1];
+    let body;
+    try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
+    if (!db.FLAG_STATUSES.includes(body.status)) {
+      return jsonResponse({ error: 'Status must be one of: ' + db.FLAG_STATUSES.join(', ') + '.' }, 400);
+    }
+    const previous = await db.setFlagStatus(env, key, body.status);
+    if (previous === null) return jsonResponse({ error: 'Not found' }, 404);
+    await db.writeAuditLog(env, { adminIdentity: adminEmail, action: 'flag_status', detail: `${key}: ${previous} → ${body.status}` });
     return jsonResponse({ success: true });
   }
 

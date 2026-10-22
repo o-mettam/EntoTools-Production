@@ -1,7 +1,8 @@
 /**
  * EntoTools — Account system client (issue #35, phases 2-4).
  * Passkey sign-up/login/logout, self-service passkey management, and
- * feature-flag population (window.EntoFlags) used to gate other features —
+ * feature-flag population (window.EntoFlags, for signed-in and signed-out
+ * visitors alike — see docs/feature-flags.md) used to gate other features —
  * see public/sync/provider-gdrive.js, which only loads/activates Google
  * Drive Sync for users with the "gdrive-sync" flag (#37).
  *
@@ -123,13 +124,15 @@
       console.warn('[EntoAccount] checkSession: no active session (' + e.message + ')');
       state.user = null;
     }
+    // Flags are fetched signed in or not: 'ga' flags apply to everyone
+    // (docs/feature-flags.md), and the endpoint returns only those when
+    // there's no session.
     if (state.user) {
       await Promise.all([refreshFlags(), refreshCredentials(), refreshSessions()]);
     } else {
-      window.EntoFlags = new Set();
       state.credentials = [];
       state.sessions = [];
-      document.dispatchEvent(new CustomEvent('entoflags:updated'));
+      await refreshFlags();
     }
     // A throw in here (e.g. settings-panel markup not matching what this
     // expects on some page) would otherwise silently swallow the rest of

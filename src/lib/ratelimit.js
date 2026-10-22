@@ -17,6 +17,7 @@ export const LIMITS = {
   search:         { limit: 60,  windowSeconds: 3600, applies: 'POST /api/search' },
   feedback:       { limit: 5,   windowSeconds: 3600, applies: 'POST /api/feedback' },
   status:         { limit: 120, windowSeconds: 3600, applies: 'GET /api/status/check' },
+  normals:        { limit: 30,  windowSeconds: 3600, applies: 'POST /api/normals (season-normals flag)' },
   ceremony:       { limit: 20,  windowSeconds: 3600, applies: 'Passkey ceremony starts (register / login / re-auth options)' },
   signupAttempts: { limit: 6,   windowSeconds: 7200, applies: 'Sign-up attempts (register/options for a new account)' },
   signupAccounts: { limit: 3,   windowSeconds: 7200, applies: 'Accounts created (also mirrored in a per-browser cookie)' },

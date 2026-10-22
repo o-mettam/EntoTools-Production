@@ -257,11 +257,29 @@ export async function listFlagUsers(env, flagKey) {
   return results;
 }
 
-export async function getUserFlags(env, userId) {
-  const { results } = await env.DB.prepare(
-    'SELECT flag_key FROM user_feature_flags WHERE user_id = ?'
-  ).bind(userId).all();
+export const FLAG_STATUSES = ['targeted', 'ga', 'off'];
+
+// The flags a visitor actually gets: every 'ga' flag, plus — for a signed-in
+// user — their own assignments to 'targeted' flags. Joining on feature_flags
+// means an orphaned assignment or an 'off' flag never comes through.
+export async function getEffectiveFlags(env, userId) {
+  const { results } = userId
+    ? await env.DB.prepare(
+        "SELECT flag_key FROM feature_flags WHERE status = 'ga' " +
+        'UNION SELECT f.flag_key FROM user_feature_flags u JOIN feature_flags f ON f.flag_key = u.flag_key ' +
+        "WHERE u.user_id = ? AND f.status = 'targeted'"
+      ).bind(userId).all()
+    : await env.DB.prepare("SELECT flag_key FROM feature_flags WHERE status = 'ga'").all();
   return results.map((r) => r.flag_key);
+}
+
+// Returns the previous status (for the audit log), or null if no such flag.
+export async function setFlagStatus(env, flagKey, status) {
+  const row = await env.DB.prepare('SELECT status FROM feature_flags WHERE flag_key = ?').bind(flagKey).first();
+  if (!row) return null;
+  await env.DB.prepare('UPDATE feature_flags SET status = ?, status_changed_at = ? WHERE flag_key = ?')
+    .bind(status, nowIso(), flagKey).run();
+  return row.status;
 }
 
 export async function enableUserFlag(env, userId, flagKey) {
