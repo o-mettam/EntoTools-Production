@@ -1,0 +1,6 @@
+/* Input for the static Tailwind build — see tailwind.config.js. Everything
+ * page-specific lives in public/theme.css (loaded after the generated
+ * public/tailwind.css so it can override utilities). */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
