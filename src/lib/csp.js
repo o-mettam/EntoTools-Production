@@ -6,8 +6,8 @@
  * SHA-256 of every inline <script> block, per route, plus the admin GUI's.
  * Inline event handlers are gone entirely (data-action delegation in
  * public/theme.js), the Tailwind Play CDN is replaced by a static build, so
- * script-src is reduced to 'self', the page's own hashes, and three named
- * hosts. style-src keeps 'unsafe-inline': the pages carry small inline
+ * script-src is reduced to 'self', the page's own hashes, the exact external
+ * script URLs the page loads, and the analytics beacon host. style-src keeps 'unsafe-inline': the pages carry small inline
  * <style> blocks and JS-set style attributes, and inline CSS is not a
  * script-execution vector.
  *
@@ -17,10 +17,11 @@
  */
 import manifest from '../csp-hashes.json' with { type: 'json' };
 
-// Externally loaded scripts, all pinned by host: @simplewebauthn/browser
-// (jsDelivr, with SRI), Google Identity Services (Drive sync), and the
-// Cloudflare Web Analytics beacon the zone injects.
-const PUBLIC_SCRIPT_HOSTS = 'https://cdn.jsdelivr.net https://accounts.google.com https://static.cloudflareinsights.com';
+// Externally loaded scripts are allowed per page, by exact URL: gen-csp.js
+// records the jsDelivr files and Google Identity Services each page can load
+// (manifest.scriptSources). Only the Cloudflare Web Analytics beacon, which
+// the zone injects into every page, is allowed by host.
+const BEACON_HOST = 'https://static.cloudflareinsights.com';
 const PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://cloudflareinsights.com";
 
 // Per-route additions, kept as narrow as possible. /collection-database: the
@@ -57,13 +58,15 @@ function routeKey(pathname) {
 }
 
 export function cspForPage(pathname, status) {
-  let hashes = manifest.routes[routeKey(pathname)];
+  let key = routeKey(pathname);
   // An unknown path is served the 404 page by Pages — use ITS hashes.
-  if (!hashes && status === 404) hashes = manifest.routes['/404.html'];
+  if (!manifest.routes[key] && status === 404) key = '/404.html';
+  const hashes = manifest.routes[key];
+  const scriptSources = (manifest.scriptSources || {})[key] || [];
   const extras = (status !== 404 && ROUTE_EXTRAS[routeKey(pathname)]) || {};
   return policy({
     scriptHashes: hashes || [],
-    scriptHosts: PUBLIC_SCRIPT_HOSTS,
+    scriptHosts: [...scriptSources, BEACON_HOST].join(' '),
     connect: PUBLIC_CONNECT,
     styleHosts: 'https://fonts.googleapis.com' + (extras.styleHosts ? ' ' + extras.styleHosts : ''),
     fontHosts: 'https://fonts.gstatic.com',

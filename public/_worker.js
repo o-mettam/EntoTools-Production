@@ -19490,6 +19490,7 @@ async function requireSession(request, env) {
   }
   return null;
 }
+var REREGISTER_LINK_USED = "This re-registration link has expired or already been used.";
 async function handleRegisterOptions(request, env) {
   const url = new URL(request.url);
   const { rpID } = rpConfigFor(url);
@@ -19499,7 +19500,7 @@ async function handleRegisterOptions(request, env) {
   } catch (e) {
     return jsonResponse({ error: "Invalid request body." }, 400);
   }
-  let userId, label, isNewUser, viaToken = false;
+  let userId, label, isNewUser, viaToken = false, reregisterToken = null;
   const session = await requireSession(request, env);
   if (session) {
     if (!await consumeReauth(env, session)) return reauthRequired();
@@ -19511,9 +19512,9 @@ async function handleRegisterOptions(request, env) {
   } else if (body.reregisterToken) {
     const existingUserId = await env.GEOCODE_CACHE.get(`reregister-token:${body.reregisterToken}`);
     if (!existingUserId) {
-      return jsonResponse({ error: "This re-registration link has expired or already been used." }, 400);
+      return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
     }
-    await env.GEOCODE_CACHE.delete(`reregister-token:${body.reregisterToken}`);
+    reregisterToken = body.reregisterToken;
     const existing = await getUser(env, existingUserId);
     if (!existing) return jsonResponse({ error: "Account not found." }, 404);
     userId = existing.id;
@@ -19545,7 +19546,7 @@ async function handleRegisterOptions(request, env) {
     // Stop the same physical authenticator being registered twice for one account.
     excludeCredentials: (existingCredentials || []).map((c) => ({ id: c.credential_id }))
   });
-  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken }));
+  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken, reregisterToken }));
   return jsonResponse(options);
 }
 async function handleRegisterVerify(request, env) {
@@ -19592,6 +19593,13 @@ async function handleRegisterVerify(request, env) {
       throw err;
     }
     await bumpRateLimit(env, ip, "signup-ok", SIGNUP_WINDOW_SECONDS);
+  }
+  if (pending.viaToken) {
+    const key = `reregister-token:${pending.reregisterToken}`;
+    if (!pending.reregisterToken || await env.GEOCODE_CACHE.get(key) !== pending.userId) {
+      return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
+    }
+    await env.GEOCODE_CACHE.delete(key);
   }
   await saveCredential(env, {
     credentialId: regCred.id,
@@ -19945,7 +19953,7 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-10-22T21:22:41.745Z",
+  generated: "2026-10-22T21:33:13.019Z",
   tailwindHash: "427e2af05424",
   routes: {
     "/404.html": [],
@@ -19979,13 +19987,51 @@ var csp_hashes_default = {
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
     ]
   },
+  scriptSources: {
+    "/404.html": [],
+    "/500.html": [],
+    "/503.html": [],
+    "/collection-database": [
+      "https://accounts.google.com/gsi/",
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js",
+      "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+    ],
+    "/degree-day-calculator": [
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js",
+      "https://cdn.jsdelivr.net/npm/chart.js@4.5.1",
+      "https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0",
+      "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"
+    ],
+    "/documentation": [
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
+    ],
+    "/gdd-lookup": [
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
+    ],
+    "/": [
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
+    ],
+    "/privacy": [
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
+    ],
+    "/sample-collection": [
+      "https://accounts.google.com/gsi/",
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
+    ],
+    "/status": [
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
+    ],
+    "/terms": [
+      "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
+    ]
+  },
   admin: [
-    "sha256-hsbOtb/KWxuwxUsdcbsRe0fAZ7MA6e8FsjFvZQiArJM="
+    "sha256-+1DGfHpJbB5cuMHzxMiGWLSgtrLuIfE4ic4BeQ7Fmwo="
   ]
 };
 
 // src/lib/csp.js
-var PUBLIC_SCRIPT_HOSTS = "https://cdn.jsdelivr.net https://accounts.google.com https://static.cloudflareinsights.com";
+var BEACON_HOST = "https://static.cloudflareinsights.com";
 var PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://cloudflareinsights.com";
 var ROUTE_EXTRAS = {
   "/collection-database": { styleHosts: "https://cdn.jsdelivr.net", imgHosts: "https://tile.openstreetmap.org" }
@@ -20013,12 +20059,14 @@ function routeKey(pathname) {
   return key || "/";
 }
 function cspForPage(pathname, status) {
-  let hashes = csp_hashes_default.routes[routeKey(pathname)];
-  if (!hashes && status === 404) hashes = csp_hashes_default.routes["/404.html"];
+  let key = routeKey(pathname);
+  if (!csp_hashes_default.routes[key] && status === 404) key = "/404.html";
+  const hashes = csp_hashes_default.routes[key];
+  const scriptSources = (csp_hashes_default.scriptSources || {})[key] || [];
   const extras = status !== 404 && ROUTE_EXTRAS[routeKey(pathname)] || {};
   return policy({
     scriptHashes: hashes || [],
-    scriptHosts: PUBLIC_SCRIPT_HOSTS,
+    scriptHosts: [...scriptSources, BEACON_HOST].join(" "),
     connect: PUBLIC_CONNECT,
     styleHosts: "https://fonts.googleapis.com" + (extras.styleHosts ? " " + extras.styleHosts : ""),
     fontHosts: "https://fonts.gstatic.com",
@@ -20101,7 +20149,7 @@ async function checkAllServices() {
 // package.json
 var package_default = {
   name: "entotools-production",
-  version: "1.12.0",
+  version: "1.12.1",
   private: true,
   scripts: {
     dev: "wrangler pages dev public/",
@@ -20586,11 +20634,12 @@ var admin_default = `<!DOCTYPE html>
             if (!currentUserId) return;
             try {
                 const { token, expiresInSeconds } = await api('/frost/admin/users/' + encodeURIComponent(currentUserId) + '/reregister-token', { method: 'POST' });
-                // A real clickable link (?reregister=<token>), not a raw token
+                // A real clickable link (#reregister=<token>), not a raw token
                 // the user would have to paste somewhere themselves \u2014 account.js
-                // on the landing page picks this query param up automatically and
-                // walks them straight into "register a new passkey for my account".
-                const link = 'https://entotools.org/?reregister=' + encodeURIComponent(token);
+                // on the landing page picks it up automatically and walks them
+                // straight into "register a new passkey for my account". In the
+                // fragment, so the token never reaches request logs.
+                const link = 'https://entotools.org/#reregister=' + encodeURIComponent(token);
                 const el = document.getElementById('ud-token-result');
                 el.innerHTML = 'Send this link \u2014 expires in ' + Math.round(expiresInSeconds / 60) + ' minutes, single-use:<br>' +
                     '<a href="' + esc(link) + '" target="_blank" rel="noopener" class="text-lime-700 underline break-all">' + esc(link) + '</a>';

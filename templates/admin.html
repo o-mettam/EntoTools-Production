@@ -461,11 +461,12 @@
             if (!currentUserId) return;
             try {
                 const { token, expiresInSeconds } = await api('/frost/admin/users/' + encodeURIComponent(currentUserId) + '/reregister-token', { method: 'POST' });
-                // A real clickable link (?reregister=<token>), not a raw token
+                // A real clickable link (#reregister=<token>), not a raw token
                 // the user would have to paste somewhere themselves — account.js
-                // on the landing page picks this query param up automatically and
-                // walks them straight into "register a new passkey for my account".
-                const link = 'https://entotools.org/?reregister=' + encodeURIComponent(token);
+                // on the landing page picks it up automatically and walks them
+                // straight into "register a new passkey for my account". In the
+                // fragment, so the token never reaches request logs.
+                const link = 'https://entotools.org/#reregister=' + encodeURIComponent(token);
                 const el = document.getElementById('ud-token-result');
                 el.innerHTML = 'Send this link — expires in ' + Math.round(expiresInSeconds / 60) + ' minutes, single-use:<br>' +
                     '<a href="' + esc(link) + '" target="_blank" rel="noopener" class="text-lime-700 underline break-all">' + esc(link) + '</a>';

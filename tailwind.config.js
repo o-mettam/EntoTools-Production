@@ -27,7 +27,10 @@ const PALETTE = new Function('return ' + m[1])(); // eslint-disable-line no-new-
 module.exports = {
   content: [
     './templates/**/*.html',   // every page, plus the admin GUI bundled into the Worker
-    './public/*.js',           // account.js / feedback.js / theme.js build markup at runtime
+    // account.js / feedback.js / theme.js build markup at runtime. Not the
+    // generated _worker.js: the build runs Tailwind before re-bundling it, so
+    // scanning it picked up stray candidates from the previous bundle.
+    './public/!(_worker).js',
     './public/sync/*.js',
   ],
   darkMode: 'class',

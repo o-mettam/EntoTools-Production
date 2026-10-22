@@ -99,10 +99,22 @@ Every D1 statement in the codebase is a **string literal** passed to `prepare()`
 
 Login abuse beyond injection: login is username-less (discoverable credentials), so there is nothing to enumerate; a `login/verify` needs a challenge that exists in KV (single-use, 5-minute TTL) and a signature over it by a registered key; the sign counter rejects cloned authenticators; ceremony starts are rate-limited per IP.
 
+## Update — v1.12.0 / v1.12.1 (2026-10-22)
+
+Re-run after v1.11–v1.12 added `/api/normals`, the manual station option on `/api/search`, flag statuses, share links, the collection map and Drive sync. The new endpoints are rate-limited (`normals` 30/hour), validate their input before any upstream call, and check flags on the server. Drive access tokens live only in `sessionStorage`. Leaflet and Chart.js load with SRI.
+
+| Change | What was done |
+|---|---|
+| **Code scanning / Dependabot** (v1.12.0) | Feedback issue sanitizer escapes backslashes, so `\![x](…)` can no longer un-escape itself into a live image or link in a public issue. Email check is length-capped before its regex (quadratic backtracking). `gen-csp.js` matches `</script …>` variants and strips script blocks to a fixed point. Dev dependencies updated (wrangler 4.152.0; `postcss-selector-parser` forced to 7.1.6 by override). Alert #6, inside the bundled `@peculiar/x509`, dismissed as third-party code. |
+| **Exact external script sources** (v1.12.1) | `script-src` no longer allows all of `cdn.jsdelivr.net` and `accounts.google.com` on every page; anyone can publish to jsDelivr, so an injection could have loaded an arbitrary package. `gen-csp.js` now records the exact external scripts each page can load (from the page and the first-party scripts it includes) and the Worker allows only those: the passkey library everywhere, Chart.js on the calculator, Leaflet on the collection database, and Google Identity Services (`/gsi/`) on the two Drive-sync pages. Only the Cloudflare analytics beacon is still allowed by host. |
+| **R5 Re-registration links** (v1.12.1) | The token is checked when the prompt opens but consumed only in `register/verify`, after the passkey verifies and only if it still maps to the same account, so a cancelled prompt no longer burns the link. Links are now `/#reregister=…`: the fragment is never sent to the server, so the token stays out of request logs. `account.js` removes it from the address bar as soon as it's read, and still accepts `?reregister=` links issued earlier. |
+| **Header and build hygiene** (v1.12.1) | `_headers` drops the `Access-Control-Allow-Origin: *` Pages adds to every static file; the public APIs set their own CORS headers in the Worker. Tailwind no longer scans the generated `_worker.js`, which could carry stray classes over from the previous build. |
+
 ### Still open
 
 - **R1 — verify that the sign-up email is actually the visitor's.** Uniqueness is now enforced, but ownership is not. Needs an email sender (Cloudflare Email Workers / Resend / Postmark) and a one-time link before the account becomes usable. Until then, the admin procedure for issuing re-registration links should include an out-of-band identity check.
-- **R5** — consume the re-registration token on verify rather than options; move it out of the URL.
 - **R6** — dashboard items (Access SameSite, WAF rate limit, Workers Logs, `GITHUB_TOKEN` scope).
+- **R8** — `www.entotools.org` still serves the site itself rather than redirecting to the apex, and the session cookie is `Domain=entotools.org`. Fine while only the apex and `www` exist.
+- **`braces`** (Tailwind 3 build dependency): every published version is affected by GHSA-vfj7-8cjw-p6xm; the only fix is Tailwind 4. Build-time only, and it processes only this repo's own templates.
 
-*Last updated with v1.10.0. Re-run this assessment when email verification (R1) lands or when a new data-bearing endpoint is added.*
+*Last updated with v1.12.1. Re-run this assessment when email verification (R1) lands or when a new data-bearing endpoint is added.*

@@ -162,6 +162,8 @@ export async function requireSession(request, env) {
 }
 
 // ── Registration ────────────────────────────────────────────────
+const REREGISTER_LINK_USED = 'This re-registration link has expired or already been used.';
+
 // body: { label } for a brand-new account, OR { reregisterToken } to attach
 // a fresh passkey to an existing account after an admin-issued reset (#36).
 export async function handleRegisterOptions(request, env) {
@@ -170,7 +172,7 @@ export async function handleRegisterOptions(request, env) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
 
-  let userId, label, isNewUser, viaToken = false;
+  let userId, label, isNewUser, viaToken = false, reregisterToken = null;
   const session = await requireSession(request, env);
   if (session) {
     // Already logged in — this is "add another passkey to my account," not a
@@ -186,11 +188,13 @@ export async function handleRegisterOptions(request, env) {
     label = existing.label;
     isNewUser = false;
   } else if (body.reregisterToken) {
+    // Checked here but only consumed in register/verify (assessment R5), so
+    // cancelling the browser prompt doesn't burn the link.
     const existingUserId = await env.GEOCODE_CACHE.get(`reregister-token:${body.reregisterToken}`);
     if (!existingUserId) {
-      return jsonResponse({ error: 'This re-registration link has expired or already been used.' }, 400);
+      return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
     }
-    await env.GEOCODE_CACHE.delete(`reregister-token:${body.reregisterToken}`); // single-use
+    reregisterToken = body.reregisterToken;
     const existing = await db.getUser(env, existingUserId);
     if (!existing) return jsonResponse({ error: 'Account not found.' }, 404);
     userId = existing.id;
@@ -230,7 +234,7 @@ export async function handleRegisterOptions(request, env) {
     excludeCredentials: (existingCredentials || []).map((c) => ({ id: c.credential_id })),
   });
 
-  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken }));
+  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken, reregisterToken }));
   return jsonResponse(options);
 }
 
@@ -279,6 +283,15 @@ export async function handleRegisterVerify(request, env) {
       throw err;
     }
     await bumpRateLimit(env, ip, 'signup-ok', SIGNUP_WINDOW_SECONDS);
+  }
+  if (pending.viaToken) {
+    // Single-use: the link is spent only now, once a passkey has verified.
+    // It must still exist and still point at the same account.
+    const key = `reregister-token:${pending.reregisterToken}`;
+    if (!pending.reregisterToken || (await env.GEOCODE_CACHE.get(key)) !== pending.userId) {
+      return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
+    }
+    await env.GEOCODE_CACHE.delete(key);
   }
   await db.saveCredential(env, {
     credentialId: regCred.id,

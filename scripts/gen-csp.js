@@ -61,6 +61,32 @@ function guard(label, html) {
   if (/\b(href|src|action)\s*=\s*["']\s*javascript:/i.test(markup)) fail(`${label}: javascript: URL`);
 }
 
+// External scripts a page can load (security assessment 2026-10). Each
+// page's script-src lists exactly these — not the whole of cdn.jsdelivr.net,
+// where anyone can publish a package. Collected from the page itself and
+// from every first-party script it includes, since some are loaded at
+// runtime (account.js → @simplewebauthn/browser, the Drive and map loaders).
+// Google Identity Services is allowed by its /gsi/ directory: the client
+// lives at /gsi/client and Google doesn't version that URL.
+const EXTERNAL_SCRIPT_RE = /https:\/\/(?:cdn\.jsdelivr\.net\/npm\/[^'"`\s)]+|accounts\.google\.com\/gsi\/client)/g;
+
+function externalScripts(html) {
+  const sources = [html];
+  for (const m of html.matchAll(/<script\b[^>]*\bsrc\s*=\s*["'](\/[^"'?#]+\.js)/gi)) {
+    const local = path.join(PUBLIC, m[1]);
+    if (!local.startsWith(PUBLIC + path.sep)) fail(`script path escapes public/: ${m[1]}`);
+    if (fs.existsSync(local)) sources.push(fs.readFileSync(local, 'utf8'));
+  }
+  const urls = new Set();
+  for (const text of sources) {
+    for (const [url] of text.matchAll(EXTERNAL_SCRIPT_RE)) {
+      if (/\.(css|map)$/.test(url)) continue; // stylesheets are style-src's business
+      urls.add(url.startsWith('https://accounts.google.com/') ? 'https://accounts.google.com/gsi/' : url);
+    }
+  }
+  return [...urls].sort();
+}
+
 function routeFor(rel) {
   // public/index.html → "/", public/status/index.html → "/status", public/404.html → "/404.html"
   if (rel === 'index.html') return '/';
@@ -88,6 +114,7 @@ if (!fs.existsSync(twPath)) fail('public/tailwind.css is missing — run the Tai
 const tailwindHash = crypto.createHash('sha256').update(fs.readFileSync(twPath)).digest('hex').slice(0, 12);
 
 const routes = {};
+const scriptSources = {};
 for (const rel of walkHtml(PUBLIC).sort()) {
   const file = path.join(PUBLIC, rel);
   let html = fs.readFileSync(file, 'utf8');
@@ -95,13 +122,15 @@ for (const rel of walkHtml(PUBLIC).sort()) {
   if (stamped !== html) { fs.writeFileSync(file, stamped); html = stamped; }
   guard('public/' + rel, html);
   routes[routeFor(rel)] = inlineScripts(html).map(hashOf);
+  scriptSources[routeFor(rel)] = externalScripts(html);
 }
 
 const adminHtml = fs.readFileSync(path.join(ROOT, 'templates', 'admin.html'), 'utf8');
 guard('templates/admin.html', adminHtml);
 const admin = inlineScripts(adminHtml).map(hashOf);
 
-const manifest = { generated: new Date().toISOString(), tailwindHash, routes, admin };
+const manifest = { generated: new Date().toISOString(), tailwindHash, routes, scriptSources, admin };
 fs.writeFileSync(OUT, JSON.stringify(manifest, null, 2) + '\n');
 const total = Object.values(routes).reduce((n, a) => n + a.length, 0) + admin.length;
-console.log(`✓ gen-csp: ${Object.keys(routes).length} routes + admin, ${total} inline script hash(es) → src/csp-hashes.json`);
+const external = new Set(Object.values(scriptSources).flat()).size;
+console.log(`✓ gen-csp: ${Object.keys(routes).length} routes + admin, ${total} inline script hash(es), ${external} external script source(s) → src/csp-hashes.json`);

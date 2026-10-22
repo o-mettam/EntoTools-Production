@@ -34,14 +34,24 @@
   // src/index.js) — accounts require an email, not an arbitrary display name.
   var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  // Set from a ?reregister=<token> URL param (see below) — an admin-issued
-  // link from the admin portal after resetting a user's passkeys (#36).
+  // Set from an admin-issued link after resetting a user's passkeys (#36).
+  // Links carry the token in the fragment (#reregister=…), which browsers
+  // never send to the server, so it stays out of request logs (assessment
+  // R5); ?reregister=… is still read for links issued before that change.
+  // Taken out of the address bar as soon as it's read. The token stays
+  // valid until a passkey is actually registered, so a reload just needs
+  // the link clicked again.
   var pendingReregisterToken = null;
 
-  function clearReregisterFromUrl() {
+  function takeReregisterToken() {
     var url = new URL(location.href);
+    var hashMatch = url.hash.match(/^#reregister=([^&]+)/);
+    var token = hashMatch ? decodeURIComponent(hashMatch[1]) : url.searchParams.get('reregister');
+    if (!token) return null;
     url.searchParams.delete('reregister');
+    if (hashMatch) url.hash = '';
     history.replaceState(null, '', url.toString());
+    return token;
   }
 
   function loadScript(src, integrity) {
@@ -229,7 +239,7 @@
     await checkSession();
   }
 
-  // An admin-issued single-use link (?reregister=<token>) after resetting a
+  // An admin-issued single-use link (#reregister=<token>) after resetting a
   // user's passkeys (#36) — the server links the new passkey to that same
   // existing account instead of creating a new one, but only via this exact
   // token; a normal signUp() with a matching label never does this (#35).
@@ -349,7 +359,6 @@
         try {
           await reregisterWithToken(pendingReregisterToken);
           pendingReregisterToken = null;
-          clearReregisterFromUrl();
           setStatus('Passkey registered.');
           closeModalSoon();
         } catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
@@ -559,7 +568,7 @@
     refresh: checkSession,
   };
 
-  pendingReregisterToken = new URL(location.href).searchParams.get('reregister');
+  pendingReregisterToken = takeReregisterToken();
   checkSession().then(function () {
     if (pendingReregisterToken) openModal();
   });
