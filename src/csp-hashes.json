@@ -1,12 +1,12 @@
 {
-  "generated": "2026-10-22T21:33:13.019Z",
+  "generated": "2026-11-17T19:11:53.377Z",
   "tailwindHash": "427e2af05424",
   "routes": {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-CqfkLySfosL5GULrDtCo66Mcrkq6gdQgG6Pf/65im8I="
+      "sha256-qVkR+jCaoC6C1golYugeNkNXD38TUHkfToqkKJu6aXw="
     ],
     "/degree-day-calculator": [
       "sha256-RxHe4yot4psQWKdhJHCD0exX7DfvKxYIoOk3F1kH+nY="
@@ -27,7 +27,7 @@
       "sha256-OusoIA4AkTVWpYu1CHTIuf1bNLsi+e06oypr3htKAWU="
     ],
     "/status": [
-      "sha256-NgahHYqtLrcGdcaR1E9zjUk+fRJ63n47xhU4ikrJgD0="
+      "sha256-2GTXDTyeSeqQc89AnNIG0jBJQC/99zPphelOsacOSaA="
     ],
     "/terms": [
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
@@ -72,6 +72,6 @@
     ]
   },
   "admin": [
-    "sha256-+1DGfHpJbB5cuMHzxMiGWLSgtrLuIfE4ic4BeQ7Fmwo="
+    "sha256-IfTAjklBZh0Do6YWMV1Vla/pv6UBF6/5RJwgiBk+4AA="
   ]
 }

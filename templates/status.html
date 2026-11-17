@@ -249,7 +249,15 @@
                 result.innerHTML = `<span class="text-xs text-yellow-600 font-medium">Slow</span>${latencyMs != null ? `<br><span class="text-xs text-slate-400">${latencyMs}ms</span>` : ''}`;
             } else {
                 dot.classList.add('bg-red-500');
-                result.innerHTML = `<span class="text-xs text-red-600 font-medium">Down</span>${errorMsg ? `<br><span class="text-xs text-slate-400" title="${errorMsg}">${errorMsg.slice(0, 30)}</span>` : ''}`;
+                result.innerHTML = '<span class="text-xs text-red-600 font-medium">Down</span>';
+                if (errorMsg) {
+                    // textContent / .title, never markup: the message comes from the server.
+                    const detail = document.createElement('span');
+                    detail.className = 'text-xs text-slate-400';
+                    detail.title = String(errorMsg);
+                    detail.textContent = String(errorMsg).slice(0, 30);
+                    result.append(document.createElement('br'), detail);
+                }
             }
         }
 

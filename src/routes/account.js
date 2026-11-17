@@ -38,7 +38,7 @@ function signupCookieCount(request) {
   return m ? parseInt(m[1], 10) || 0 : 0;
 }
 function signupCookie(count, url) {
-  return `${SIGNUP_COOKIE}=${count}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SIGNUP_WINDOW_SECONDS}${cookieDomainAttr(url)}`;
+  return `${SIGNUP_COOKIE}=${count}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SIGNUP_WINDOW_SECONDS}`;
 }
 const SIGNUP_LIMIT_MESSAGE = 'Too many accounts have been created from your network recently. Please try again in a couple of hours.';
 const EMAIL_TAKEN_MESSAGE = 'An account with this email already exists. Sign in with your passkey instead — or, if you’ve lost it, contact an admin for a re-registration link.';
@@ -78,66 +78,73 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), { status, headers });
 }
 
-// Without an explicit Domain, the cookie is host-only — set while visiting
-// entotools.org it would NOT be sent on www.entotools.org, or vice versa
-// (this was a real bug: sign up on one exact host, then look logged-out on
-// the other). A bare "entotools.org" Domain (no leading dot) covers both
-// per the modern Cookie spec. Local dev keeps a host-only cookie — browsers
-// don't reliably accept a Domain attribute for "localhost".
-function cookieDomainAttr(url) {
+// Session cookie (security assessment 2026-11, R8). The session now lives
+// in a host-only "__Host-ento_session" cookie. Browsers only accept a
+// __Host- cookie that is Secure, has Path=/ and has NO Domain attribute, so
+// no subdomain of entotools.org can read, set or overwrite it (the old
+// "Domain=entotools.org" cookie was sent to every subdomain).
+//
+// This depends on www.entotools.org 301-redirecting to entotools.org at
+// Cloudflare (Redirect Rule, see docs/security-assessment-2026-09.md): a
+// host-only cookie set on one host is not sent to the other, which was the
+// logged-out-on-www bug in #38/#39. With the redirect in place every visit
+// lands on the apex, so a host-only cookie is enough.
+const SESSION_COOKIE = '__Host-ento_session';
+const SESSION_ATTRS = 'Path=/; HttpOnly; Secure; SameSite=Lax';
+
+// Legacy cookies from before v1.12.2, both named ento_session: the
+// Domain=entotools.org one (v1.6.3+) and the host-only one from before that
+// (the ghost-cookie problem, #38/#39). Every response that sets or clears
+// the session also clears both, and requireSession() still accepts a
+// legacy value so nobody is signed out by the upgrade. The legacy read can
+// be removed once SESSION_TTL_SECONDS (30 days) has passed since v1.12.2
+// went live — no legacy session can still be valid after that.
+const LEGACY_SESSION_COOKIE = 'ento_session';
+function legacyClears(url) {
   const host = url.hostname;
-  if (host === 'localhost' || host === '127.0.0.1') return '';
-  return '; Domain=entotools.org';
+  const clears = [`${LEGACY_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`];
+  if (host !== 'localhost' && host !== '127.0.0.1') {
+    clears.push(`${LEGACY_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Domain=entotools.org`);
+  }
+  return clears;
 }
 
-// The ghost-cookie problem (#38/#39): sessions issued before v1.6.3 set a
-// HOST-ONLY ento_session cookie (no Domain attribute). Adding Domain= made
-// every later cookie a *different* cookie as far as browsers are concerned
-// (host-only flag is part of a cookie's identity), so a browser that still
-// held the old one sent BOTH — and per RFC 6265 §5.4 the older cookie is
-// listed first. The server took the first match, looked up a long-revoked
-// session, and answered 401 right after a perfectly good login. Two-part
-// fix: (1) every response that sets the session cookie also clears the
-// host-only variant, and (2) requireSession() tries every ento_session
-// value it's sent rather than only the first.
-const HOST_ONLY_CLEAR = 'ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
-
 function sessionCookies(id, maxAgeSeconds, url) {
-  const domain = cookieDomainAttr(url);
-  const set = `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}${domain}`;
-  // On localhost the real cookie IS host-only — clearing it would undo the login.
-  return domain ? [set, HOST_ONLY_CLEAR] : [set];
+  return [`${SESSION_COOKIE}=${id}; ${SESSION_ATTRS}; Max-Age=${maxAgeSeconds}`, ...legacyClears(url)];
 }
 
 function clearSessionCookies(url) {
-  const domain = cookieDomainAttr(url);
-  const clear = `ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0${domain}`;
-  return domain ? [clear, HOST_ONLY_CLEAR] : [clear];
+  return [`${SESSION_COOKIE}=; ${SESSION_ATTRS}; Max-Age=0`, ...legacyClears(url)];
 }
 
+// Every candidate session id the browser sent: the current cookie first,
+// then any legacy ones. requireSession() tries each in turn, so a stale
+// value listed first can't hide a good one (#38/#39).
 function getSessionIdsFromCookie(request) {
   const cookie = request.headers.get('Cookie') || '';
-  const ids = [];
-  const re = /(?:^|;\s*)ento_session=([^;]*)/g;
+  const current = [], legacy = [];
+  const re = /(?:^|;\s*)(__Host-ento_session|ento_session)=([^;]*)/g;
   let m;
-  while ((m = re.exec(cookie)) !== null) if (m[1]) ids.push(m[1]);
-  return ids;
+  while ((m = re.exec(cookie)) !== null) {
+    if (m[2]) (m[1] === SESSION_COOKIE ? current : legacy).push(m[2]);
+  }
+  return [...current, ...legacy];
 }
 
-// Challenges are short-lived and single-use — KV (already bound as
-// GEOCODE_CACHE) is a better fit than a D1 table: TTL expiry is automatic,
-// and nothing here needs to survive being read once.
+// Challenges are short-lived and single-use. They live in D1, not KV
+// (assessment 2026-11, #3): KV is eventually consistent, so its
+// read-then-delete let one challenge be redeemed twice within ~60 s. D1
+// consumes it with a single DELETE … RETURNING (src/lib/db.js).
 async function storeChallenge(env, challenge, contextJson) {
-  await env.GEOCODE_CACHE.put(`webauthn-challenge:${challenge}`, contextJson, {
-    expirationTtl: CHALLENGE_TTL_SECONDS,
-  });
+  await db.storeChallenge(env, challenge, contextJson, CHALLENGE_TTL_SECONDS);
 }
 async function consumeChallenge(env, challenge) {
-  const key = `webauthn-challenge:${challenge}`;
-  const value = await env.GEOCODE_CACHE.get(key);
-  if (value) await env.GEOCODE_CACHE.delete(key);
-  return value;
+  if (typeof challenge !== 'string' || challenge.length > 128) return null;
+  return db.consumeChallenge(env, challenge);
 }
+
+// Re-registration tokens are crypto.randomUUID() values (src/routes/admin.js).
+const REREGISTER_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Used by both the account session endpoint and #37's flags endpoint.
 export async function requireSession(request, env) {
@@ -190,7 +197,9 @@ export async function handleRegisterOptions(request, env) {
   } else if (body.reregisterToken) {
     // Checked here but only consumed in register/verify (assessment R5), so
     // cancelling the browser prompt doesn't burn the link.
-    const existingUserId = await env.GEOCODE_CACHE.get(`reregister-token:${body.reregisterToken}`);
+    const existingUserId = typeof body.reregisterToken === 'string' && REREGISTER_TOKEN_RE.test(body.reregisterToken)
+      ? await db.peekReregisterToken(env, body.reregisterToken)
+      : null;
     if (!existingUserId) {
       return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
     }
@@ -286,12 +295,11 @@ export async function handleRegisterVerify(request, env) {
   }
   if (pending.viaToken) {
     // Single-use: the link is spent only now, once a passkey has verified.
-    // It must still exist and still point at the same account.
-    const key = `reregister-token:${pending.reregisterToken}`;
-    if (!pending.reregisterToken || (await env.GEOCODE_CACHE.get(key)) !== pending.userId) {
+    // It must still exist and still point at the same account. The consume
+    // is atomic, so two concurrent verifies can't both attach a passkey.
+    if (!pending.reregisterToken || !(await db.consumeReregisterToken(env, pending.reregisterToken, pending.userId))) {
       return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
     }
-    await env.GEOCODE_CACHE.delete(key);
   }
   await db.saveCredential(env, {
     credentialId: regCred.id,
@@ -560,13 +568,15 @@ export async function handleRenameCredential(request, env, credentialId) {
 // logic — merging stays entirely client-side in EntoStore.mergeEnvelopes().
 export async function handleGetCollection(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401);
+  if (!session) return jsonResponse({ error: 'Not logged in.' }, 401, NO_STORE);
   const row = await db.getCollection(env, session.user_id);
-  if (!row) return jsonResponse({ json: null, meta: {} });
+  // no-store like every other account GET (assessment 2026-11, #10): this
+  // is the user's own data and must never be served from a cache.
+  if (!row) return jsonResponse({ json: null, meta: {} }, 200, NO_STORE);
   let parsed = null;
   try { parsed = JSON.parse(row.envelope); }
   catch (e) { console.warn('[Worker:account] stored collection envelope failed to parse:', e.message); }
-  return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } });
+  return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } }, 200, NO_STORE);
 }
 
 // Hard caps on what one account may store. A real collection of a few

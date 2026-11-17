@@ -99,12 +99,17 @@ function notFound() { return new Response('Not found', { status: 404, headers: S
 // same-origin is rejected; a request with neither header (curl, a script
 // using an Access service token) isn't a CSRF vector and passes through.
 const ADMIN_ORIGINS = new Set(['https://entotools.org', 'https://www.entotools.org']);
+// The wrangler dev origin is accepted only when the Worker itself is being
+// served from localhost (assessment 2026-11, #9) — never in production.
 function crossSiteWrite(request) {
   if (request.method === 'GET' || request.method === 'HEAD') return false;
   const site = request.headers.get('Sec-Fetch-Site');
   if (site && site !== 'same-origin' && site !== 'none') return true;
   const origin = request.headers.get('Origin');
-  if (origin && !ADMIN_ORIGINS.has(origin) && !origin.startsWith('http://localhost:')) return true;
+  const host = new URL(request.url).hostname;
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  const devOk = isLocal && origin === 'http://localhost:8788';
+  if (origin && !ADMIN_ORIGINS.has(origin) && !devOk) return true;
   return false;
 }
 
@@ -198,10 +203,9 @@ export async function handleAdminRoute(request, env, path) {
     const userId = m[1];
     const user = await db.getUser(env, userId);
     if (!user) return jsonResponse({ error: 'Not found' }, 404);
+    // D1, not KV (assessment 2026-11, #3): consumed atomically at verify.
     const token = crypto.randomUUID();
-    await env.GEOCODE_CACHE.put(`reregister-token:${token}`, userId, {
-      expirationTtl: REREGISTER_TOKEN_TTL_SECONDS,
-    });
+    await db.createReregisterToken(env, token, userId, REREGISTER_TOKEN_TTL_SECONDS);
     await db.writeAuditLog(env, { adminIdentity: adminEmail, action: 'issue_reregister_token', targetUserId: userId });
     return jsonResponse({ token, expiresInSeconds: REREGISTER_TOKEN_TTL_SECONDS });
   }
@@ -237,6 +241,7 @@ export async function handleAdminRoute(request, env, path) {
         accessConfigured: !!(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD),
         accessTeamDomain: env.CF_ACCESS_TEAM_DOMAIN || null,
         githubTokenConfigured: !!env.GITHUB_TOKEN,
+        ipHashKeyConfigured: !!env.IP_HASH_KEY,
         d1Bound: !!env.DB,
         kvBound: !!env.GEOCODE_CACHE,
         assetsBound: !!env.ASSETS,

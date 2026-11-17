@@ -42,8 +42,10 @@ export async function getUserDetail(env, userId) {
   const { results: credentials } = await env.DB.prepare(
     'SELECT credential_id, device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at DESC'
   ).bind(userId).all();
+  // No s.id: a session id IS the session cookie, so it never leaves the
+  // server — not even to the admin portal (assessment 2026-11, #5).
   const { results: sessions } = await env.DB.prepare(
-    'SELECT s.id, s.created_at, s.expires_at, s.last_seen_at, c.device_label FROM sessions s ' +
+    'SELECT s.created_at, s.expires_at, s.last_seen_at, c.device_label FROM sessions s ' +
     'LEFT JOIN credentials c ON c.credential_id = s.credential_id WHERE s.user_id = ? ORDER BY s.created_at DESC'
   ).bind(userId).all();
   return { user, credentials, sessions };
@@ -83,6 +85,7 @@ export async function deleteUser(env, userId) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM credentials WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM reregister_tokens WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM user_feature_flags WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM collections WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId),
@@ -339,4 +342,51 @@ export async function renameCredential(env, userId, credentialId, deviceLabel) {
 // table only ever grew. Called opportunistically on each successful login.
 export async function purgeExpiredSessions(env) {
   await env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(nowIso()).run();
+}
+
+// ── Single-use secrets (migration 0011, assessment 2026-11 #3) ──
+// Each consume is ONE statement (DELETE … RETURNING), so two concurrent
+// requests can never both redeem the same challenge or token — unlike the
+// KV read-then-delete these replace.
+export async function storeChallenge(env, challenge, context, ttlSeconds) {
+  const now = Date.now();
+  await env.DB.batch([
+    // Expired rows are worthless; clearing them here keeps the table small.
+    env.DB.prepare('DELETE FROM webauthn_challenges WHERE expires_at < ?').bind(new Date(now).toISOString()),
+    env.DB.prepare('INSERT INTO webauthn_challenges (challenge, context, expires_at) VALUES (?, ?, ?)')
+      .bind(challenge, context, new Date(now + ttlSeconds * 1000).toISOString()),
+  ]);
+}
+
+// Returns the stored context, or null if unknown, expired or already used.
+export async function consumeChallenge(env, challenge) {
+  const row = await env.DB.prepare(
+    'DELETE FROM webauthn_challenges WHERE challenge = ? AND expires_at > ? RETURNING context'
+  ).bind(challenge, nowIso()).first();
+  return row ? row.context : null;
+}
+
+export async function createReregisterToken(env, token, userId, ttlSeconds) {
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM reregister_tokens WHERE expires_at < ?').bind(new Date(now).toISOString()),
+    env.DB.prepare('INSERT INTO reregister_tokens (token, user_id, expires_at) VALUES (?, ?, ?)')
+      .bind(token, userId, new Date(now + ttlSeconds * 1000).toISOString()),
+  ]);
+}
+
+// Read-only check (register/options): the user id, or null.
+export async function peekReregisterToken(env, token) {
+  const row = await env.DB.prepare('SELECT user_id FROM reregister_tokens WHERE token = ? AND expires_at > ?')
+    .bind(token, nowIso()).first();
+  return row ? row.user_id : null;
+}
+
+// Spends the token (register/verify) — true exactly once, and only if it
+// still belongs to the same account.
+export async function consumeReregisterToken(env, token, userId) {
+  const row = await env.DB.prepare(
+    'DELETE FROM reregister_tokens WHERE token = ? AND user_id = ? AND expires_at > ? RETURNING user_id'
+  ).bind(token, userId, nowIso()).first();
+  return !!row;
 }

@@ -286,8 +286,23 @@
       }
 
       statusEl.className = 'feedback-status-success';
-      if (data.issue_url) {
-        statusEl.innerHTML = 'Thank you! Your feedback has been submitted. <a href="' + data.issue_url + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">View issue →</a>';
+      // Built with DOM APIs, not innerHTML, and only for a github.com https
+      // URL — the response is trusted, but it's still not ours to inline.
+      let issueUrl = null;
+      try {
+        const u = new URL(data.issue_url);
+        if (u.protocol === 'https:' && u.hostname === 'github.com') issueUrl = u.href;
+      } catch (e) { /* missing or malformed — no link */ }
+      if (issueUrl) {
+        statusEl.textContent = 'Thank you! Your feedback has been submitted. ';
+        const link = document.createElement('a');
+        link.href = issueUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.style.color = 'inherit';
+        link.style.textDecoration = 'underline';
+        link.textContent = 'View issue →';
+        statusEl.appendChild(link);
       } else {
         statusEl.textContent = 'Thank you! Your feedback has been submitted.';
       }

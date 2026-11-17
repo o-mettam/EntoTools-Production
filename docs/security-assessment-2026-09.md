@@ -117,4 +117,43 @@ Re-run after v1.11–v1.12 added `/api/normals`, the manual station option on `/
 - **R8** — `www.entotools.org` still serves the site itself rather than redirecting to the apex, and the session cookie is `Domain=entotools.org`. Fine while only the apex and `www` exist.
 - **`braces`** (Tailwind 3 build dependency): every published version is affected by GHSA-vfj7-8cjw-p6xm; the only fix is Tailwind 4. Build-time only, and it processes only this repo's own templates.
 
-*Last updated with v1.12.1. Re-run this assessment when email verification (R1) lands or when a new data-bearing endpoint is added.*
+## Update — v1.12.2 (2026-11-17)
+
+A fresh full read of `src/`, `public/`, `templates/`, `migrations/` and the build scripts, plus a scan of the whole git history for secrets (none found). Ten new findings, all fixed in this release except where a dashboard step is needed.
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 1 | Medium | **Per-IP limits counted each IPv6 address separately.** A home connection or cloud server usually gets a whole /64, so one caller could rotate addresses forever and never hit the sign-up, feedback (public GitHub issues), search or normals limits. | IPv6 callers are counted per /64 (`rateLimitSubject` in `src/lib/ratelimit.js`). |
+| 2 | Medium | **Preview deployments shared the production D1/KV bindings** (no `[env.preview]`), so a preview build of any branch ran against real accounts. | `wrangler.toml` has a ready-to-fill `[env.preview]` block with setup steps. **Needs:** create the preview DB/KV and paste in their IDs; turn on an Access policy for preview deployments. |
+| 3 | Low–Med | **Single-use challenges and re-registration tokens lived in KV**, which is eventually consistent, so read-then-delete let one be redeemed twice within ~60 s (two passkeys from one link; replay of a captured login assertion for synced passkeys, whose counter is always 0). | Moved to D1 (migration 0011) and consumed with a single `DELETE … RETURNING`, so only one request can ever get a row back. Tokens must look like a UUID before any lookup. |
+| 4 | Low | Collection Database table rendered an imported CSV `Date Start` into `innerHTML` unescaped (HTML injection; CSP blocked scripts). | Escaped. |
+| 5 | Low | Admin user-detail API returned live session IDs (the cookie values). | Removed from the query. |
+| 6 | Low | Rate-limit keys were unkeyed SHA-256, so they could be reversed by brute force for IPv4. | HMAC-SHA-256 under the new `IP_HASH_KEY` secret (falls back to SHA-256, with a log warning, until it's set). Shown on the admin Status tab. |
+| 7 | Low | `/api/normals` wrote permanent KV entries for any well-formed station ID and any 0.01° grid cell. | Station must exist in `stations.json` (canonical ID used for the key); grid entries expire after 90 days. |
+| 8 | Low | `/api/search` accepted unbounded city/state/country (KV keys over 512 bytes → 500) and any `new Date()`-parseable date. | Place fields capped at 100 characters; dates must be `YYYY-MM-DD`; range labels capped at 60. |
+| 9 | Low | Admin cross-site-write guard accepted `http://localhost:*` origins in production. | Only when the Worker itself is served from localhost. |
+| 10 | Hygiene | Feedback success link and status-page error text went into `innerHTML`; `GET /api/account/collection` lacked `no-store`. | Built with DOM APIs; `no-store` added. |
+
+**Deploy order for v1.12.2:** apply `migrations/0011_single_use_tokens.sql` with `--remote` **before** deploying, then set the `IP_HASH_KEY` secret. Re-registration links issued before the deploy (stored in KV) stop working; issue a new one if needed.
+
+### R6 — recommended dashboard settings
+- **Access application (`/frost/admin`):** cookie settings SameSite **Strict**, HttpOnly on, *Enable binding cookie* on; an *Allow* policy that names the admin email addresses explicitly (no domain-wide rules); session duration of a few hours. Make sure the application covers `entotools.org/frost/admin*` **and** `www.entotools.org/frost/admin*`. The JWT check in the Worker already 404s any other host.
+- **WAF rate-limiting rule:** one rule (the free plan allows one) matching `http.request.uri.path eq "/api/feedback" or starts_with(http.request.uri.path, "/api/account/")` with POST/PUT/PATCH/DELETE, counted per IP, blocking for the plan's maximum period. It is atomic, unlike the KV limiter, and stops bursts before the Worker runs.
+- **Bot Fight Mode:** on.
+- **Logs:** `wrangler pages deployment tail` gives live logs today; for persistent logs, enable Workers Logs or Logpush if the plan allows.
+- **`GITHUB_TOKEN`:** a fine-grained token limited to this one repository with only *Issues: Read and write*, and an expiry date set. A small GitHub App with the same single permission is the longer-term option.
+
+### R8 — fixed in v1.12.2 (needs the redirect first)
+The session cookie is now host-only `__Host-ento_session` (`Secure`, `Path=/`, no `Domain`), so browsers refuse to let any subdomain set or overwrite it and never send it to one. Every sign-in and sign-out also clears both legacy `ento_session` cookies (the `Domain=entotools.org` one and the older host-only one), and `requireSession()` still accepts a legacy value so nobody is signed out by the upgrade. The `ento_su` sign-up counter cookie is host-only too.
+
+**Prerequisite:** a Cloudflare **Redirect Rule** sending `www.entotools.org/*` to `https://entotools.org/${1}` (301, preserve query string) must be live *before* this deploys. Otherwise someone who signs in on www and then visits the apex (or the reverse) looks signed out, which is the #38/#39 bug.
+
+**Follow-up (on or after 30 days after v1.12.2 goes live):** remove the legacy `ento_session` read in `getSessionIdsFromCookie()`. No legacy session can still be valid by then, since `SESSION_TTL_SECONDS` is 30 days. Keep clearing the legacy cookies.
+
+### Still open
+- **R1** — email ownership verification (deferred: needs a paid email-sending service).
+- **R6** dashboard items above, and the **#2** preview bindings.
+- **R8** legacy-cookie read: remove 30 days after go-live (see above).
+- **`braces`** — build-time only, fixed only by Tailwind 4.
+
+*Last updated with v1.12.2. Re-run this assessment when email verification (R1) lands or when a new data-bearing endpoint is added.*

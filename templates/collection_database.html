@@ -444,7 +444,7 @@
                     <td class="px-4 py-3 text-slate-600 italic">${esc(d.identification || '—')}</td>
                     <td class="px-4 py-3 text-slate-600">${esc(d.siteName || '—')}</td>
                     <td class="px-4 py-3 text-slate-600">${esc(d.location || '—')}</td>
-                    <td class="px-4 py-3 text-slate-600 whitespace-nowrap">${fmtDate(d.dateStart)}</td>
+                    <td class="px-4 py-3 text-slate-600 whitespace-nowrap">${esc(fmtDate(d.dateStart))}</td>
                     <td class="px-4 py-3 text-slate-600">${esc(d.collector || '—')}</td>
                     <td class="px-4 py-3 text-center">
                         <button data-action="deleteEntry" data-args="[${i}]" data-stop class="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition" title="Delete">
