@@ -19131,7 +19131,7 @@ async function getUserDetail(env, userId) {
     "SELECT credential_id, device_label, created_at, last_used_at FROM credentials WHERE user_id = ? ORDER BY created_at DESC"
   ).bind(userId).all();
   const { results: sessions } = await env.DB.prepare(
-    "SELECT s.id, s.created_at, s.expires_at, s.last_seen_at, c.device_label FROM sessions s LEFT JOIN credentials c ON c.credential_id = s.credential_id WHERE s.user_id = ? ORDER BY s.created_at DESC"
+    "SELECT s.created_at, s.expires_at, s.last_seen_at, c.device_label FROM sessions s LEFT JOIN credentials c ON c.credential_id = s.credential_id WHERE s.user_id = ? ORDER BY s.created_at DESC"
   ).bind(userId).all();
   return { user, credentials, sessions };
 }
@@ -19165,6 +19165,7 @@ async function deleteUser(env, userId) {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM credentials WHERE user_id = ?").bind(userId),
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM reregister_tokens WHERE user_id = ?").bind(userId),
     env.DB.prepare("DELETE FROM user_feature_flags WHERE user_id = ?").bind(userId),
     env.DB.prepare("DELETE FROM collections WHERE user_id = ?").bind(userId),
     env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId)
@@ -19335,6 +19336,37 @@ async function renameCredential(env, userId, credentialId, deviceLabel) {
 async function purgeExpiredSessions(env) {
   await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(nowIso()).run();
 }
+async function storeChallenge(env, challenge, context, ttlSeconds) {
+  const now = Date.now();
+  await env.DB.batch([
+    // Expired rows are worthless; clearing them here keeps the table small.
+    env.DB.prepare("DELETE FROM webauthn_challenges WHERE expires_at < ?").bind(new Date(now).toISOString()),
+    env.DB.prepare("INSERT INTO webauthn_challenges (challenge, context, expires_at) VALUES (?, ?, ?)").bind(challenge, context, new Date(now + ttlSeconds * 1e3).toISOString())
+  ]);
+}
+async function consumeChallenge(env, challenge) {
+  const row = await env.DB.prepare(
+    "DELETE FROM webauthn_challenges WHERE challenge = ? AND expires_at > ? RETURNING context"
+  ).bind(challenge, nowIso()).first();
+  return row ? row.context : null;
+}
+async function createReregisterToken(env, token, userId, ttlSeconds) {
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM reregister_tokens WHERE expires_at < ?").bind(new Date(now).toISOString()),
+    env.DB.prepare("INSERT INTO reregister_tokens (token, user_id, expires_at) VALUES (?, ?, ?)").bind(token, userId, new Date(now + ttlSeconds * 1e3).toISOString())
+  ]);
+}
+async function peekReregisterToken(env, token) {
+  const row = await env.DB.prepare("SELECT user_id FROM reregister_tokens WHERE token = ? AND expires_at > ?").bind(token, nowIso()).first();
+  return row ? row.user_id : null;
+}
+async function consumeReregisterToken(env, token, userId) {
+  const row = await env.DB.prepare(
+    "DELETE FROM reregister_tokens WHERE token = ? AND user_id = ? AND expires_at > ? RETURNING user_id"
+  ).bind(token, userId, nowIso()).first();
+  return !!row;
+}
 
 // src/lib/ratelimit.js
 var LIMITS = {
@@ -19351,18 +19383,54 @@ function maskIp(ip) {
   if (ip.includes(":")) return ip.split(":").slice(0, 2).join(":") + "::\u2026";
   return ip.split(".").slice(0, 3).join(".") + ".x";
 }
-async function hashIp(ip) {
+function rateLimitSubject(ip) {
+  if (!ip || !ip.includes(":")) return ip;
+  const addr = ip.split("%")[0].toLowerCase();
+  const mapped = addr.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  if (mapped) return mapped[1];
+  const [head, tail2] = addr.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail2 ? tail2.split(":") : [];
+  const fill = addr.includes("::") ? Math.max(0, 8 - h.length - t.length) : 0;
+  const groups = [...h, ...Array(fill).fill("0"), ...t];
+  return groups.slice(0, 4).map((g) => g.padStart(4, "0")).join(":") + "::/64";
+}
+var hmacKeyCache = null;
+var warnedNoKey = false;
+async function hmacKey(secret) {
+  if (hmacKeyCache && hmacKeyCache.secret === secret) return hmacKeyCache.key;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  hmacKeyCache = { secret, key };
+  return key;
+}
+async function hashIp(ip, env) {
   try {
     const data = new TextEncoder().encode(ip);
-    const digest2 = await crypto.subtle.digest("SHA-256", data);
+    const secret = env && env.IP_HASH_KEY;
+    let digest2;
+    if (secret) {
+      digest2 = await crypto.subtle.sign("HMAC", await hmacKey(secret), data);
+    } else {
+      if (!warnedNoKey) {
+        console.warn("[Worker:ratelimit] IP_HASH_KEY is not set \u2014 rate-limit keys use unkeyed SHA-256");
+        warnedNoKey = true;
+      }
+      digest2 = await crypto.subtle.digest("SHA-256", data);
+    }
     return Array.from(new Uint8Array(digest2).slice(0, 8)).map((b) => b.toString(16).padStart(2, "0")).join("");
   } catch (e) {
     return "nohash";
   }
 }
-async function bucketKey(ip, prefix, windowSeconds) {
+async function bucketKey(env, ip, prefix, windowSeconds) {
   const bucket = Math.floor(Date.now() / 1e3 / windowSeconds);
-  return `${prefix}:${bucket}:${await hashIp(ip)}`;
+  return `${prefix}:${bucket}:${await hashIp(rateLimitSubject(ip), env)}`;
 }
 async function readCount(env, key) {
   try {
@@ -19373,7 +19441,7 @@ async function readCount(env, key) {
 }
 async function rateLimited(env, ip, prefix, limit, windowSeconds) {
   if (!ip || !env.GEOCODE_CACHE) return false;
-  const key = await bucketKey(ip, prefix, windowSeconds);
+  const key = await bucketKey(env, ip, prefix, windowSeconds);
   const count = await readCount(env, key);
   if (count === null) return false;
   if (count >= limit) return true;
@@ -19385,12 +19453,12 @@ async function rateLimited(env, ip, prefix, limit, windowSeconds) {
 }
 async function atRateLimit(env, ip, prefix, limit, windowSeconds) {
   if (!ip || !env.GEOCODE_CACHE) return false;
-  const count = await readCount(env, await bucketKey(ip, prefix, windowSeconds));
+  const count = await readCount(env, await bucketKey(env, ip, prefix, windowSeconds));
   return count !== null && count >= limit;
 }
 async function bumpRateLimit(env, ip, prefix, windowSeconds) {
   if (!ip || !env.GEOCODE_CACHE) return;
-  const key = await bucketKey(ip, prefix, windowSeconds);
+  const key = await bucketKey(env, ip, prefix, windowSeconds);
   const count = await readCount(env, key) || 0;
   try {
     await env.GEOCODE_CACHE.put(key, String(count + 1), { expirationTtl: windowSeconds });
@@ -19408,7 +19476,7 @@ function signupCookieCount(request) {
   return m ? parseInt(m[1], 10) || 0 : 0;
 }
 function signupCookie(count, url) {
-  return `${SIGNUP_COOKIE}=${count}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SIGNUP_WINDOW_SECONDS}${cookieDomainAttr(url)}`;
+  return `${SIGNUP_COOKIE}=${count}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SIGNUP_WINDOW_SECONDS}`;
 }
 var SIGNUP_LIMIT_MESSAGE = "Too many accounts have been created from your network recently. Please try again in a couple of hours.";
 var EMAIL_TAKEN_MESSAGE = "An account with this email already exists. Sign in with your passkey instead \u2014 or, if you\u2019ve lost it, contact an admin for a re-registration link.";
@@ -19431,41 +19499,41 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
   }
   return new Response(JSON.stringify(data), { status, headers });
 }
-function cookieDomainAttr(url) {
+var SESSION_COOKIE = "__Host-ento_session";
+var SESSION_ATTRS = "Path=/; HttpOnly; Secure; SameSite=Lax";
+var LEGACY_SESSION_COOKIE = "ento_session";
+function legacyClears(url) {
   const host = url.hostname;
-  if (host === "localhost" || host === "127.0.0.1") return "";
-  return "; Domain=entotools.org";
+  const clears = [`${LEGACY_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`];
+  if (host !== "localhost" && host !== "127.0.0.1") {
+    clears.push(`${LEGACY_SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Domain=entotools.org`);
+  }
+  return clears;
 }
-var HOST_ONLY_CLEAR = "ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
 function sessionCookies(id, maxAgeSeconds, url) {
-  const domain = cookieDomainAttr(url);
-  const set = `ento_session=${id}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}${domain}`;
-  return domain ? [set, HOST_ONLY_CLEAR] : [set];
+  return [`${SESSION_COOKIE}=${id}; ${SESSION_ATTRS}; Max-Age=${maxAgeSeconds}`, ...legacyClears(url)];
 }
 function clearSessionCookies(url) {
-  const domain = cookieDomainAttr(url);
-  const clear = `ento_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0${domain}`;
-  return domain ? [clear, HOST_ONLY_CLEAR] : [clear];
+  return [`${SESSION_COOKIE}=; ${SESSION_ATTRS}; Max-Age=0`, ...legacyClears(url)];
 }
 function getSessionIdsFromCookie(request) {
   const cookie = request.headers.get("Cookie") || "";
-  const ids = [];
-  const re = /(?:^|;\s*)ento_session=([^;]*)/g;
+  const current = [], legacy = [];
+  const re = /(?:^|;\s*)(__Host-ento_session|ento_session)=([^;]*)/g;
   let m;
-  while ((m = re.exec(cookie)) !== null) if (m[1]) ids.push(m[1]);
-  return ids;
+  while ((m = re.exec(cookie)) !== null) {
+    if (m[2]) (m[1] === SESSION_COOKIE ? current : legacy).push(m[2]);
+  }
+  return [...current, ...legacy];
 }
-async function storeChallenge(env, challenge, contextJson) {
-  await env.GEOCODE_CACHE.put(`webauthn-challenge:${challenge}`, contextJson, {
-    expirationTtl: CHALLENGE_TTL_SECONDS
-  });
+async function storeChallenge2(env, challenge, contextJson) {
+  await storeChallenge(env, challenge, contextJson, CHALLENGE_TTL_SECONDS);
 }
-async function consumeChallenge(env, challenge) {
-  const key = `webauthn-challenge:${challenge}`;
-  const value = await env.GEOCODE_CACHE.get(key);
-  if (value) await env.GEOCODE_CACHE.delete(key);
-  return value;
+async function consumeChallenge2(env, challenge) {
+  if (typeof challenge !== "string" || challenge.length > 128) return null;
+  return consumeChallenge(env, challenge);
 }
+var REREGISTER_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function requireSession(request, env) {
   const now = Date.now();
   for (const sessionId of getSessionIdsFromCookie(request)) {
@@ -19510,7 +19578,7 @@ async function handleRegisterOptions(request, env) {
     label = existing.label;
     isNewUser = false;
   } else if (body.reregisterToken) {
-    const existingUserId = await env.GEOCODE_CACHE.get(`reregister-token:${body.reregisterToken}`);
+    const existingUserId = typeof body.reregisterToken === "string" && REREGISTER_TOKEN_RE.test(body.reregisterToken) ? await peekReregisterToken(env, body.reregisterToken) : null;
     if (!existingUserId) {
       return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
     }
@@ -19546,7 +19614,7 @@ async function handleRegisterOptions(request, env) {
     // Stop the same physical authenticator being registered twice for one account.
     excludeCredentials: (existingCredentials || []).map((c) => ({ id: c.credential_id }))
   });
-  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken, reregisterToken }));
+  await storeChallenge2(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken, reregisterToken }));
   return jsonResponse(options);
 }
 async function handleRegisterVerify(request, env) {
@@ -19560,7 +19628,7 @@ async function handleRegisterVerify(request, env) {
   }
   const challenge = decodeClientDataChallenge(credential);
   if (!challenge) return jsonResponse({ error: "Malformed passkey response." }, 400);
-  const pendingRaw = await consumeChallenge(env, challenge);
+  const pendingRaw = await consumeChallenge2(env, challenge);
   if (!pendingRaw) return jsonResponse({ error: "Registration expired. Please try again." }, 400);
   const pending = JSON.parse(pendingRaw);
   let verification;
@@ -19595,11 +19663,9 @@ async function handleRegisterVerify(request, env) {
     await bumpRateLimit(env, ip, "signup-ok", SIGNUP_WINDOW_SECONDS);
   }
   if (pending.viaToken) {
-    const key = `reregister-token:${pending.reregisterToken}`;
-    if (!pending.reregisterToken || await env.GEOCODE_CACHE.get(key) !== pending.userId) {
+    if (!pending.reregisterToken || !await consumeReregisterToken(env, pending.reregisterToken, pending.userId)) {
       return jsonResponse({ error: REREGISTER_LINK_USED }, 400);
     }
-    await env.GEOCODE_CACHE.delete(key);
   }
   await saveCredential(env, {
     credentialId: regCred.id,
@@ -19622,7 +19688,7 @@ async function handleLoginOptions(request, env) {
   const url = new URL(request.url);
   const { rpID } = rpConfigFor(url);
   const options = await generateAuthenticationOptions({ rpID, userVerification: "required" });
-  await storeChallenge(env, options.challenge, "1");
+  await storeChallenge2(env, options.challenge, "1");
   return jsonResponse(options);
 }
 async function handleLoginVerify(request, env) {
@@ -19636,7 +19702,7 @@ async function handleLoginVerify(request, env) {
   }
   const challenge = decodeClientDataChallenge(credential);
   if (!challenge) return jsonResponse({ error: "Malformed passkey response." }, 400);
-  const pending = await consumeChallenge(env, challenge);
+  const pending = await consumeChallenge2(env, challenge);
   if (pending !== "1") return jsonResponse({ error: "Login expired. Please try again." }, 400);
   const credentialId = credential.id;
   const stored = credentialId ? await getCredential(env, credentialId) : null;
@@ -19712,7 +19778,7 @@ async function handleReauthOptions(request, env) {
     userVerification: "required",
     allowCredentials: creds.map((c) => ({ id: c.credential_id }))
   });
-  await storeChallenge(env, options.challenge, JSON.stringify({ reauth: true, userId: session.user_id, sessionId: session.id }));
+  await storeChallenge2(env, options.challenge, JSON.stringify({ reauth: true, userId: session.user_id, sessionId: session.id }));
   return jsonResponse(options);
 }
 async function handleReauthVerify(request, env) {
@@ -19728,7 +19794,7 @@ async function handleReauthVerify(request, env) {
   }
   const challenge = decodeClientDataChallenge(credential);
   if (!challenge) return jsonResponse({ error: "Malformed passkey response." }, 400);
-  const pendingRaw = await consumeChallenge(env, challenge);
+  const pendingRaw = await consumeChallenge2(env, challenge);
   let pending = null;
   try {
     pending = pendingRaw && pendingRaw !== "1" ? JSON.parse(pendingRaw) : null;
@@ -19823,16 +19889,16 @@ async function handleRenameCredential(request, env, credentialId) {
 }
 async function handleGetCollection(request, env) {
   const session = await requireSession(request, env);
-  if (!session) return jsonResponse({ error: "Not logged in." }, 401);
+  if (!session) return jsonResponse({ error: "Not logged in." }, 401, NO_STORE);
   const row = await getCollection(env, session.user_id);
-  if (!row) return jsonResponse({ json: null, meta: {} });
+  if (!row) return jsonResponse({ json: null, meta: {} }, 200, NO_STORE);
   let parsed = null;
   try {
     parsed = JSON.parse(row.envelope);
   } catch (e) {
     console.warn("[Worker:account] stored collection envelope failed to parse:", e.message);
   }
-  return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } });
+  return jsonResponse({ json: parsed, meta: { revision: row.revision, updatedAt: row.updated_at } }, 200, NO_STORE);
 }
 var COLLECTION_MAX_BYTES = 1e6;
 var COLLECTION_MAX_ENTRIES = 2e4;
@@ -19953,14 +20019,14 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-10-22T21:33:13.019Z",
+  generated: "2026-11-17T19:11:53.377Z",
   tailwindHash: "427e2af05424",
   routes: {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-CqfkLySfosL5GULrDtCo66Mcrkq6gdQgG6Pf/65im8I="
+      "sha256-qVkR+jCaoC6C1golYugeNkNXD38TUHkfToqkKJu6aXw="
     ],
     "/degree-day-calculator": [
       "sha256-RxHe4yot4psQWKdhJHCD0exX7DfvKxYIoOk3F1kH+nY="
@@ -19981,7 +20047,7 @@ var csp_hashes_default = {
       "sha256-OusoIA4AkTVWpYu1CHTIuf1bNLsi+e06oypr3htKAWU="
     ],
     "/status": [
-      "sha256-NgahHYqtLrcGdcaR1E9zjUk+fRJ63n47xhU4ikrJgD0="
+      "sha256-2GTXDTyeSeqQc89AnNIG0jBJQC/99zPphelOsacOSaA="
     ],
     "/terms": [
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
@@ -20026,7 +20092,7 @@ var csp_hashes_default = {
     ]
   },
   admin: [
-    "sha256-+1DGfHpJbB5cuMHzxMiGWLSgtrLuIfE4ic4BeQ7Fmwo="
+    "sha256-IfTAjklBZh0Do6YWMV1Vla/pv6UBF6/5RJwgiBk+4AA="
   ]
 };
 
@@ -20149,7 +20215,7 @@ async function checkAllServices() {
 // package.json
 var package_default = {
   name: "entotools-production",
-  version: "1.12.1",
+  version: "1.12.2",
   private: true,
   scripts: {
     dev: "wrangler pages dev public/",
@@ -20863,12 +20929,13 @@ var admin_default = `<!DOCTYPE html>
                 document.getElementById('status-overview').innerHTML = [
                     card('Worker', 'v' + w.version, (w.colo ? 'Served from ' + w.colo : '') + (w.builtAt ? ' \xB7 built ' + fmtDate(w.builtAt) : ''), true),
                     card('D1 (accounts)', d.ok ? d.latencyMs + ' ms' : 'unavailable', d.ok ? 'batch of 10 count queries' : (d.error || ''), d.ok),
-                    card('KV (cache, challenges, limits)', k.ok ? k.latencyMs + ' ms' : 'unavailable', k.ok ? 'write \u2192 read \u2192 delete probe' : (k.error || ''), k.ok),
+                    card('KV (cache, limits)', k.ok ? k.latencyMs + ' ms' : 'unavailable', k.ok ? 'write \u2192 read \u2192 delete probe' : (k.error || ''), k.ok),
                     card('Active sessions', String(d.sessionsActive ?? '\u2014'), (d.users ?? '\u2014') + ' accounts \xB7 ' + (d.credentials ?? '\u2014') + ' passkeys'),
                 ].join('');
                 document.getElementById('status-config').innerHTML = [
                     kvRow('Cloudflare Access (admin gate)', c.accessConfigured ? (c.accessTeamDomain || 'configured') : 'NOT configured \u2014 portal would 404', c.accessConfigured),
                     kvRow('GITHUB_TOKEN (feedback \u2192 issues)', c.githubTokenConfigured ? 'configured' : 'missing \u2014 feedback will fail', c.githubTokenConfigured),
+                    kvRow('IP_HASH_KEY (rate-limit keys)', c.ipHashKeyConfigured ? 'configured' : 'missing \u2014 keys use unkeyed SHA-256', c.ipHashKeyConfigured),
                     kvRow('D1 binding (DB)', c.d1Bound ? 'bound' : 'missing', c.d1Bound),
                     kvRow('KV binding (GEOCODE_CACHE)', c.kvBound ? 'bound' : 'missing', c.kvBound),
                     kvRow('Static assets (ASSETS)', c.assetsBound ? 'bound' : 'missing', c.assetsBound),
@@ -20991,7 +21058,10 @@ function crossSiteWrite(request) {
   const site = request.headers.get("Sec-Fetch-Site");
   if (site && site !== "same-origin" && site !== "none") return true;
   const origin = request.headers.get("Origin");
-  if (origin && !ADMIN_ORIGINS.has(origin) && !origin.startsWith("http://localhost:")) return true;
+  const host = new URL(request.url).hostname;
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+  const devOk = isLocal && origin === "http://localhost:8788";
+  if (origin && !ADMIN_ORIGINS.has(origin) && !devOk) return true;
   return false;
 }
 async function handleAdminRoute(request, env, path) {
@@ -21069,9 +21139,7 @@ async function handleAdminRoute(request, env, path) {
     const user = await getUser(env, userId);
     if (!user) return jsonResponse3({ error: "Not found" }, 404);
     const token = crypto.randomUUID();
-    await env.GEOCODE_CACHE.put(`reregister-token:${token}`, userId, {
-      expirationTtl: REREGISTER_TOKEN_TTL_SECONDS
-    });
+    await createReregisterToken(env, token, userId, REREGISTER_TOKEN_TTL_SECONDS);
     await writeAuditLog(env, { adminIdentity: adminEmail, action: "issue_reregister_token", targetUserId: userId });
     return jsonResponse3({ token, expiresInSeconds: REREGISTER_TOKEN_TTL_SECONDS });
   }
@@ -21102,6 +21170,7 @@ async function handleAdminRoute(request, env, path) {
         accessConfigured: !!(env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD),
         accessTeamDomain: env.CF_ACCESS_TEAM_DOMAIN || null,
         githubTokenConfigured: !!env.GITHUB_TOKEN,
+        ipHashKeyConfigured: !!env.IP_HASH_KEY,
         d1Bound: !!env.DB,
         kvBound: !!env.GEOCODE_CACHE,
         assetsBound: !!env.ASSETS
@@ -21190,6 +21259,9 @@ var MAX_DATE_RANGES = 10;
 var MAX_RANGE_DAYS = 366 * 5;
 var MAX_TOTAL_DAYS = 366 * 10;
 var MS_PER_DAY = 24 * 60 * 60 * 1e3;
+var ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+var MAX_PLACE_LEN = 100;
+var MAX_LABEL_LEN = 60;
 var ALLOWED_ORIGINS = /* @__PURE__ */ new Set([
   "https://entotools.com",
   "https://www.entotools.com",
@@ -21649,14 +21721,19 @@ async function handleSearch(request, env) {
   }
   let totalDays = 0;
   for (const dr of dateRanges) {
-    const label = dr.label || "";
+    if (!dr || typeof dr !== "object") return jsonResponse4({ error: "Invalid date ranges." }, 400);
+    dr.label = typeof dr.label === "string" ? dr.label.slice(0, MAX_LABEL_LEN) : "";
+    const label = dr.label;
     const sd = dr.startDate;
     const ed = dr.endDate;
     if (!sd || !ed) {
       return jsonResponse4({ error: `Missing start or end date for '${label || "a range"}'.` }, 400);
     }
-    const sdDate = new Date(sd);
-    const edDate = new Date(ed);
+    if (typeof sd !== "string" || typeof ed !== "string" || !ISO_DATE_RE.test(sd) || !ISO_DATE_RE.test(ed)) {
+      return jsonResponse4({ error: `Invalid date format for '${label || "a range"}'.` }, 400);
+    }
+    const sdDate = /* @__PURE__ */ new Date(sd + "T00:00:00Z");
+    const edDate = /* @__PURE__ */ new Date(ed + "T00:00:00Z");
     if (isNaN(sdDate.getTime()) || isNaN(edDate.getTime())) {
       return jsonResponse4({ error: `Invalid date format for '${label || "a range"}'.` }, 400);
     }
@@ -21693,11 +21770,14 @@ async function handleSearch(request, env) {
   let countryCode = null;
   try {
     if (mode === "city") {
-      const city = (body.city || "").trim();
-      const state = (body.state || "").trim();
-      const country = (body.country || "").trim();
+      const text = (v) => typeof v === "string" ? v.trim() : "";
+      const city = text(body.city);
+      const state = text(body.state);
+      const country = text(body.country);
       if (!city || !state)
         return jsonResponse4({ error: "Please enter both city and state/province." }, 400);
+      if (city.length > MAX_PLACE_LEN || state.length > MAX_PLACE_LEN || country.length > MAX_PLACE_LEN)
+        return jsonResponse4({ error: `City, state and country must each be ${MAX_PLACE_LEN} characters or fewer.` }, 400);
       const geo = await geocodeCityState(city, state, country, env);
       if (!geo) return jsonResponse4({ error: "Could not resolve that location." }, 404);
       ({ lat, lon, label: locationLabel, country_code: countryCode } = geo);
@@ -21894,6 +21974,7 @@ var NORMALS_LAST_YEAR = 2020;
 var NORMALS_MIN_COMPLETE_YEARS = 20;
 var NORMALS_YEAR_COMPLETENESS = 0.9;
 var PREV_YEAR_CACHE_TTL = 30 * 24 * 3600;
+var GRID_NORMALS_CACHE_TTL = 90 * 24 * 3600;
 function packYears(records) {
   const years = {};
   for (const r of records) {
@@ -21942,7 +22023,11 @@ async function handleNormals(request, env) {
   if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
     return privateJson({ error: "Invalid latitude / longitude values." }, 400);
   }
-  const stationId = body.provider === "ncei" && /^[A-Za-z0-9]{11}$/.test(body.station_id || "") ? body.station_id : null;
+  let stationId = null;
+  if (body.provider === "ncei" && typeof body.station_id === "string" && /^[A-Za-z0-9]{11}$/.test(body.station_id)) {
+    const known = await getStationById(body.station_id, env);
+    stationId = known ? known.id : null;
+  }
   const gridKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
   const prevYear = (/* @__PURE__ */ new Date()).getUTCFullYear() - 1;
   let normals = null;
@@ -21962,7 +22047,7 @@ async function handleNormals(request, env) {
     }
   }
   if (!normals) {
-    normals = await cachedJson(env, `normals:v1:om:${gridKey}`, 0, async () => {
+    normals = await cachedJson(env, `normals:v1:om:${gridKey}`, GRID_NORMALS_CACHE_TTL, async () => {
       const years = await fetchYears("open-meteo", null, lat, lon, NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR);
       return { source: "open-meteo", years };
     });

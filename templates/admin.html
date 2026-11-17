@@ -690,12 +690,13 @@
                 document.getElementById('status-overview').innerHTML = [
                     card('Worker', 'v' + w.version, (w.colo ? 'Served from ' + w.colo : '') + (w.builtAt ? ' · built ' + fmtDate(w.builtAt) : ''), true),
                     card('D1 (accounts)', d.ok ? d.latencyMs + ' ms' : 'unavailable', d.ok ? 'batch of 10 count queries' : (d.error || ''), d.ok),
-                    card('KV (cache, challenges, limits)', k.ok ? k.latencyMs + ' ms' : 'unavailable', k.ok ? 'write → read → delete probe' : (k.error || ''), k.ok),
+                    card('KV (cache, limits)', k.ok ? k.latencyMs + ' ms' : 'unavailable', k.ok ? 'write → read → delete probe' : (k.error || ''), k.ok),
                     card('Active sessions', String(d.sessionsActive ?? '—'), (d.users ?? '—') + ' accounts · ' + (d.credentials ?? '—') + ' passkeys'),
                 ].join('');
                 document.getElementById('status-config').innerHTML = [
                     kvRow('Cloudflare Access (admin gate)', c.accessConfigured ? (c.accessTeamDomain || 'configured') : 'NOT configured — portal would 404', c.accessConfigured),
                     kvRow('GITHUB_TOKEN (feedback → issues)', c.githubTokenConfigured ? 'configured' : 'missing — feedback will fail', c.githubTokenConfigured),
+                    kvRow('IP_HASH_KEY (rate-limit keys)', c.ipHashKeyConfigured ? 'configured' : 'missing — keys use unkeyed SHA-256', c.ipHashKeyConfigured),
                     kvRow('D1 binding (DB)', c.d1Bound ? 'bound' : 'missing', c.d1Bound),
                     kvRow('KV binding (GEOCODE_CACHE)', c.kvBound ? 'bound' : 'missing', c.kvBound),
                     kvRow('Static assets (ASSETS)', c.assetsBound ? 'bound' : 'missing', c.assetsBound),

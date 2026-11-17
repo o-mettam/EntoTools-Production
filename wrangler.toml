@@ -21,12 +21,43 @@ id = "f44e390b2fba41c78dc6e6fa2c487a9c"
 #   wrangler d1 execute entotools-accounts --file=migrations/0001_accounts.sql
 #   wrangler d1 execute entotools-accounts --file=migrations/0002_admin_audit.sql
 #   wrangler d1 execute entotools-accounts --file=migrations/0003_feature_flags.sql
-#   …through migrations/0008_flag_status.sql (see docs/feature-flags.md)
+#   …through migrations/0011_single_use_tokens.sql (see docs/feature-flags.md)
+#   0011 must be applied BEFORE deploying v1.12.2 — passkey sign-in uses it.
 # (add --remote to each once verified against a local copy)
 [[d1_databases]]
 binding = "DB"
 database_name = "entotools-accounts"
 database_id = "6290f7de-5acf-44e8-ba0a-8e4caba3af82"
+
+# ── Preview deployments (security assessment 2026-11, #2) ────────────
+# Without an [env.preview] section, the bindings above apply to EVERY
+# deployment — so a preview build of any pushed branch
+# (<branch>.entotools-production.pages.dev) runs that branch's code against
+# the PRODUCTION accounts database and KV. To isolate previews:
+#   1. wrangler d1 create entotools-accounts-preview
+#      wrangler kv namespace create GEOCODE_CACHE_PREVIEW
+#   2. Apply every migrations/*.sql to the preview DB (as above, with
+#      --remote and the preview database name).
+#   3. Uncomment the block below and paste in the two new ids.
+# Pages requires bindings to be restated in full inside an env section;
+# nothing is inherited from the top level once it exists.
+# Also recommended: Pages → Settings → General → "Enable access policy" for
+# preview deployments, so preview URLs aren't public at all.
+#
+# [env.preview]
+# compatibility_flags = ["nodejs_compat"]
+# [[env.preview.kv_namespaces]]
+# binding = "GEOCODE_CACHE"
+# id = "<preview KV namespace id>"
+# [[env.preview.d1_databases]]
+# binding = "DB"
+# database_name = "entotools-accounts-preview"
+# database_id = "<preview D1 database id>"
+
+# Secrets (set in the dashboard or with `wrangler pages secret put`, never here):
+#   GITHUB_TOKEN  — feedback → GitHub issues (fine-grained, Issues: write, this repo only)
+#   IP_HASH_KEY   — HMAC key for rate-limit keys (assessment 2026-11, #6); any
+#                   long random string, e.g. `openssl rand -base64 32`
 
 # CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD gate the admin portal (#36) — set
 # these as Pages environment variables in the Cloudflare dashboard (Settings →

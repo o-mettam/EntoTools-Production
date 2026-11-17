@@ -2,12 +2,15 @@
  * EntoTools Dashboard — Cloudflare Pages Worker (_worker.js)
  *
  * KV bindings required:
- *   GEOCODE_CACHE  – runtime cache for Nominatim geocode responses, also
- *                    reused for short-lived WebAuthn challenges and
- *                    admin-issued re-registration tokens (#35/#36)
+ *   GEOCODE_CACHE  – runtime cache for Nominatim geocode responses, normals,
+ *                    and per-IP rate-limit counters
  * D1 binding required:
  *   DB             – accounts/credentials/sessions/admin audit log/feature
- *                    flags (#35, #36, #37) — see README "Account system setup"
+ *                    flags (#35, #36, #37), plus single-use WebAuthn
+ *                    challenges and re-registration tokens (migration 0011)
+ *                    — see README "Account system setup"
+ * Secret recommended:
+ *   IP_HASH_KEY    – HMAC key for rate-limit keys (src/lib/ratelimit.js)
  *
  * Station data loaded from public/stations.json via env.ASSETS
  * Static assets served by Cloudflare Pages from public/
@@ -49,6 +52,9 @@ const MAX_DATE_RANGES = 10;          // max number of date ranges per request
 const MAX_RANGE_DAYS = 366 * 5;      // max span of a single range (~5 years)
 const MAX_TOTAL_DAYS = 366 * 10;     // max combined span across all ranges (~10 years)
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // the only date format accepted from clients
+const MAX_PLACE_LEN = 100;           // city / state / country, each
+const MAX_LABEL_LEN = 60;            // a date range's label (same cap as share links)
 
 // ── CORS / abuse protection ──────────────────────────────────────
 // Browser submissions to state-changing endpoints (feedback) must come from
@@ -653,14 +659,22 @@ async function handleSearch(request, env) {
 
   let totalDays = 0;
   for (const dr of dateRanges) {
-    const label = dr.label || '';
+    if (!dr || typeof dr !== 'object') return jsonResponse({ error: 'Invalid date ranges.' }, 400);
+    // Labels are echoed back and logged; keep them short plain strings.
+    dr.label = typeof dr.label === 'string' ? dr.label.slice(0, MAX_LABEL_LEN) : '';
+    const label = dr.label;
     const sd = dr.startDate;
     const ed = dr.endDate;
     if (!sd || !ed) {
       return jsonResponse({ error: `Missing start or end date for '${label || 'a range'}'.` }, 400);
     }
-    const sdDate = new Date(sd);
-    const edDate = new Date(ed);
+    // Strictly YYYY-MM-DD (assessment 2026-11, #8): new Date() alone accepts
+    // many other formats, which were then passed on to the upstream APIs.
+    if (typeof sd !== 'string' || typeof ed !== 'string' || !ISO_DATE_RE.test(sd) || !ISO_DATE_RE.test(ed)) {
+      return jsonResponse({ error: `Invalid date format for '${label || 'a range'}'.` }, 400);
+    }
+    const sdDate = new Date(sd + 'T00:00:00Z');
+    const edDate = new Date(ed + 'T00:00:00Z');
     if (isNaN(sdDate.getTime()) || isNaN(edDate.getTime())) {
       return jsonResponse({ error: `Invalid date format for '${label || 'a range'}'.` }, 400);
     }
@@ -704,11 +718,16 @@ async function handleSearch(request, env) {
 
   try {
     if (mode === 'city') {
-      const city = (body.city || '').trim();
-      const state = (body.state || '').trim();
-      const country = (body.country || '').trim();
+      const text = (v) => (typeof v === 'string' ? v.trim() : '');
+      const city = text(body.city);
+      const state = text(body.state);
+      const country = text(body.country);
       if (!city || !state)
         return jsonResponse({ error: 'Please enter both city and state/province.' }, 400);
+      // Capped (assessment 2026-11, #8): these form the KV cache key, which
+      // KV limits to 512 bytes, and no real place name comes close.
+      if (city.length > MAX_PLACE_LEN || state.length > MAX_PLACE_LEN || country.length > MAX_PLACE_LEN)
+        return jsonResponse({ error: `City, state and country must each be ${MAX_PLACE_LEN} characters or fewer.` }, 400);
       const geo = await geocodeCityState(city, state, country, env);
       if (!geo) return jsonResponse({ error: 'Could not resolve that location.' }, 404);
       ({ lat, lon, label: locationLabel, country_code: countryCode } = geo);
@@ -962,6 +981,7 @@ const NORMALS_LAST_YEAR = 2020;
 const NORMALS_MIN_COMPLETE_YEARS = 20; // fewer usable station years → use the Open-Meteo grid instead
 const NORMALS_YEAR_COMPLETENESS = 0.9; // a year counts if ≥ 90% of its days have TMIN and TMAX
 const PREV_YEAR_CACHE_TTL = 30 * 24 * 3600; // NCEI revises recent data for a while
+const GRID_NORMALS_CACHE_TTL = 90 * 24 * 3600; // per-0.01° grid cell; station normals (a closed set) never expire
 
 // Daily records → { "1991": [[tmin, tmax], …from Jan 1], … }, one decimal place.
 function packYears(records) {
@@ -1015,7 +1035,15 @@ async function handleNormals(request, env) {
   if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
     return privateJson({ error: 'Invalid latitude / longitude values.' }, 400);
   }
-  const stationId = body.provider === 'ncei' && /^[A-Za-z0-9]{11}$/.test(body.station_id || '') ? body.station_id : null;
+  // The station must be a real one from stations.json (assessment 2026-11,
+  // #7): its normals are cached with no expiry, so an arbitrary id would
+  // let a caller create permanent KV entries and upstream fetches at will.
+  // The canonical id from the index is used, so case variants share a key.
+  let stationId = null;
+  if (body.provider === 'ncei' && typeof body.station_id === 'string' && /^[A-Za-z0-9]{11}$/.test(body.station_id)) {
+    const known = await getStationById(body.station_id, env);
+    stationId = known ? known.id : null;
+  }
   const gridKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
   const prevYear = new Date().getUTCFullYear() - 1;
 
@@ -1038,7 +1066,9 @@ async function handleNormals(request, env) {
     }
   }
   if (!normals) {
-    normals = await cachedJson(env, `normals:v1:om:${gridKey}`, 0, async () => {
+    // Grid normals expire (assessment 2026-11, #7): there are ~6.5 billion
+    // possible 0.01° cells, so a permanent entry per cell is unbounded.
+    normals = await cachedJson(env, `normals:v1:om:${gridKey}`, GRID_NORMALS_CACHE_TTL, async () => {
       const years = await fetchYears('open-meteo', null, lat, lon, NORMALS_FIRST_YEAR, NORMALS_LAST_YEAR);
       return { source: 'open-meteo', years };
     });

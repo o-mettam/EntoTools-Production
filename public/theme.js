@@ -26,7 +26,7 @@
     // Single source of truth for the version shown in the Settings panel and
     // attached to feedback/bug reports. KEEP IN SYNC with the "version" field
     // in package.json.
-    var APP_VERSION = '1.11.0';
+    var APP_VERSION = '1.12.2';
 
     // ── Brand palette ────────────────────────────────────────────
     // Overrides Tailwind's default `lime` and `slate` ramps. Pages that miss
