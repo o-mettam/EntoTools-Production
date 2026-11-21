@@ -65,10 +65,8 @@ function guard(label, html) {
 // page's script-src lists exactly these — not the whole of cdn.jsdelivr.net,
 // where anyone can publish a package. Collected from the page itself and
 // from every first-party script it includes, since some are loaded at
-// runtime (account.js → @simplewebauthn/browser, the Drive and map loaders).
-// Google Identity Services is allowed by its /gsi/ directory: the client
-// lives at /gsi/client and Google doesn't version that URL.
-const EXTERNAL_SCRIPT_RE = /https:\/\/(?:cdn\.jsdelivr\.net\/npm\/[^'"`\s)]+|accounts\.google\.com\/gsi\/client)/g;
+// runtime (account.js → @simplewebauthn/browser, the map loader).
+const EXTERNAL_SCRIPT_RE = /https:\/\/cdn\.jsdelivr\.net\/npm\/[^'"`\s)]+/g;
 
 function externalScripts(html) {
   const sources = [html];
@@ -81,7 +79,7 @@ function externalScripts(html) {
   for (const text of sources) {
     for (const [url] of text.matchAll(EXTERNAL_SCRIPT_RE)) {
       if (/\.(css|map)$/.test(url)) continue; // stylesheets are style-src's business
-      urls.add(url.startsWith('https://accounts.google.com/') ? 'https://accounts.google.com/gsi/' : url);
+      urls.add(url);
     }
   }
   return [...urls].sort();

@@ -584,9 +584,8 @@ export async function handleRenameCredential(request, env, credentialId) {
 }
 
 // ── Account-backed collection sync (#35 phase 3) ─────────────────
-// Mirrors EntoDriveProvider's pull()/push() shape exactly (see
-// public/sync/provider-gdrive.js) so public/sync/provider-account.js can
-// implement the same StorageProvider interface with no server-side merge
+// Returns the pull()/push() shape public/sync/provider-account.js expects,
+// so it can implement EntoSync's StorageProvider interface with no server-side merge
 // logic — merging stays entirely client-side in EntoStore.mergeEnvelopes().
 export async function handleGetCollection(request, env) {
   const session = await requireSession(request, env);

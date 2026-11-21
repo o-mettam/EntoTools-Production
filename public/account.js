@@ -2,9 +2,7 @@
  * EntoTools — Account system client (issue #35, phases 2-4).
  * Passkey sign-up/login/logout, self-service passkey management, and
  * feature-flag population (window.EntoFlags, for signed-in and signed-out
- * visitors alike — see docs/feature-flags.md) used to gate other features —
- * see public/sync/provider-gdrive.js, which only loads/activates Google
- * Drive Sync for users with the "gdrive-sync" flag (#37).
+ * visitors alike — see docs/feature-flags.md) used to gate other features.
  *
  * Loads @simplewebauthn/browser from jsDelivr (pinned + SRI, same pattern
  * already used for Chart.js in degree_day_calculator.html) — public/*.js
@@ -147,7 +145,7 @@
     // A throw in here (e.g. settings-panel markup not matching what this
     // expects on some page) would otherwise silently swallow the rest of
     // checkSession(), including the entoaccount:ready dispatch that other
-    // scripts (Drive sync gating, account-based sync) depend on.
+    // scripts (feature-flag gating, account-based sync) depend on.
     try { renderSettingsSection(); } catch (e) { console.error('[EntoAccount] renderSettingsSection failed:', e.message); }
     document.dispatchEvent(new CustomEvent('entoaccount:ready', { detail: { user: state.user } }));
   }
@@ -403,7 +401,7 @@
         catch (err) { console.error("[EntoAccount] action failed:", err.message); setStatus(err.message, true); }
       });
       document.getElementById('ento-account-delete').addEventListener('click', async function () {
-        if (!confirm('Delete your EntoTools account? This permanently removes your passkeys, signed-in devices, and any collection data synced to your account. Data stored only in this browser or in your own Google Drive is not affected. This cannot be undone.')) return;
+        if (!confirm('Delete your EntoTools account? This permanently removes your passkeys, signed-in devices, and any collection data synced to your account. Data stored only in this browser is not affected. This cannot be undone.')) return;
         try {
           await deleteAccount();
           setStatus('Account deleted.');

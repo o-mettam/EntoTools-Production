@@ -12,12 +12,8 @@
     <!-- Shared theme: brand palette, dark-mode handling and common styles -->
     <script src="/theme.js?v=2"></script>
     <link rel="stylesheet" href="/theme.css">
-    <script src="/sync/config.js?v=2"></script>
     <script src="/sync/sync-core.js?v=3"></script>
     <script src="/sync/provider-account.js?v=1"></script>
-    <!-- Google Drive sync (provider-gdrive.js + the GIS script) is loaded
-         dynamically, only for a logged-in user with the "gdrive-sync" flag —
-         see the entoaccount:ready listener further down this file (#37). -->
     <style>
         /* Page-specific rules — everything shared lives in /theme.css */
         .dark .detail-panel { background-color: #1a2030 !important; border-color: #3e4a64 !important; }
@@ -40,17 +36,6 @@
                         </button>
                         <div id="settings-panel" class="settings-panel absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50">
                             <h3 class="text-sm font-semibold text-slate-800 mb-3">Settings</h3>
-                            <div id="cloud-backup" class="hidden py-2 border-b border-slate-100 mb-2">
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center gap-2">
-                                        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/></svg>
-                                        <span class="text-sm text-slate-700">Google Drive Backup</span>
-                                    </div>
-                                    <button id="drive-btn" data-action="entoDriveToggle" class="px-3 py-1.5 text-xs font-medium text-lime-700 bg-lime-50 hover:bg-lime-100 rounded-lg transition">Connect</button>
-                                </div>
-                                <p id="drive-status" class="text-xs text-slate-400 mt-1">Sync your collection database to your own Google Drive.</p>
-                                <button id="drive-sync-now" data-action="entoDriveSyncNow" class="hidden mt-2 px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">Sync now</button>
-                            </div>
                             <div class="flex items-center justify-between py-2">
                                 <div class="flex items-center gap-2">
                                     <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>
@@ -525,8 +510,8 @@
 
         /* ── Export CSV ── */
         // Column layout + formula-injection guard live in EntoCsv
-        // (public/sync/sync-core.js) so export/import here and the Drive backup
-        // all share one source of truth.
+        // (public/sync/sync-core.js) so export/import here and the Sample
+        // Collection download share one source of truth.
         function exportAllCSV() {
             loadEntries();
             if (entries.length === 0) { console.warn('[CollectionDB] export called but no entries'); return; }
@@ -741,9 +726,9 @@
         /* ── Beforeunload warning ── */
         window.addEventListener('beforeunload', function(e) {
             if (!dirtyThisSession) return;
-            // No need to warn if changes are already backed up to Google Drive.
+            // No need to warn if changes are already synced to the user's account.
             if (window.EntoSync && EntoSync.isConnected()) return;
-            const msg = 'You made changes this session. Consider downloading your CSV backup or connecting Google Drive before leaving.';
+            const msg = 'You made changes this session. Consider downloading your CSV backup before leaving.';
             e.preventDefault();
             e.returnValue = msg;
             return msg;
@@ -752,91 +737,6 @@
         /* ── Init ── */
         console.log('[CollectionDB] page initialized');
         renderTable();
-
-        /* ── Cloud Backup (Google Drive) — gated behind the "gdrive-sync"
-           feature flag (#37). Neither the Google Identity Services script nor
-           provider-gdrive.js is loaded at all — not just hidden — unless the
-           logged-in user has that flag; see the bootstrap block below. */
-        function initCloudBackup() {
-            const btn = document.getElementById('drive-btn');
-            const statusEl = document.getElementById('drive-status');
-            const syncBtn = document.getElementById('drive-sync-now');
-            if (!btn) return;
-            if (!window.EntoSync || !window.EntoDriveProvider) {
-                btn.disabled = true;
-                btn.classList.add('opacity-50', 'cursor-not-allowed');
-                if (statusEl) statusEl.textContent = 'Cloud backup is not enabled on this site.';
-                if (syncBtn) syncBtn.classList.add('hidden');
-                window.entoDriveToggle = function (e) { if (e) e.stopPropagation(); };
-                window.entoDriveSyncNow = window.entoDriveToggle;
-                return;
-            }
-            // Registered ALONGSIDE the account provider, never instead of it \u2014
-            // EntoSync is multi-provider, and every call below is scoped to
-            // the Drive provider's id so account sync keeps running untouched.
-            const DRIVE = EntoDriveProvider.id;
-            EntoSync.addProvider(EntoDriveProvider);
-            const reloadFromStore = () => renderTable();
-            const fmtTime = (iso) => { try { return new Date(iso).toLocaleString(); } catch (e) { return ''; } };
-            function render() {
-                if (!EntoSync.isConfigured(DRIVE)) {
-                    statusEl.textContent = 'Google Drive is not configured on this site.';
-                    btn.disabled = true; btn.classList.add('opacity-50', 'cursor-not-allowed');
-                    syncBtn.classList.add('hidden');
-                    return;
-                }
-                const connected = EntoSync.isConnected(DRIVE);
-                btn.textContent = connected ? 'Disconnect' : 'Connect';
-                syncBtn.classList.toggle('hidden', !connected);
-                if (connected) {
-                    const last = EntoSync.lastSynced(DRIVE);
-                    statusEl.textContent = last ? ('Connected \u2014 last synced ' + fmtTime(last)) : 'Connected to Google Drive.';
-                } else {
-                    statusEl.textContent = 'Sync your collection database to your own Google Drive.';
-                }
-            }
-            EntoStore.subscribe((ev) => {
-                if (!ev) return;
-                // Store-level events (no provider) always re-render; sync
-                // events from another provider are not this panel's business.
-                if (ev.provider && ev.provider !== DRIVE) { if (ev.type === 'sync-success') reloadFromStore(); return; }
-                if (ev.type === 'sync-start') statusEl.textContent = 'Syncing\u2026';
-                else if (ev.type === 'sync-error') statusEl.textContent = 'Sync error: ' + ev.error;
-                else if (ev.type === 'sync-success') { reloadFromStore(); render(); }
-                else if (ev.type === 'connected' || ev.type === 'disconnected' || ev.type === 'replaced') render();
-            });
-            window.entoDriveToggle = async function (e) {
-                if (e) e.stopPropagation();
-                if (EntoSync.isConnected(DRIVE)) { EntoSync.disconnect(DRIVE); render(); return; }
-                btn.disabled = true; statusEl.textContent = 'Connecting\u2026';
-                try { await EntoSync.connect(DRIVE); } catch (err) { statusEl.textContent = 'Connection failed: ' + err.message; }
-                finally { btn.disabled = false; render(); }
-            };
-            window.entoDriveSyncNow = async function (e) {
-                if (e) e.stopPropagation();
-                try { await EntoSync.fullSync(true, DRIVE); } catch (err) { /* surfaced via events */ }
-            };
-            render();
-            EntoSync.tryResume(DRIVE).then((ok) => { if (ok) render(); });
-        }
-
-        // Actually once: entoaccount:ready fires again after an in-page login
-        // or logout, and a second <script> for the same src would re-run the
-        // provider and double up its event subscriptions.
-        const _loadedScripts = new Map();
-        function loadScriptOnce(src) {
-            if (_loadedScripts.has(src)) return _loadedScripts.get(src);
-            const p = new Promise((resolve, reject) => {
-                const s = document.createElement('script');
-                s.src = src;
-                s.onload = resolve;
-                s.onerror = (err) => { _loadedScripts.delete(src); reject(err); };
-                document.head.appendChild(s);
-            });
-            _loadedScripts.set(src, p);
-            return p;
-        }
-        let cloudBackupInitialised = false;
 
         /* ── Collection Map (flag: collection-map) ── */
         const LEAFLET_JS = 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js';
@@ -991,23 +891,9 @@
             const mapOn = !!(window.EntoFlags && window.EntoFlags.has('collection-map'));
             document.getElementById('collection-map-section').classList.toggle('hidden', !mapOn);
             if (!mapOn && collectionMapOpen) toggleCollectionMap();
-
-            // Google Drive stays an optional, additional backend, and only
-            // past this flag check do its scripts even get added to the
-            // page at all — an unflagged user never downloads them, not
-            // just never sees the UI for them (#37).
-            if (!window.EntoFlags || !window.EntoFlags.has('gdrive-sync')) return;
-            document.getElementById('cloud-backup').classList.remove('hidden');
-            if (cloudBackupInitialised) return;
-            Promise.all([
-                loadScriptOnce('https://accounts.google.com/gsi/client'),
-                loadScriptOnce('/sync/provider-gdrive.js?v=2'),
-            ]).then(() => { if (!cloudBackupInitialised) { cloudBackupInitialised = true; initCloudBackup(); } }).catch((err) => {
-                console.error('[CollectionDatabase] failed to load Drive sync scripts:', err);
-            });
         });
     </script>
-    <script src="/account.js?v=8"></script>
+    <script src="/account.js?v=9"></script>
     <script src="/feedback.js"></script>
 </body>
 </html>

@@ -22,7 +22,7 @@ import manifest from '../csp-hashes.json' with { type: 'json' };
 // (manifest.scriptSources). Only the Cloudflare Web Analytics beacon, which
 // the zone injects into every page, is allowed by host.
 const BEACON_HOST = 'https://static.cloudflareinsights.com';
-const PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://cloudflareinsights.com";
+const PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://cloudflareinsights.com";
 
 // Per-route additions, kept as narrow as possible. /collection-database: the
 // Leaflet stylesheet (jsDelivr, with SRI) and OpenStreetMap tiles for the
