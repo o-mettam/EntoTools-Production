@@ -69,6 +69,8 @@ export async function verifyAccessRequest(request, env) {
 
     const now = Math.floor(Date.now() / 1000);
     if (typeof payload.exp !== 'number' || payload.exp < now) return null;
+    // Not-yet-valid tokens too (assessment 2026-11b, #6); 60 s of clock skew.
+    if (typeof payload.nbf === 'number' && payload.nbf > now + 60) return null;
     if (typeof payload.iss !== 'string' || payload.iss !== `https://${env.CF_ACCESS_TEAM_DOMAIN}`) return null;
     const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!aud.includes(env.CF_ACCESS_AUD)) return null;

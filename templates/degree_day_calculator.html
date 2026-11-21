@@ -804,7 +804,7 @@
                     colorIdx:  parseInt(row.dataset.colorIdx, 10),
                 });
             }
-            console.log('[Ento:getDateRanges] collected', ranges.length, 'range(s):', JSON.stringify(ranges.map(r => ({ label: r.label, start: r.startDate, end: r.endDate }))));
+            console.log('[Ento:getDateRanges] collected', ranges.length, 'range(s):', JSON.stringify(ranges.map(r => ({ start: r.startDate, end: r.endDate })))); // labels are free text
             return ranges;
         }
 
@@ -823,7 +823,7 @@
             const lbl = lblInput.value.trim() || (val + ' GDD');
             gddThresholds.push({ value: val, label: lbl });
             gddThresholds.sort((a, b) => a.value - b.value);
-            console.log('[Ento:addThreshold] added threshold:', val, 'label:', lbl, '| total:', gddThresholds.length);
+            console.log('[Ento:addThreshold] added threshold:', val, '| total:', gddThresholds.length);
             valInput.value = '';
             lblInput.value = '';
             renderThresholdChips();
@@ -871,7 +871,7 @@
             const lbl = lblInput.value.trim() || defaultLabel;
             dateMarkers.push({ md, label: lbl });
             dateMarkers.sort((a, b) => a.md.localeCompare(b.md));
-            console.log('[Ento:addDateMarker] added marker:', md, 'label:', lbl, '| total:', dateMarkers.length);
+            console.log('[Ento:addDateMarker] added marker:', md, '| total:', dateMarkers.length);
             lblInput.value = '';
             renderDateMarkerChips();
         }
@@ -1077,7 +1077,7 @@
                 state: collectSearchState(),
             });
             setSavedSearches(searches);
-            console.log('[Ento:promptSaveSearch] search saved as:', name.trim(), '| total saved:', searches.length);
+            console.log('[Ento:promptSaveSearch] search saved | total saved:', searches.length); // name not logged: logs can go into public bug reports
             renderSavedSearches();
         }
 
@@ -1244,7 +1244,7 @@
                     if (rangeStartMD > accumStartMD) {
                         const year = startDate.slice(0, 4);
                         startDate = year + '-' + accumStartMD;
-                        console.log('[Ento:doSearch] extended range "' + r.label + '" startDate from', r.startDate, 'to', startDate, 'for GDD accumulation');
+                        console.log('[Ento:doSearch] extended a range startDate from', r.startDate, 'to', startDate, 'for GDD accumulation');
                     }
                 }
                 return { label: r.label, startDate, endDate: r.endDate };
@@ -2416,7 +2416,7 @@
 
         /* ── Chart Export ─────────────────────────────── */
         function exportChart(chartId, filename) {
-            console.log('[Ento:exportChart] exporting chart:', chartId, 'as:', filename);
+            console.log('[Ento:exportChart] exporting chart:', chartId); // filename not logged: it can carry the location
             const chartCanvas = document.getElementById(chartId);
             if (!chartCanvas) {
                 console.error('[Ento:exportChart] canvas not found:', chartId);
@@ -2468,7 +2468,7 @@
 
         /* ── CSV Table Export ─────────────────────────── */
         function exportTableCSV(containerId, filename) {
-            console.log('[Ento:exportTableCSV] exporting CSV from:', containerId, 'as:', filename);
+            console.log('[Ento:exportTableCSV] exporting CSV from:', containerId); // filename not logged: it can carry the location
             const container = document.getElementById(containerId);
             if (!container) { console.error('[Ento:exportTableCSV] container not found:', containerId); alert('No data to export.'); return; }
 

@@ -84,8 +84,8 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
 // no subdomain of entotools.org can read, set or overwrite it (the old
 // "Domain=entotools.org" cookie was sent to every subdomain).
 //
-// This depends on www.entotools.org 301-redirecting to entotools.org at
-// Cloudflare (Redirect Rule, see docs/security-assessment-2026-09.md): a
+// This depends on www.entotools.org 301-redirecting to entotools.org — done
+// in the Worker itself since v1.12.3 (src/index.js, REDIRECT_TO_CANONICAL): a
 // host-only cookie set on one host is not sent to the other, which was the
 // logged-out-on-www bug in #38/#39. With the redirect in place every visit
 // lands on the apex, so a host-only cookie is enough.
@@ -179,7 +179,7 @@ export async function handleRegisterOptions(request, env) {
   let body;
   try { body = await request.json(); } catch (e) { return jsonResponse({ error: 'Invalid request body.' }, 400); }
 
-  let userId, label, isNewUser, viaToken = false, reregisterToken = null;
+  let userId, label, isNewUser, viaToken = false, reregisterToken = null, sessionId = null;
   const session = await requireSession(request, env);
   if (session) {
     // Already logged in — this is "add another passkey to my account," not a
@@ -194,6 +194,7 @@ export async function handleRegisterOptions(request, env) {
     userId = existing.id;
     label = existing.label;
     isNewUser = false;
+    sessionId = session.id; // register/verify requires this same session to still be live
   } else if (body.reregisterToken) {
     // Checked here but only consumed in register/verify (assessment R5), so
     // cancelling the browser prompt doesn't burn the link.
@@ -243,7 +244,9 @@ export async function handleRegisterOptions(request, env) {
     excludeCredentials: (existingCredentials || []).map((c) => ({ id: c.credential_id })),
   });
 
-  await storeChallenge(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken, reregisterToken }));
+  // kind: 'register' (assessment 2026-11b, #1) — register/verify accepts
+  // only a challenge minted here, never a login or re-auth one.
+  await storeChallenge(env, options.challenge, JSON.stringify({ kind: 'register', userId, label, isNewUser, viaToken, reregisterToken, sessionId }));
   return jsonResponse(options);
 }
 
@@ -256,8 +259,27 @@ export async function handleRegisterVerify(request, env) {
   const challenge = decodeClientDataChallenge(credential);
   if (!challenge) return jsonResponse({ error: 'Malformed passkey response.' }, 400);
   const pendingRaw = await consumeChallenge(env, challenge);
-  if (!pendingRaw) return jsonResponse({ error: 'Registration expired. Please try again.' }, 400);
-  const pending = JSON.parse(pendingRaw);
+  // The challenge must be one register/options issued (assessment 2026-11b,
+  // #1). Before this check, a re-auth challenge ({reauth, userId, …}) was
+  // accepted here too: with nothing but a stolen session cookie, a caller
+  // could get one from reauth/options, answer it with an attestation from
+  // their own authenticator, and have that passkey saved to the victim's
+  // account, skipping the step-up that "add a passkey" requires.
+  let pending = null;
+  try { pending = pendingRaw ? JSON.parse(pendingRaw) : null; } catch (e) { pending = null; }
+  if (!pending || pending.kind !== 'register' || typeof pending.userId !== 'string') {
+    return jsonResponse({ error: 'Registration expired. Please try again.' }, 400);
+  }
+  // "Add a passkey" to a signed-in account: the session that passed step-up
+  // must still be live and still be this caller's, so a session revoked in
+  // the meantime (sign out everywhere, admin reset, passkey removal) can't
+  // finish attaching a passkey.
+  if (!pending.isNewUser && !pending.viaToken) {
+    const session = await requireSession(request, env);
+    if (!session || session.id !== pending.sessionId || session.user_id !== pending.userId) {
+      return jsonResponse({ error: 'Your session ended before the passkey was added. Sign in and try again.' }, 401);
+    }
+  }
 
   let verification;
   try {

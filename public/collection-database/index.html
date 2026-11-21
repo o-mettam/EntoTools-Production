@@ -675,7 +675,7 @@
             if (input && input.target) input = input.target;
             const file = input.files[0];
             if (!file) return;
-            console.log('[CollectionDB] importing CSV file:', file.name, '(' + file.size + ' bytes)');
+            console.log('[CollectionDB] importing CSV file (' + file.size + ' bytes)'); // file name not logged: it can carry a site name
             input.value = ''; // reset so same file can be re-imported
 
             const reader = new FileReader();
