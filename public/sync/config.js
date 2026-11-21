@@ -9,8 +9,9 @@
  *   2. Configure the OAuth consent screen (External), scope: .../auth/drive.file.
  *   3. Create an OAuth Client ID (type: Web application).
  *      Authorized JavaScript origins:
- *        https://entotools.com
- *        http://localhost:8788   (wrangler pages dev)
+ *        https://entotools.org  (production client: list ONLY this origin)
+ *      For wrangler pages dev, use a SEPARATE dev OAuth client with
+ *      http://localhost:8788, not this production one (assessment 2026-11b).
  *   4. Paste the client ID below.
  */
 window.ENTO_GOOGLE_CLIENT_ID = window.ENTO_GOOGLE_CLIENT_ID || '427532223396-saf8ajbec68kv35pn96fbn9knlqve1fa.apps.googleusercontent.com';

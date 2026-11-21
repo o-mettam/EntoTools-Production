@@ -1,15 +1,15 @@
 {
-  "generated": "2026-11-17T19:11:53.377Z",
+  "generated": "2026-11-21T01:58:53.699Z",
   "tailwindHash": "427e2af05424",
   "routes": {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-qVkR+jCaoC6C1golYugeNkNXD38TUHkfToqkKJu6aXw="
+      "sha256-pUVBTgAD1v9trplZOWIp95p3bhpjpiRPBMDy4OPW2V0="
     ],
     "/degree-day-calculator": [
-      "sha256-RxHe4yot4psQWKdhJHCD0exX7DfvKxYIoOk3F1kH+nY="
+      "sha256-83TIEvNWyX0TmwuxwLbGCAfRUl8WKUppb3j7+ovBwfo="
     ],
     "/documentation": [
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="

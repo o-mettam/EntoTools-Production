@@ -26,7 +26,7 @@
     // Single source of truth for the version shown in the Settings panel and
     // attached to feedback/bug reports. KEEP IN SYNC with the "version" field
     // in package.json.
-    var APP_VERSION = '1.12.2';
+    var APP_VERSION = '1.12.3';
 
     // ── Brand palette ────────────────────────────────────────────
     // Overrides Tailwind's default `lime` and `slate` ramps. Pages that miss
@@ -171,12 +171,18 @@
     // took (event) or (id) keep their existing signatures. Targets must be
     // reachable as window[name]: a `function` declaration or `window.x =`,
     // NOT a top-level const/let (those aren't window properties).
+    var NATIVE_CODE = /\{\s*\[native code\]\s*\}\s*$/;
     function dispatch(attr, e) {
         var el = e.target && e.target.closest ? e.target.closest('[' + attr + ']') : null;
         if (!el) return;
         var name = el.getAttribute(attr);
         var fn = window[name];
         if (typeof fn !== 'function') { console.warn('[EntoTheme] no global handler named', name, 'for', attr); return; }
+        // Only the site's own handlers (assessment 2026-11b, #3). window[name]
+        // also reaches browser built-ins (fetch, open, postMessage, …), so a
+        // markup-only injection could otherwise call them with chosen
+        // arguments on a click. CSP blocks script; this stops the gadget too.
+        if (NATIVE_CODE.test(Function.prototype.toString.call(fn))) { console.warn('[EntoTheme] refusing to dispatch to built-in', name); return; }
         if (el.hasAttribute('data-stop')) e.stopPropagation();
         var args = [];
         var raw = el.getAttribute('data-args');

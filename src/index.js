@@ -1294,10 +1294,47 @@ async function handleStatusCheck(url) {
 
 // ── Worker entry point ────────────────────────────────────────────
 
+// www → apex (assessment 2026-11b, #2). The session cookie is host-only
+// since v1.12.2 (__Host-ento_session), which relies on every visit landing
+// on the apex. That was meant to be a Cloudflare Redirect Rule, but checked
+// live on 2026-11-20 www.entotools.org still served the site itself (200),
+// so a sign-in on one host looked signed out on the other (#38/#39). Doing
+// it here means it can't depend on dashboard state. 301 for GET/HEAD; 308
+// for anything else so a method and body are never silently dropped.
+const CANONICAL_HOST = 'entotools.org';
+const REDIRECT_TO_CANONICAL = new Set(['www.entotools.org']);
+
+// Applied to every response (assessment 2026-11b, #4): stops a browser
+// MIME-sniffing a JSON/text body into something it would render or run.
+// Pages adds it to some static files but not to HTML or Worker-built JSON.
+function withBaseHeaders(response) {
+  if (response.headers.get('X-Content-Type-Options')) return response;
+  try {
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    return response;
+  } catch (e) {
+    // Headers from ASSETS.fetch() / Response.redirect() are immutable.
+    const copy = new Response(response.body, response);
+    copy.headers.set('X-Content-Type-Options', 'nosniff');
+    return copy;
+  }
+}
+
 export default {
   async fetch(request, env) {
+    return withBaseHeaders(await route(request, env));
+  },
+};
+
+async function route(request, env) {
     const url = new URL(request.url);
     console.log('[Worker] incoming', request.method, url.pathname);
+
+    if (REDIRECT_TO_CANONICAL.has(url.hostname)) {
+      const target = `https://${CANONICAL_HOST}${url.pathname}${url.search}`;
+      const status = request.method === 'GET' || request.method === 'HEAD' ? 301 : 308;
+      return new Response(null, { status, headers: { Location: target } });
+    }
 
     // CORS preflight. Only the genuinely public, unauthenticated endpoints
     // (/api/search, /api/status/*) get a cross-origin grant; every other path
@@ -1502,5 +1539,4 @@ export default {
       });
     }
     return assetResponse;
-  },
-};
+}

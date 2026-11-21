@@ -19568,7 +19568,7 @@ async function handleRegisterOptions(request, env) {
   } catch (e) {
     return jsonResponse({ error: "Invalid request body." }, 400);
   }
-  let userId, label, isNewUser, viaToken = false, reregisterToken = null;
+  let userId, label, isNewUser, viaToken = false, reregisterToken = null, sessionId = null;
   const session = await requireSession(request, env);
   if (session) {
     if (!await consumeReauth(env, session)) return reauthRequired();
@@ -19577,6 +19577,7 @@ async function handleRegisterOptions(request, env) {
     userId = existing.id;
     label = existing.label;
     isNewUser = false;
+    sessionId = session.id;
   } else if (body.reregisterToken) {
     const existingUserId = typeof body.reregisterToken === "string" && REREGISTER_TOKEN_RE.test(body.reregisterToken) ? await peekReregisterToken(env, body.reregisterToken) : null;
     if (!existingUserId) {
@@ -19614,7 +19615,7 @@ async function handleRegisterOptions(request, env) {
     // Stop the same physical authenticator being registered twice for one account.
     excludeCredentials: (existingCredentials || []).map((c) => ({ id: c.credential_id }))
   });
-  await storeChallenge2(env, options.challenge, JSON.stringify({ userId, label, isNewUser, viaToken, reregisterToken }));
+  await storeChallenge2(env, options.challenge, JSON.stringify({ kind: "register", userId, label, isNewUser, viaToken, reregisterToken, sessionId }));
   return jsonResponse(options);
 }
 async function handleRegisterVerify(request, env) {
@@ -19629,8 +19630,21 @@ async function handleRegisterVerify(request, env) {
   const challenge = decodeClientDataChallenge(credential);
   if (!challenge) return jsonResponse({ error: "Malformed passkey response." }, 400);
   const pendingRaw = await consumeChallenge2(env, challenge);
-  if (!pendingRaw) return jsonResponse({ error: "Registration expired. Please try again." }, 400);
-  const pending = JSON.parse(pendingRaw);
+  let pending = null;
+  try {
+    pending = pendingRaw ? JSON.parse(pendingRaw) : null;
+  } catch (e) {
+    pending = null;
+  }
+  if (!pending || pending.kind !== "register" || typeof pending.userId !== "string") {
+    return jsonResponse({ error: "Registration expired. Please try again." }, 400);
+  }
+  if (!pending.isNewUser && !pending.viaToken) {
+    const session = await requireSession(request, env);
+    if (!session || session.id !== pending.sessionId || session.user_id !== pending.userId) {
+      return jsonResponse({ error: "Your session ended before the passkey was added. Sign in and try again." }, 401);
+    }
+  }
   let verification;
   try {
     verification = await verifyRegistrationResponse({
@@ -19989,6 +20003,7 @@ async function verifyAccessRequest(request, env) {
     if (header.alg !== "RS256") return null;
     const now = Math.floor(Date.now() / 1e3);
     if (typeof payload.exp !== "number" || payload.exp < now) return null;
+    if (typeof payload.nbf === "number" && payload.nbf > now + 60) return null;
     if (typeof payload.iss !== "string" || payload.iss !== `https://${env.CF_ACCESS_TEAM_DOMAIN}`) return null;
     const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
     if (!aud.includes(env.CF_ACCESS_AUD)) return null;
@@ -20019,17 +20034,17 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-11-17T19:11:53.377Z",
+  generated: "2026-11-21T01:58:53.699Z",
   tailwindHash: "427e2af05424",
   routes: {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-qVkR+jCaoC6C1golYugeNkNXD38TUHkfToqkKJu6aXw="
+      "sha256-pUVBTgAD1v9trplZOWIp95p3bhpjpiRPBMDy4OPW2V0="
     ],
     "/degree-day-calculator": [
-      "sha256-RxHe4yot4psQWKdhJHCD0exX7DfvKxYIoOk3F1kH+nY="
+      "sha256-83TIEvNWyX0TmwuxwLbGCAfRUl8WKUppb3j7+ovBwfo="
     ],
     "/documentation": [
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
@@ -20215,7 +20230,7 @@ async function checkAllServices() {
 // package.json
 var package_default = {
   name: "entotools-production",
-  version: "1.12.2",
+  version: "1.12.3",
   private: true,
   scripts: {
     dev: "wrangler pages dev public/",
@@ -20229,7 +20244,7 @@ var package_default = {
   devDependencies: {
     esbuild: "^0.28.2",
     tailwindcss: "^3.4.19",
-    wrangler: "^4.152.0"
+    wrangler: "^4.166.0"
   },
   overrides: {
     "postcss-selector-parser": "7.1.6"
@@ -22213,167 +22228,188 @@ async function handleStatusCheck(url) {
   if (!STATUS_SERVICES[service]) return jsonResponse4({ error: "Unknown service" }, 400);
   return jsonResponse4(await checkService(service));
 }
+var CANONICAL_HOST = "entotools.org";
+var REDIRECT_TO_CANONICAL = /* @__PURE__ */ new Set(["www.entotools.org"]);
+function withBaseHeaders(response) {
+  if (response.headers.get("X-Content-Type-Options")) return response;
+  try {
+    response.headers.set("X-Content-Type-Options", "nosniff");
+    return response;
+  } catch (e) {
+    const copy2 = new Response(response.body, response);
+    copy2.headers.set("X-Content-Type-Options", "nosniff");
+    return copy2;
+  }
+}
 var index_default = {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    console.log("[Worker] incoming", request.method, url.pathname);
-    if (request.method === "OPTIONS") {
-      const isPublicApi = url.pathname === "/api/search" || url.pathname.startsWith("/api/status/");
-      if (!isPublicApi) return new Response(null, { status: 204 });
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type",
-          "Access-Control-Max-Age": "86400"
-        }
-      });
-    }
-    if (url.pathname === "/api/search" && request.method === "POST") {
-      const ip = request.headers.get("CF-Connecting-IP") || "";
-      if (await searchRateLimited(env, ip)) {
-        console.warn("[Worker:handleSearch] rate limit exceeded for IP:", maskIp(ip));
-        return jsonResponse4({ error: "Too many requests. Please try again later." }, 429);
-      }
-      try {
-        return await handleSearch(request, env);
-      } catch (err) {
-        console.error("[Worker:handleSearch] unexpected error:", err.message, err.stack);
-        return jsonResponse4({ error: "An unexpected server error occurred. Please try again." }, 500);
-      }
-    }
-    if (url.pathname === "/api/normals" && request.method === "POST") {
-      const origin = request.headers.get("Origin");
-      if (!origin || !allowedOriginsFor(url).has(origin)) return privateJson({ error: "Forbidden" }, 403);
-      if (!await hasFlag(request, env, "season-normals")) return privateJson({ error: "Not found" }, 404);
-      const ip = request.headers.get("CF-Connecting-IP") || "";
-      if (await normalsRateLimited(env, ip)) {
-        console.warn("[Worker:normals] rate limit exceeded for IP:", maskIp(ip));
-        return privateJson({ error: "Too many requests. Please try again later." }, 429);
-      }
-      try {
-        return await handleNormals(request, env);
-      } catch (err) {
-        console.error("[Worker:normals] unexpected error:", err.message, err.stack);
-        return privateJson({ error: "Could not load historical data. Please try again later." }, 503);
-      }
-    }
-    if (url.pathname === "/api/feedback" && request.method === "POST") {
-      try {
-        return await handleFeedback(request, env);
-      } catch (err) {
-        console.error("[Worker:handleFeedback] unexpected error:", err.message, err.stack);
-        return jsonResponse4({ error: "An unexpected server error occurred. Please try again." }, 500);
-      }
-    }
-    if (url.pathname === "/api/status/ping" && request.method === "GET") {
-      return jsonResponse4({ ok: true, ts: Date.now() });
-    }
-    if (url.pathname === "/api/status/check" && request.method === "GET") {
-      const ip = request.headers.get("CF-Connecting-IP") || "";
-      if (await statusRateLimited(env, ip)) {
-        console.warn("[Worker:handleStatusCheck] rate limit exceeded for IP:", maskIp(ip));
-        return jsonResponse4({ ok: false, error: "Too many requests. Please try again later." }, 429);
-      }
-      try {
-        return await handleStatusCheck(url);
-      } catch (err) {
-        console.error("[Worker:handleStatusCheck] unexpected error:", err.message);
-        return jsonResponse4({ ok: false, error: "Status check failed." });
-      }
-    }
-    const ACCOUNT_ROUTES = /* @__PURE__ */ new Set([
-      "/api/account/register/options",
-      "/api/account/register/verify",
-      "/api/account/login/options",
-      "/api/account/login/verify",
-      "/api/account/reauth/options",
-      "/api/account/reauth/verify",
-      "/api/account/logout",
-      "/api/account/session",
-      "/api/account/credentials",
-      "/api/account/collection",
-      "/api/account/sessions",
-      "/api/account/export",
-      "/api/account"
-    ]);
-    const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
-    if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
-      const isReadOnly = request.method === "GET" || request.method === "HEAD";
-      const allowedOrigins = allowedOriginsFor(url);
-      const origin = request.headers.get("Origin");
-      if (!isReadOnly && !allowedOrigins.has(origin)) {
-        console.warn("[Worker:account] rejected disallowed/missing origin:", origin);
-        return privateJson({ error: "Forbidden." }, 403);
-      }
-      const isCeremonyStart = url.pathname.endsWith("/options");
-      if (isCeremonyStart) {
-        const ip = request.headers.get("CF-Connecting-IP") || "";
-        if (await accountRateLimited(env, ip)) {
-          console.warn("[Worker:account] rate limit exceeded for IP:", maskIp(ip));
-          return privateJson({ error: "Too many attempts. Please try again later." }, 429);
-        }
-      }
-      try {
-        if (url.pathname === "/api/account/register/options" && request.method === "POST") return await handleRegisterOptions(request, env);
-        if (url.pathname === "/api/account/register/verify" && request.method === "POST") return await handleRegisterVerify(request, env);
-        if (url.pathname === "/api/account/login/options" && request.method === "POST") return await handleLoginOptions(request, env);
-        if (url.pathname === "/api/account/login/verify" && request.method === "POST") return await handleLoginVerify(request, env);
-        if (url.pathname === "/api/account/logout" && request.method === "POST") return await handleLogout(request, env);
-        if (url.pathname === "/api/account/session" && request.method === "GET") return await handleSession(request, env);
-        if (url.pathname === "/api/account/credentials" && request.method === "GET") return await handleListCredentials(request, env);
-        if (credentialDeleteMatch && request.method === "DELETE") return await handleDeleteCredential(request, env, credentialDeleteMatch[1]);
-        if (credentialDeleteMatch && request.method === "PATCH") return await handleRenameCredential(request, env, credentialDeleteMatch[1]);
-        if (url.pathname === "/api/account/collection" && request.method === "GET") return await handleGetCollection(request, env);
-        if (url.pathname === "/api/account/collection" && request.method === "PUT") return await handlePutCollection(request, env);
-        if (url.pathname === "/api/account/reauth/options" && request.method === "POST") return await handleReauthOptions(request, env);
-        if (url.pathname === "/api/account/reauth/verify" && request.method === "POST") return await handleReauthVerify(request, env);
-        if (url.pathname === "/api/account/sessions" && request.method === "GET") return await handleListSessions(request, env);
-        if (url.pathname === "/api/account/sessions" && request.method === "DELETE") return await handleRevokeOtherSessions(request, env);
-        if (url.pathname === "/api/account/export" && request.method === "GET") return await handleExport(request, env);
-        if (url.pathname === "/api/account" && request.method === "DELETE") return await handleDeleteAccount(request, env);
-      } catch (err) {
-        console.error("[Worker:account] unexpected error:", err.message, err.stack);
-        return privateJson({ error: "An unexpected server error occurred. Please try again." }, 500);
-      }
-    }
-    if (url.pathname === "/api/account/flags" && request.method === "GET") {
-      try {
-        return await handleMyFlags(request, env);
-      } catch (err) {
-        console.error("[Worker:flags] unexpected error:", err.message, err.stack);
-        return privateJson({ flags: [] });
-      }
-    }
-    if (url.pathname.startsWith("/api/")) {
-      return privateJson({ error: "Not found" }, 404);
-    }
-    if (url.pathname === "/frost/admin" || url.pathname.startsWith("/frost/admin/")) {
-      try {
-        return await handleAdminRoute(request, env, url.pathname);
-      } catch (err) {
-        console.error("[Worker:admin] unexpected error:", err.message, err.stack);
-        return new Response("Not found", { status: 404 });
-      }
-    }
-    const assetResponse = await env.ASSETS.fetch(request);
-    const contentType = assetResponse.headers.get("Content-Type") || "";
-    const isCode = url.pathname.endsWith(".js") || url.pathname.endsWith(".css");
-    const isHtml = contentType.includes("text/html");
-    if (isCode || isHtml) {
-      const headers = new Headers(assetResponse.headers);
-      if (isCode) headers.set("Cache-Control", "no-cache");
-      if (isHtml) headers.set("Content-Security-Policy", cspForPage(url.pathname, assetResponse.status));
-      return new Response(assetResponse.body, {
-        status: assetResponse.status,
-        statusText: assetResponse.statusText,
-        headers
-      });
-    }
-    return assetResponse;
+    return withBaseHeaders(await route(request, env));
   }
 };
+async function route(request, env) {
+  const url = new URL(request.url);
+  console.log("[Worker] incoming", request.method, url.pathname);
+  if (REDIRECT_TO_CANONICAL.has(url.hostname)) {
+    const target = `https://${CANONICAL_HOST}${url.pathname}${url.search}`;
+    const status = request.method === "GET" || request.method === "HEAD" ? 301 : 308;
+    return new Response(null, { status, headers: { Location: target } });
+  }
+  if (request.method === "OPTIONS") {
+    const isPublicApi = url.pathname === "/api/search" || url.pathname.startsWith("/api/status/");
+    if (!isPublicApi) return new Response(null, { status: 204 });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Max-Age": "86400"
+      }
+    });
+  }
+  if (url.pathname === "/api/search" && request.method === "POST") {
+    const ip = request.headers.get("CF-Connecting-IP") || "";
+    if (await searchRateLimited(env, ip)) {
+      console.warn("[Worker:handleSearch] rate limit exceeded for IP:", maskIp(ip));
+      return jsonResponse4({ error: "Too many requests. Please try again later." }, 429);
+    }
+    try {
+      return await handleSearch(request, env);
+    } catch (err) {
+      console.error("[Worker:handleSearch] unexpected error:", err.message, err.stack);
+      return jsonResponse4({ error: "An unexpected server error occurred. Please try again." }, 500);
+    }
+  }
+  if (url.pathname === "/api/normals" && request.method === "POST") {
+    const origin = request.headers.get("Origin");
+    if (!origin || !allowedOriginsFor(url).has(origin)) return privateJson({ error: "Forbidden" }, 403);
+    if (!await hasFlag(request, env, "season-normals")) return privateJson({ error: "Not found" }, 404);
+    const ip = request.headers.get("CF-Connecting-IP") || "";
+    if (await normalsRateLimited(env, ip)) {
+      console.warn("[Worker:normals] rate limit exceeded for IP:", maskIp(ip));
+      return privateJson({ error: "Too many requests. Please try again later." }, 429);
+    }
+    try {
+      return await handleNormals(request, env);
+    } catch (err) {
+      console.error("[Worker:normals] unexpected error:", err.message, err.stack);
+      return privateJson({ error: "Could not load historical data. Please try again later." }, 503);
+    }
+  }
+  if (url.pathname === "/api/feedback" && request.method === "POST") {
+    try {
+      return await handleFeedback(request, env);
+    } catch (err) {
+      console.error("[Worker:handleFeedback] unexpected error:", err.message, err.stack);
+      return jsonResponse4({ error: "An unexpected server error occurred. Please try again." }, 500);
+    }
+  }
+  if (url.pathname === "/api/status/ping" && request.method === "GET") {
+    return jsonResponse4({ ok: true, ts: Date.now() });
+  }
+  if (url.pathname === "/api/status/check" && request.method === "GET") {
+    const ip = request.headers.get("CF-Connecting-IP") || "";
+    if (await statusRateLimited(env, ip)) {
+      console.warn("[Worker:handleStatusCheck] rate limit exceeded for IP:", maskIp(ip));
+      return jsonResponse4({ ok: false, error: "Too many requests. Please try again later." }, 429);
+    }
+    try {
+      return await handleStatusCheck(url);
+    } catch (err) {
+      console.error("[Worker:handleStatusCheck] unexpected error:", err.message);
+      return jsonResponse4({ ok: false, error: "Status check failed." });
+    }
+  }
+  const ACCOUNT_ROUTES = /* @__PURE__ */ new Set([
+    "/api/account/register/options",
+    "/api/account/register/verify",
+    "/api/account/login/options",
+    "/api/account/login/verify",
+    "/api/account/reauth/options",
+    "/api/account/reauth/verify",
+    "/api/account/logout",
+    "/api/account/session",
+    "/api/account/credentials",
+    "/api/account/collection",
+    "/api/account/sessions",
+    "/api/account/export",
+    "/api/account"
+  ]);
+  const credentialDeleteMatch = url.pathname.match(/^\/api\/account\/credentials\/([^/]+)$/);
+  if (ACCOUNT_ROUTES.has(url.pathname) || credentialDeleteMatch) {
+    const isReadOnly = request.method === "GET" || request.method === "HEAD";
+    const allowedOrigins = allowedOriginsFor(url);
+    const origin = request.headers.get("Origin");
+    if (!isReadOnly && !allowedOrigins.has(origin)) {
+      console.warn("[Worker:account] rejected disallowed/missing origin:", origin);
+      return privateJson({ error: "Forbidden." }, 403);
+    }
+    const isCeremonyStart = url.pathname.endsWith("/options");
+    if (isCeremonyStart) {
+      const ip = request.headers.get("CF-Connecting-IP") || "";
+      if (await accountRateLimited(env, ip)) {
+        console.warn("[Worker:account] rate limit exceeded for IP:", maskIp(ip));
+        return privateJson({ error: "Too many attempts. Please try again later." }, 429);
+      }
+    }
+    try {
+      if (url.pathname === "/api/account/register/options" && request.method === "POST") return await handleRegisterOptions(request, env);
+      if (url.pathname === "/api/account/register/verify" && request.method === "POST") return await handleRegisterVerify(request, env);
+      if (url.pathname === "/api/account/login/options" && request.method === "POST") return await handleLoginOptions(request, env);
+      if (url.pathname === "/api/account/login/verify" && request.method === "POST") return await handleLoginVerify(request, env);
+      if (url.pathname === "/api/account/logout" && request.method === "POST") return await handleLogout(request, env);
+      if (url.pathname === "/api/account/session" && request.method === "GET") return await handleSession(request, env);
+      if (url.pathname === "/api/account/credentials" && request.method === "GET") return await handleListCredentials(request, env);
+      if (credentialDeleteMatch && request.method === "DELETE") return await handleDeleteCredential(request, env, credentialDeleteMatch[1]);
+      if (credentialDeleteMatch && request.method === "PATCH") return await handleRenameCredential(request, env, credentialDeleteMatch[1]);
+      if (url.pathname === "/api/account/collection" && request.method === "GET") return await handleGetCollection(request, env);
+      if (url.pathname === "/api/account/collection" && request.method === "PUT") return await handlePutCollection(request, env);
+      if (url.pathname === "/api/account/reauth/options" && request.method === "POST") return await handleReauthOptions(request, env);
+      if (url.pathname === "/api/account/reauth/verify" && request.method === "POST") return await handleReauthVerify(request, env);
+      if (url.pathname === "/api/account/sessions" && request.method === "GET") return await handleListSessions(request, env);
+      if (url.pathname === "/api/account/sessions" && request.method === "DELETE") return await handleRevokeOtherSessions(request, env);
+      if (url.pathname === "/api/account/export" && request.method === "GET") return await handleExport(request, env);
+      if (url.pathname === "/api/account" && request.method === "DELETE") return await handleDeleteAccount(request, env);
+    } catch (err) {
+      console.error("[Worker:account] unexpected error:", err.message, err.stack);
+      return privateJson({ error: "An unexpected server error occurred. Please try again." }, 500);
+    }
+  }
+  if (url.pathname === "/api/account/flags" && request.method === "GET") {
+    try {
+      return await handleMyFlags(request, env);
+    } catch (err) {
+      console.error("[Worker:flags] unexpected error:", err.message, err.stack);
+      return privateJson({ flags: [] });
+    }
+  }
+  if (url.pathname.startsWith("/api/")) {
+    return privateJson({ error: "Not found" }, 404);
+  }
+  if (url.pathname === "/frost/admin" || url.pathname.startsWith("/frost/admin/")) {
+    try {
+      return await handleAdminRoute(request, env, url.pathname);
+    } catch (err) {
+      console.error("[Worker:admin] unexpected error:", err.message, err.stack);
+      return new Response("Not found", { status: 404 });
+    }
+  }
+  const assetResponse = await env.ASSETS.fetch(request);
+  const contentType = assetResponse.headers.get("Content-Type") || "";
+  const isCode = url.pathname.endsWith(".js") || url.pathname.endsWith(".css");
+  const isHtml = contentType.includes("text/html");
+  if (isCode || isHtml) {
+    const headers = new Headers(assetResponse.headers);
+    if (isCode) headers.set("Cache-Control", "no-cache");
+    if (isHtml) headers.set("Content-Security-Policy", cspForPage(url.pathname, assetResponse.status));
+    return new Response(assetResponse.body, {
+      status: assetResponse.status,
+      statusText: assetResponse.statusText,
+      headers
+    });
+  }
+  return assetResponse;
+}
 export {
   index_default as default
 };
