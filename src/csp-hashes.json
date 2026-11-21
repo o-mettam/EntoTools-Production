@@ -1,12 +1,12 @@
 {
-  "generated": "2026-11-21T01:58:53.699Z",
+  "generated": "2026-11-21T03:15:29.776Z",
   "tailwindHash": "427e2af05424",
   "routes": {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-pUVBTgAD1v9trplZOWIp95p3bhpjpiRPBMDy4OPW2V0="
+      "sha256-BCI36Uxldt1iwzB5oR/wh4lPpDIr9WE7O1YVhkx2Wcs="
     ],
     "/degree-day-calculator": [
       "sha256-83TIEvNWyX0TmwuxwLbGCAfRUl8WKUppb3j7+ovBwfo="
@@ -24,7 +24,7 @@
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
     ],
     "/sample-collection": [
-      "sha256-OusoIA4AkTVWpYu1CHTIuf1bNLsi+e06oypr3htKAWU="
+      "sha256-qFQmKYvbLKesGKWYeMUJlAEp5sv26ri96xwjhmjPUF8="
     ],
     "/status": [
       "sha256-2GTXDTyeSeqQc89AnNIG0jBJQC/99zPphelOsacOSaA="
@@ -38,7 +38,6 @@
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "https://accounts.google.com/gsi/",
       "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js",
       "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
     ],
@@ -61,7 +60,6 @@
       "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
     ],
     "/sample-collection": [
-      "https://accounts.google.com/gsi/",
       "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
     ],
     "/status": [

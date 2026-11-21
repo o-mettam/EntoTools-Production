@@ -26,7 +26,7 @@ User assignments survive every status change. Moving a flag from `ga` or `off` b
    VALUES ('pest-phenology', 'Pest phenology models on the Degree Day Calculator', datetime('now'))
    ON CONFLICT(flag_key) DO NOTHING;
    ```
-3. **Gate the feature in the page.** Hide its markup by default and reveal it only when the flag is present. If the feature loads extra scripts, load them only after the check, so visitors without the flag never download them. Follow the `gdrive-sync` pattern in `templates/collection_database.html`:
+3. **Gate the feature in the page.** Hide its markup by default and reveal it only when the flag is present. If the feature loads extra scripts, load them only after the check, so visitors without the flag never download them. Follow the `collection-map` pattern in `templates/collection_database.html`:
    ```js
    document.addEventListener('entoflags:updated', () => {
        if (!window.EntoFlags || !window.EntoFlags.has('pest-phenology')) return;
@@ -68,13 +68,12 @@ There is no soak period. As soon as a flag is GA and you're satisfied, remove it
 
 ## Deploying the lifecycle itself (one time)
 
-Apply `migrations/0008_flag_status.sql` **before** deploying the code that reads the `status` column. Existing flags become `targeted`, which is the same behaviour as before. If the code is deployed first, the flags query fails and returns an empty list, which hides `gdrive-sync` from its testers until the migration is applied.
+Apply `migrations/0008_flag_status.sql` **before** deploying the code that reads the `status` column. Existing flags become `targeted`, which is the same behaviour as before. If the code is deployed first, the flags query fails and returns an empty list, which hides every flagged feature from its testers until the migration is applied.
 
 ## Current flags
 
 | Key | Feature | GA notes |
 |---|---|---|
-| `gdrive-sync` | Google Drive backup on Sample Collection and Collection Database | |
 | `collection-map` | Map of saved records on Collection Database, with date and taxon filters | Opening the map loads Leaflet from jsDelivr and map tiles from tile.openstreetmap.org, which reveals the viewed area to OpenStreetMap. Add OpenStreetMap to the privacy policy at GA. The CSP allowance is per route, in `src/lib/csp.js` (`ROUTE_EXTRAS`). |
 | `season-normals` | Season vs. 1991–2020 normal and last year on the Degree Day Calculator, backed by `POST /api/normals` | The endpoint checks the flag on the server (`hasFlag` in `src/routes/flags.js`). Remove that check at GA along with the client check. |
 | `share-links` | Copy Link on the Degree Day Calculator. The search state is stored in the URL fragment (`#s=…`). | Opening a shared link requires the flag too. Until GA, someone without it who opens a link gets a blank calculator. |

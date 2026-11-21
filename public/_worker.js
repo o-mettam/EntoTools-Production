@@ -20034,14 +20034,14 @@ async function verifyAccessRequest(request, env) {
 
 // src/csp-hashes.json
 var csp_hashes_default = {
-  generated: "2026-11-21T01:58:53.699Z",
+  generated: "2026-11-21T03:15:29.776Z",
   tailwindHash: "427e2af05424",
   routes: {
     "/404.html": [],
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "sha256-pUVBTgAD1v9trplZOWIp95p3bhpjpiRPBMDy4OPW2V0="
+      "sha256-BCI36Uxldt1iwzB5oR/wh4lPpDIr9WE7O1YVhkx2Wcs="
     ],
     "/degree-day-calculator": [
       "sha256-83TIEvNWyX0TmwuxwLbGCAfRUl8WKUppb3j7+ovBwfo="
@@ -20059,7 +20059,7 @@ var csp_hashes_default = {
       "sha256-N1OAaQla7FejqwBXEWf5mcEMvEkGjhQ4O8mzw9UblI0="
     ],
     "/sample-collection": [
-      "sha256-OusoIA4AkTVWpYu1CHTIuf1bNLsi+e06oypr3htKAWU="
+      "sha256-qFQmKYvbLKesGKWYeMUJlAEp5sv26ri96xwjhmjPUF8="
     ],
     "/status": [
       "sha256-2GTXDTyeSeqQc89AnNIG0jBJQC/99zPphelOsacOSaA="
@@ -20073,7 +20073,6 @@ var csp_hashes_default = {
     "/500.html": [],
     "/503.html": [],
     "/collection-database": [
-      "https://accounts.google.com/gsi/",
       "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js",
       "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
     ],
@@ -20096,7 +20095,6 @@ var csp_hashes_default = {
       "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
     ],
     "/sample-collection": [
-      "https://accounts.google.com/gsi/",
       "https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"
     ],
     "/status": [
@@ -20113,7 +20111,7 @@ var csp_hashes_default = {
 
 // src/lib/csp.js
 var BEACON_HOST = "https://static.cloudflareinsights.com";
-var PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://www.googleapis.com https://accounts.google.com https://oauth2.googleapis.com https://cloudflareinsights.com";
+var PUBLIC_CONNECT = "'self' https://api.open-meteo.com https://archive-api.open-meteo.com https://nominatim.openstreetmap.org https://api.sunrise-sunset.org https://cloudflareinsights.com";
 var ROUTE_EXTRAS = {
   "/collection-database": { styleHosts: "https://cdn.jsdelivr.net", imgHosts: "https://tile.openstreetmap.org" }
 };
@@ -20230,7 +20228,7 @@ async function checkAllServices() {
 // package.json
 var package_default = {
   name: "entotools-production",
-  version: "1.12.3",
+  version: "1.13.0",
   private: true,
   scripts: {
     dev: "wrangler pages dev public/",

@@ -1,16 +1,13 @@
 /**
  * EntoTools — account-backed sync provider (#35 phase 3)
  *
- * Implements the same StorageProvider interface EntoDriveProvider does
+ * Implements the StorageProvider interface EntoSync expects
  * (connect(), silentConnect(), disconnect(), isConnected(), pull(),
- * push(snapshot)) so EntoSync (public/sync/sync-core.js) can drive either
- * one without new orchestration logic — see provider-gdrive.js for the
- * interface this mirrors.
+ * push(snapshot); see public/sync/sync-core.js).
  *
- * Much simpler than the Drive provider: "connected" just means "logged in"
- * (public/account.js owns the actual passkey ceremony) — there's no
- * separate OAuth consent step, no token to refresh, just the session cookie
- * that already exists once signed in.
+ * "Connected" just means "logged in" (public/account.js owns the actual
+ * passkey ceremony) — there's no separate consent step, no token to
+ * refresh, just the session cookie that already exists once signed in.
  *
  * Requires public/account.js to be loaded first (for window.EntoAccount).
  */
@@ -76,7 +73,7 @@
       return { json: data.json, meta: data.meta || {} };
     },
 
-    // snapshot is a store envelope (same shape EntoDriveProvider.push() takes).
+    // snapshot is a store envelope (see EntoStore in sync-core.js).
     async push(snapshot) {
       const result = await api('/api/account/collection', {
         method: 'PUT',

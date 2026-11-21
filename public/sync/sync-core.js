@@ -315,8 +315,8 @@
   // A provider implements: id, isConfigured(), isConnected(), connect(),
   // silentConnect(), disconnect(), pull(), push(snapshot), lastSynced().
   //
-  // Several providers can be registered at once (the EntoTools account
-  // provider and Google Drive both, for a flagged user). A full sync pulls
+  // Several providers can be registered at once (today only the EntoTools
+  // account provider exists). A full sync pulls
   // from every connected provider, folds each remote copy into the local
   // store with the same last-write-wins merge, then pushes the single merged
   // result back to every provider — so all backends converge on one dataset.
@@ -333,8 +333,7 @@
     _providers.set(p.id, p); // idempotent — re-registering replaces by id
   }
   // Back-compat alias: earlier callers "set" a single provider; that now just
-  // registers it alongside any others rather than replacing them (#35/#37 —
-  // the Drive UI used to silently unregister account sync this way).
+  // registers it alongside any others rather than replacing them (#35/#37).
   function setProvider(p) { addProvider(p); }
   function removeProvider(id) { _providers.delete(id); }
   function getProvider(id) { return _providers.get(id) || null; }

@@ -13,7 +13,7 @@
 #   public/ento-gdd.js     — shared mGDD calculation + HTML-escape helpers
 #   public/log-capture.js — shared console log capture + startup/action logging
 #   public/feedback.js     — feedback widget
-#   public/sync/*.js       — local store, merge engine, Drive provider, OAuth config
+#   public/sync/*.js       — local store, merge engine, account sync provider
 #   public/stations.json   — generated station index
 
 set -euo pipefail

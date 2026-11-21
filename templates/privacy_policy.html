@@ -88,7 +88,7 @@
                 <h2 class="text-xl font-semibold text-slate-800 mb-4">1. Overview</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>EntoTools ("we", "us", the "Service") is a free set of browser-based tools for entomological data, growing degree day (GDD) calculations, and specimen label generation, available at <strong>entotools.org</strong>. We are committed to collecting as little personal data as possible.</p>
-                    <p>Every core feature works <strong>without an account</strong>. By default, the data you enter is stored only in your own web browser. An account (Section 3) and Google Drive backup (Section 4) are both optional; data reaches our servers only if you choose one of them, use a feature that needs a server lookup (Section 5), or send feedback (Section 6).</p>
+                    <p>Every core feature works <strong>without an account</strong>. By default, the data you enter is stored only in your own web browser. An account (Section 3) is optional; data reaches our servers only if you create one, use a feature that needs a server lookup (Section 4), or send feedback (Section 5).</p>
                 </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -118,20 +118,7 @@
                 </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">4. Optional Google Drive Backup</h2>
-                <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
-                    <p>If you choose to connect Google Drive ("Cloud Backup"), the Service syncs your collection database to <strong>your own Google Drive account</strong> so you can access it across devices. This feature is entirely opt-in and off by default.</p>
-                    <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>Authorization:</strong> We use Google Identity Services with the limited <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">drive.file</code> scope, which only permits the app to access files it creates in your Drive. We cannot see your other Drive files.</li>
-                        <li><strong>What is stored:</strong> A folder named <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">EntoTools Backups</code> containing a JSON snapshot and a CSV copy of your collection database, stored in your Drive — not on our servers.</li>
-                        <li><strong>Access tokens:</strong> OAuth access tokens are kept only on your device for the active browser session (in memory and your browser's <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">sessionStorage</code>, which is cleared when you close the tab or browser). Tokens are never sent to or stored on our servers.</li>
-                        <li><strong>Revoking access:</strong> Click "Disconnect" in Settings, or revoke access anytime at <a href="https://myaccount.google.com/permissions" class="text-lime-600 underline hover:text-lime-700">your Google Account permissions</a>.</li>
-                    </ul>
-                    <p>Your use of Google Drive is also governed by <a href="https://policies.google.com/privacy" class="text-lime-600 underline hover:text-lime-700">Google's Privacy Policy</a>.</p>
-                </div>
-            </section>
-            <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">5. Third-Party Services</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">4. Third-Party Services</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>To provide weather and location features, the Service sends the location and date information you search for (such as coordinates or place names) to the following services. Some lookups go through our server; others are made directly from your browser, in which case the service also sees your IP address. We never send your name, email, or account details to them.</p>
                     <ul class="list-disc pl-5 space-y-1">
@@ -145,14 +132,13 @@
                         <li><strong>jsDelivr</strong> — open-source code libraries (passkey sign-in, charts, maps).</li>
                         <li><strong>Google Fonts</strong> — web fonts.</li>
                         <li><strong>OpenStreetMap</strong> — map tiles, only when you open the collection map.</li>
-                        <li><strong>Google</strong> — Identity Services and Drive API, only if you enable Cloud Backup.</li>
                         <li><strong>Cloudflare</strong> — hosting, content delivery, security, and the account database.</li>
                     </ul>
                     <p>Each third party processes data under its own privacy policy.</p>
                 </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">6. Feedback</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">5. Feedback</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>If you submit feedback through the Service, what you write is posted as a <strong>publicly visible issue</strong> on our GitHub project so we can review and improve the tools. You do not need an account to send feedback.</p>
                     <p><strong>Email is optional.</strong> If you enter one so we can reply, it is shown on the public issue, as the feedback form explains. Leave it blank to stay anonymous.</p>
@@ -160,18 +146,18 @@
                 </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">7. Cookies and Tracking</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">6. Cookies and Tracking</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>The Service does not use advertising cookies, analytics trackers, or cross-site tracking. It sets only these cookies, both limited to entotools.org:</p>
                     <ul class="list-disc pl-5 space-y-1">
                         <li><code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">__Host-ento_session</code> — keeps you signed in, only if you have an account. It cannot be read by page scripts and is removed when you sign out.</li>
                         <li><code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">ento_su</code> — counts accounts created from your browser, to limit abuse. It expires after 2 hours.</li>
                     </ul>
-                    <p>Your browser's <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">localStorage</code> and <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">sessionStorage</code> are used as described in Sections 2 and 4. Our hosting provider (Cloudflare) may also set security cookies needed to protect the site.</p>
+                    <p>Your browser's <code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">localStorage</code> is used as described in Section 2. Our hosting provider (Cloudflare) may also set security cookies needed to protect the site.</p>
                 </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">8. Security, Logs, and Retention</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">7. Security, Logs, and Retention</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <ul class="list-disc pl-5 space-y-1">
                         <li><strong>Abuse limits:</strong> to stop spam and overload, we count requests per network for up to 2 hours. Your IP address is converted with a keyed one-way hash before it is counted, so it is never stored in readable form.</li>
@@ -182,7 +168,7 @@
                 </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">9. Your Choices</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">8. Your Choices</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>If you have an account, open <em>Settings → Manage account</em> to:</p>
                     <ul class="list-disc pl-5 space-y-1">
@@ -191,25 +177,25 @@
                         <li><strong>Rename or remove passkeys</strong>.</li>
                         <li><strong>Delete my account</strong> — removes it and everything stored with it. This cannot be undone.</li>
                     </ul>
-                    <p>Data stored only in your browser can be removed with <em>Clear Local Cache</em> or your browser's settings. For anything else, contact us (Section 12).</p>
+                    <p>Data stored only in your browser can be removed with <em>Clear Local Cache</em> or your browser's settings. For anything else, contact us (Section 11).</p>
                 </div>
             </section>
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">10. Children's Privacy</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">9. Children's Privacy</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>The Service is intended for general, educational, and research use and is not directed at children under 13. We do not knowingly collect personal information from children.</p>
                 </div>
             </section>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">11. Changes to This Policy</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">10. Changes to This Policy</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>We may update this Privacy Policy from time to time. Material changes will be reflected by updating the "Last updated" date at the top of this page. Continued use of the Service after changes constitutes acceptance of the revised policy.</p>
                 </div>
             </section>
 
             <section class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <h2 class="text-xl font-semibold text-slate-800 mb-4">12. Contact</h2>
+                <h2 class="text-xl font-semibold text-slate-800 mb-4">11. Contact</h2>
                 <div class="text-slate-700 space-y-3 text-sm leading-relaxed">
                     <p>Questions about this policy can be raised via the project's <a href="https://github.com/o-mettam/EntoTools-Production" class="text-lime-600 underline hover:text-lime-700">GitHub repository</a>.</p>
                 </div>
@@ -274,7 +260,7 @@
             alert('Cleared ' + cleared + ' cached item(s).');
         }
     </script>
-    <script src="/account.js?v=8"></script>
+    <script src="/account.js?v=9"></script>
     <script src="/feedback.js"></script>
 </body>
 </html>
